@@ -30,7 +30,7 @@ DOVA is an enterprise-grade, multi-agent research automation system built on AWS
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/dova.git
+git clone https://github.com/alfredcs/dova.git
 cd dova
 
 # Create virtual environment
@@ -93,7 +93,7 @@ dova search github "rag implementation python"
 
 ## Architecture
 
-![DOVA Architecture](docs/assets/dova-architecture.svg)
+![DOVA Architecture](docs/assets/dova_arch_2.png)
 
 <details>
 <summary>Text-based Architecture Diagram</summary>
