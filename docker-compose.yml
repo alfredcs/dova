@@ -1,0 +1,118 @@
+# DOVA Local Development Services
+# Run: docker-compose up -d
+
+services:
+  # DOVA Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - dova-network
+
+  # DOVA API Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    volumes:
+      - ./src/dova:/app/src/dova:ro
+    restart: unless-stopped
+    networks:
+      - dova-network
+
+  # Redis for caching and pub/sub
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - dova-network
+
+  # Redis Commander for debugging (optional)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    profiles:
+      - debug
+    networks:
+      - dova-network
+
+  # DOVA Background Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m dova.jobs.worker
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JOB_WORKER_CONCURRENCY=5
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    volumes:
+      - ./src/dova:/app/src/dova:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      replicas: 2
+    restart: unless-stopped
+    networks:
+      - dova-network
+
+  # LocalStack for AWS services emulation (optional)
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,dynamodb,secretsmanager
+      - DEBUG=1
+      - DATA_DIR=/var/lib/localstack/data
+    volumes:
+      - localstack-data:/var/lib/localstack
+    profiles:
+      - aws-local
+    networks:
+      - dova-network
+
+volumes:
+  redis-data:
+  localstack-data:
+
+networks:
+  dova-network:
+    driver: bridge

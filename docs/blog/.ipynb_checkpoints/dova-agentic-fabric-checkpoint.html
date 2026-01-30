@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="DOVA Team" />
+  <title>Scaling Deep Research Automation with Multi-Agent Workflow</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      font-size: 11pt;
+      line-height: 1.3;
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: blue;
+    }
+    a:visited {
+      color: blue;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  
+  
+  
+  
+  
+  
+  true
+  
+  
+  
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Scaling Deep Research Automation with Multi-Agent
+Workflow</h1>
+<p class="subtitle">Building an Agentic Fabric Using DOVA and AWS
+Bedrock</p>
+<p class="author">DOVA Team</p>
+</header>
+<h2 id="introduction">Introduction</h2>
+<p>Organizations increasingly rely on AI-powered research to stay
+competitive—whether analyzing market trends, evaluating emerging
+technologies, or synthesizing findings from academic literature.
+However, traditional single-agent AI systems struggle with complex
+research tasks that require diverse perspectives, source verification,
+and iterative refinement.</p>
+<p>In this post, we introduce <strong>DOVA (Deep Orchestrated Versatile
+Agent)</strong>, an open-source multi-agent framework built on AWS
+Bedrock that transforms how teams conduct automated research. By
+orchestrating specialized agents through collaborative reasoning
+patterns, DOVA achieves research quality that exceeds what any single
+agent can produce alone.</p>
+<hr />
+<h2 id="the-challenge-limitations-of-single-agent-research">The
+Challenge: Limitations of Single-Agent Research</h2>
+<h3 id="current-bottlenecks">Current Bottlenecks</h3>
+<p>Single-agent AI systems face several fundamental limitations when
+handling complex research tasks:</p>
+<ul>
+<li><strong>Linear thinking</strong>: Agents process information
+sequentially, missing connections across domains</li>
+<li><strong>Premature conclusions</strong>: Without challenge
+mechanisms, agents accept initial findings without verification</li>
+<li><strong>Limited perspectives</strong>: A single model brings one
+interpretation to ambiguous data</li>
+<li><strong>No self-correction</strong>: Errors in early reasoning steps
+propagate through the entire analysis</li>
+</ul>
+<h3 id="scale-and-quality-trade-offs">Scale and Quality Trade-offs</h3>
+<p>Research teams face a difficult choice: invest significant human
+effort for thorough analysis, or accept shallow AI-generated summaries.
+Neither option scales effectively for organizations processing hundreds
+of research queries across domains like academic papers, code
+repositories, and market reports.</p>
+<hr />
+<h2 id="solution-overview-the-agentic-fabric-architecture">Solution
+Overview: The Agentic Fabric Architecture</h2>
+<p>DOVA addresses these challenges through an <strong>Agentic
+Fabric</strong>—a dynamic multi-agent system where specialized agents
+collaborate through structured reasoning patterns.</p>
+<h3 id="architecture-components">Architecture Components</h3>
+<table>
+<colgroup>
+<col style="width: 32%" />
+<col style="width: 29%" />
+<col style="width: 38%" />
+</colgroup>
+<thead>
+<tr>
+<th>Component</th>
+<th>Function</th>
+<th>AWS Service</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Agent Runtime</strong></td>
+<td>Hosts specialized agents with distinct capabilities</td>
+<td>Amazon Bedrock</td>
+</tr>
+<tr>
+<td><strong>Collaboration Layer</strong></td>
+<td>Manages inter-agent communication patterns</td>
+<td>Custom orchestration</td>
+</tr>
+<tr>
+<td><strong>Knowledge Integration</strong></td>
+<td>Connects external sources (ArXiv, GitHub, HuggingFace)</td>
+<td>MCP servers</td>
+</tr>
+<tr>
+<td><strong>Execution Sandbox</strong></td>
+<td>Validates code and claims safely</td>
+<td>Isolated containers</td>
+</tr>
+</tbody>
+</table>
+<h3 id="agent-specializations">Agent Specializations</h3>
+<p>The fabric comprises five specialized agents, each contributing
+unique capabilities:</p>
+<table>
+<colgroup>
+<col style="width: 30%" />
+<col style="width: 69%" />
+</colgroup>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Research Agent</strong></td>
+<td>Deep source traversal across academic and code repositories</td>
+</tr>
+<tr>
+<td><strong>Profiling Agent</strong></td>
+<td>Adapts findings to user context and interests</td>
+</tr>
+<tr>
+<td><strong>Validation Agent</strong></td>
+<td>Executes code in sandboxes, verifies claims</td>
+</tr>
+<tr>
+<td><strong>Synthesis Agent</strong></td>
+<td>Integrates findings into coherent narratives</td>
+</tr>
+<tr>
+<td><strong>Dialectic Agent</strong></td>
+<td>Adversarial debate to surface blind spots</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="technical-implementation">Technical Implementation</h2>
+<h3 id="component-1-individual-agent-reasoning-react-loop">Component 1:
+Individual Agent Reasoning (ReAct Loop)</h3>
+<p>Each agent implements a <strong>ReAct-style reasoning loop</strong>
+that enables structured thinking before collaboration.</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> reason(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    problem: <span class="bu">str</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    max_iterations: <span class="bu">int</span> <span class="op">=</span> <span class="dv">5</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    reflect: <span class="bu">bool</span> <span class="op">=</span> <span class="va">True</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> ReasoningTrace:</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;ReAct loop: Thought -&gt; Action -&gt; Observation -&gt; (repeat)&quot;&quot;&quot;</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    trace <span class="op">=</span> ReasoningTrace(problem<span class="op">=</span>problem)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>._scratchpad <span class="op">=</span> {<span class="st">&quot;observations&quot;</span>: []}</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> iteration <span class="kw">in</span> <span class="bu">range</span>(max_iterations):</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        <span class="co"># THOUGHT: Reason about next step</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>        thought <span class="op">=</span> <span class="cf">await</span> <span class="va">self</span>._think_step(problem, trace)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>        trace.steps.append(ReasoningStep(</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>            step_type<span class="op">=</span>StepType.THOUGHT,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>            content<span class="op">=</span>thought[<span class="st">&quot;reasoning&quot;</span>],</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>            confidence<span class="op">=</span>thought.get(<span class="st">&quot;confidence&quot;</span>, <span class="fl">0.5</span>),</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        ))</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Check if ready to conclude</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> thought.get(<span class="st">&quot;action&quot;</span>) <span class="op">==</span> <span class="st">&quot;conclude&quot;</span>:</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>            trace.final_answer <span class="op">=</span> thought.get(<span class="st">&quot;conclusion&quot;</span>, <span class="st">&quot;&quot;</span>)</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>            <span class="cf">break</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>        <span class="co"># ACTION: Execute chosen action</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>        result <span class="op">=</span> <span class="cf">await</span> <span class="va">self</span>._action_step(thought[<span class="st">&quot;action&quot;</span>])</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>        <span class="co"># OBSERVATION: Record outcome</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>        trace.steps.append(ReasoningStep(</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>            step_type<span class="op">=</span>StepType.OBSERVATION,</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>            content<span class="op">=</span><span class="bu">str</span>(result),</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>        ))</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._scratchpad[<span class="st">&quot;observations&quot;</span>].append(result)</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    <span class="co"># REFLECTION: Self-critique before finalizing</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> reflect <span class="kw">and</span> trace.final_answer:</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>        refined, critique <span class="op">=</span> <span class="cf">await</span> <span class="va">self</span>.reflect(trace.final_answer)</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>        trace.refined_answer <span class="op">=</span> refined</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> trace</span></code></pre></div>
+<p><strong>Key implementation detail</strong>: The
+<code>_scratchpad</code> provides working memory across reasoning steps.
+Unlike stateless LLM calls, agents accumulate context—remembering what
+they’ve tried and what produced useful results.</p>
+<h3 id="component-2-blackboard-collaboration-pattern">Component 2:
+Blackboard Collaboration Pattern</h3>
+<p>The <strong>Blackboard</strong> enables asynchronous collaboration
+where agents post hypotheses, evidence, and refinements to a shared
+workspace.</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Blackboard:</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Shared workspace for collaborative agent reasoning.&quot;&quot;&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> post(</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        agent_name: <span class="bu">str</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        post_type: PostType,  <span class="co"># HYPOTHESIS, EVIDENCE, REFINEMENT</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        content: <span class="bu">str</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        confidence: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        references: <span class="bu">list</span>[<span class="bu">str</span>] <span class="op">|</span> <span class="va">None</span> <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    ) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Post an insight for others to build upon.&quot;&quot;&quot;</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        post <span class="op">=</span> BlackboardPost(</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>            <span class="bu">id</span><span class="op">=</span><span class="ss">f&quot;post_</span><span class="sc">{</span>uuid4()<span class="sc">.</span><span class="bu">hex</span>[:<span class="dv">8</span>]<span class="sc">}</span><span class="ss">&quot;</span>,</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>            agent_name<span class="op">=</span>agent_name,</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>            post_type<span class="op">=</span>post_type,</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>            content<span class="op">=</span>content,</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>            confidence<span class="op">=</span>confidence,</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>            references<span class="op">=</span>references <span class="kw">or</span> [],</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._posts[post.<span class="bu">id</span>] <span class="op">=</span> post</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> post.<span class="bu">id</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> get_context(</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>        agent_name: <span class="bu">str</span>,</span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>        exclude_own: <span class="bu">bool</span> <span class="op">=</span> <span class="va">True</span>,</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>        post_types: <span class="bu">list</span>[PostType] <span class="op">|</span> <span class="va">None</span> <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>    ) <span class="op">-&gt;</span> <span class="bu">list</span>[BlackboardPost]:</span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Get relevant posts, excluding own contributions.&quot;&quot;&quot;</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>        posts <span class="op">=</span> [p <span class="cf">for</span> p <span class="kw">in</span> <span class="va">self</span>._posts.values()</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>                 <span class="cf">if</span> <span class="kw">not</span> (exclude_own <span class="kw">and</span> p.agent_name <span class="op">==</span> agent_name)]</span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>        posts.sort(key<span class="op">=</span><span class="kw">lambda</span> p: p.weighted_confidence, reverse<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> posts</span></code></pre></div>
+<p><strong>Why this works</strong>: Agents contribute independently
+without blocking each other. Confidence-weighted voting surfaces the
+strongest ideas while preserving minority viewpoints.</p>
+<h3 id="component-3-ensemble-reasoning">Component 3: Ensemble
+Reasoning</h3>
+<p>When exploring a vast solution space, DOVA launches multiple agents
+in parallel and synthesizes their findings.</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> EnsembleReasoning:</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Multiple agents tackle the same problem in parallel.&quot;&quot;&quot;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> reason(</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>        problem: <span class="bu">str</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        agents: <span class="bu">list</span>[Any],</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>        method: AggregationMethod <span class="op">=</span> AggregationMethod.SYNTHESIS,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    ) <span class="op">-&gt;</span> EnsembleResult:</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Launch all agents in parallel</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>        tasks <span class="op">=</span> [<span class="va">self</span>._get_agent_answer(agent, problem)</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>                 <span class="cf">for</span> agent <span class="kw">in</span> agents]</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>        answers <span class="op">=</span> <span class="cf">await</span> asyncio.gather(<span class="op">*</span>tasks, return_exceptions<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>        valid_answers <span class="op">=</span> [a <span class="cf">for</span> a <span class="kw">in</span> answers <span class="cf">if</span> <span class="bu">isinstance</span>(a, AgentAnswer)]</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Aggregate based on method</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> method <span class="op">==</span> AggregationMethod.SYNTHESIS:</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="cf">await</span> <span class="va">self</span>._aggregate_synthesis(valid_answers, problem)</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> method <span class="op">==</span> AggregationMethod.VOTE:</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>._aggregate_vote(valid_answers)</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> method <span class="op">==</span> AggregationMethod.BEST_OF:</span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>._aggregate_best_of(valid_answers)</span></code></pre></div>
+<p>The synthesis aggregation examines all perspectives and crafts a
+unified answer incorporating the strongest elements while noting
+disagreements.</p>
+<h3 id="component-4-iterative-refinement">Component 4: Iterative
+Refinement</h3>
+<p>For problems requiring serial depth, agents take turns proposing,
+critiquing, and refining.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _iterative_reasoning(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    problem: <span class="bu">str</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    agents: <span class="bu">list</span>[Any],</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    max_iterations: <span class="bu">int</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> CollaborativeResult:</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Start with first agent&#39;s answer</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    trace <span class="op">=</span> <span class="cf">await</span> agents[<span class="dv">0</span>].reason(problem)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    current_answer <span class="op">=</span> trace.refined_answer <span class="kw">or</span> trace.final_answer</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    history <span class="op">=</span> [{<span class="st">&quot;agent&quot;</span>: agents[<span class="dv">0</span>].name, <span class="st">&quot;answer&quot;</span>: current_answer}]</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Each subsequent agent refines</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> iteration <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, max_iterations):</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>        agent <span class="op">=</span> agents[iteration <span class="op">%</span> <span class="bu">len</span>(agents)]</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        refined, critique <span class="op">=</span> <span class="cf">await</span> agent.reflect(current_answer, problem)</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>        current_answer <span class="op">=</span> refined</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>        history.append({</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;agent&quot;</span>: agent.name,</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;critique&quot;</span>: critique,</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;refined&quot;</span>: refined,</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>        })</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> CollaborativeResult(</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>        final_answer<span class="op">=</span>current_answer,</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>        refinement_history<span class="op">=</span>history,</span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>    )</span></code></pre></div>
+<p>Each refinement pass stress-tests the answer. Weak arguments are
+strengthened or discarded, and gaps are filled.</p>
+<h3 id="component-5-hybrid-orchestration">Component 5: Hybrid
+Orchestration</h3>
+<p>Real research problems benefit from combining all patterns. DOVA’s
+<strong>Hybrid Mode</strong> chains them:</p>
+<p><span class="math display">Ensemble → Blackboard → Iterative
+Refinement</span></p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _hybrid_reasoning(<span class="va">self</span>, problem: <span class="bu">str</span>, agents: <span class="bu">list</span>[Any]):</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 1: Ensemble for diverse initial perspectives</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    ensemble_result <span class="op">=</span> <span class="cf">await</span> <span class="va">self</span>._ensemble_reasoning(problem, agents)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 2: Post to blackboard, preserve dissent</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.blackboard.clear()</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> <span class="va">self</span>.blackboard.post(</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>        agent_name<span class="op">=</span><span class="st">&quot;ensemble&quot;</span>,</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        post_type<span class="op">=</span>PostType.HYPOTHESIS,</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>        content<span class="op">=</span>ensemble_result.final_answer,</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>        confidence<span class="op">=</span>ensemble_result.confidence,</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> view <span class="kw">in</span> ensemble_result.dissenting_views:</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> <span class="va">self</span>.blackboard.post(</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>            agent_name<span class="op">=</span><span class="st">&quot;dissent&quot;</span>,</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>            post_type<span class="op">=</span>PostType.EVIDENCE,</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>            content<span class="op">=</span>view,</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>            confidence<span class="op">=</span><span class="fl">0.3</span>,</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 3: Iterative refinement on synthesized answer</span></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>    final <span class="op">=</span> <span class="cf">await</span> <span class="va">self</span>._iterative_reasoning(</span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a>        problem<span class="op">=</span><span class="ss">f&quot;Refine: </span><span class="sc">{</span>ensemble_result<span class="sc">.</span>final_answer<span class="sc">}</span><span class="ss">&quot;</span>,</span>
+<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a>        agents<span class="op">=</span>agents[:<span class="dv">2</span>],</span>
+<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a>        max_iterations<span class="op">=</span><span class="dv">2</span>,</span>
+<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> CollaborativeResult(</span>
+<span id="cb5-30"><a href="#cb5-30" aria-hidden="true" tabindex="-1"></a>        final_answer<span class="op">=</span>final.final_answer,</span>
+<span id="cb5-31"><a href="#cb5-31" aria-hidden="true" tabindex="-1"></a>        confidence<span class="op">=</span>(ensemble_result.confidence <span class="op">+</span> final.confidence) <span class="op">/</span> <span class="dv">2</span>,</span>
+<span id="cb5-32"><a href="#cb5-32" aria-hidden="true" tabindex="-1"></a>        mode_used<span class="op">=</span>CollaborationMode.HYBRID,</span>
+<span id="cb5-33"><a href="#cb5-33" aria-hidden="true" tabindex="-1"></a>    )</span></code></pre></div>
+<hr />
+<h2 id="deployment-and-configuration">Deployment and Configuration</h2>
+<h3 id="installation">Installation</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install DOVA</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> <span class="st">&quot;.[dev]&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Configure AWS credentials for Bedrock access</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">AWS_REGION</span><span class="op">=</span>us-west-2</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">AWS_ACCESS_KEY_ID</span><span class="op">=</span>your_key</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">AWS_SECRET_ACCESS_KEY</span><span class="op">=</span>your_secret</span></code></pre></div>
+<h3 id="running-research-queries">Running Research Queries</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Collaborative research query</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">dova</span> research <span class="st">&quot;compare RAG vs fine-tuning for domain adaptation&quot;</span> <span class="dt">\</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--reasoning</span> collaborative</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co"># API endpoint</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-X</span> POST http://localhost:8000/api/v1/research <span class="dt">\</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">-H</span> <span class="st">&quot;Content-Type: application/json&quot;</span> <span class="dt">\</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">-d</span> <span class="st">&#39;{&quot;query&quot;: &quot;transformer architectures&quot;, &quot;reasoning_mode&quot;: &quot;deep&quot;}&#39;</span></span></code></pre></div>
+<h3 id="reasoning-mode-configuration">Reasoning Mode Configuration</h3>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Use Case</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>quick</code></td>
+<td>Real-time queries</td>
+<td>Single-pass, no reflection</td>
+</tr>
+<tr>
+<td><code>standard</code></td>
+<td>Most requests</td>
+<td>ReAct + self-reflection</td>
+</tr>
+<tr>
+<td><code>deep</code></td>
+<td>Complex analysis</td>
+<td>Full ensemble reasoning</td>
+</tr>
+<tr>
+<td><code>collaborative</code></td>
+<td>Research projects</td>
+<td>Hybrid multi-pattern</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="results-and-benefits">Results and Benefits</h2>
+<h3 id="operational-improvements">Operational Improvements</h3>
+<ul>
+<li><strong>Research depth</strong>: Multi-agent collaboration surfaces
+insights missed by single-agent systems</li>
+<li><strong>Quality assurance</strong>: Adversarial dialectic patterns
+catch errors before output</li>
+<li><strong>Auditability</strong>: Full reasoning traces enable review
+of how conclusions were reached</li>
+<li><strong>Scalability</strong>: Configurable reasoning depth balances
+thoroughness against latency</li>
+</ul>
+<h3 id="key-learnings">Key Learnings</h3>
+<hr />
+<h2 id="conclusion">Conclusion</h2>
+<p>DOVA demonstrates that multi-agent collaboration, implemented through
+structured reasoning patterns and shared workspaces, can significantly
+improve automated research quality. By leveraging AWS Bedrock for
+scalable inference and the Strands Agents SDK for orchestration,
+organizations can deploy sophisticated research automation that adapts
+to complexity.</p>
+<p>The framework is open source and welcomes contributions.</p>
+<hr />
+<h2 id="learn-more">Learn More</h2>
+<ul>
+<li><strong>GitHub Repository</strong>: github.com/your-org/dova</li>
+<li><strong>AWS Bedrock Documentation</strong>:
+docs.aws.amazon.com/bedrock</li>
+<li><strong>Strands Agents SDK</strong>:
+aws.amazon.com/strands-agents</li>
+</ul>
+<hr />
+</body>
+</html>

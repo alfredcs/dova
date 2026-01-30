@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="DOVA Team" />
+  <title>Scaling Deep Research Automation with Multi-Agent Workflow</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      font-size: 11pt;
+      line-height: 1.3;
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: blue;
+    }
+    a:visited {
+      color: blue;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  
+  
+  
+  
+  
+  
+  true
+  
+  
+  
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Scaling Deep Research Automation with Multi-Agent
+Workflow</h1>
+<p class="subtitle">Building an Agentic Fabric Using DOVA, Strands
+Agents SDK, and Amazon Bedrock AgentCore</p>
+<p class="author">DOVA Team</p>
+</header>
+<h2 id="introduction">Introduction</h2>
+<p>Organizations increasingly rely on AI-powered research to stay
+competitive—whether analyzing market trends, evaluating emerging
+technologies, or synthesizing findings from academic literature.
+However, traditional single-agent AI systems struggle with complex
+research tasks that require diverse perspectives, source verification,
+and iterative refinement.</p>
+<p>In this post, we introduce <strong>DOVA (Deep Orchestrated Versatile
+Agent)</strong>, an open-source multi-agent framework built on
+<strong>Amazon Strands Agents SDK</strong> and <strong>Amazon Bedrock
+AgentCore</strong> that transforms how teams conduct automated research.
+By orchestrating specialized agents through collaborative reasoning
+patterns, DOVA achieves research quality that exceeds what any single
+agent can produce alone.</p>
+<hr />
+<h2 id="the-challenge-limitations-of-single-agent-research">The
+Challenge: Limitations of Single-Agent Research</h2>
+<h3 id="current-bottlenecks">Current Bottlenecks</h3>
+<p>Single-agent AI systems face several fundamental limitations when
+handling complex research tasks:</p>
+<ul>
+<li><strong>Linear thinking</strong>: Agents process information
+sequentially, missing connections across domains</li>
+<li><strong>Premature conclusions</strong>: Without challenge
+mechanisms, agents accept initial findings without verification</li>
+<li><strong>Limited perspectives</strong>: A single model brings one
+interpretation to ambiguous data</li>
+<li><strong>No self-correction</strong>: Errors in early reasoning steps
+propagate through the entire analysis</li>
+</ul>
+<h3 id="scale-and-quality-trade-offs">Scale and Quality Trade-offs</h3>
+<p>Research teams face a difficult choice: invest significant human
+effort for thorough analysis, or accept shallow AI-generated summaries.
+Neither option scales effectively for organizations processing hundreds
+of research queries across domains like academic papers, code
+repositories, and market reports.</p>
+<hr />
+<h2 id="solution-overview-the-agentic-fabric-architecture">Solution
+Overview: The Agentic Fabric Architecture</h2>
+<p>DOVA addresses these challenges through an <strong>Agentic
+Fabric</strong>—a dynamic multi-agent system where specialized agents
+collaborate through structured reasoning patterns, powered by AWS
+managed services.</p>
+<h3 id="aws-technology-stack">AWS Technology Stack</h3>
+<table>
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 25%" />
+<col style="width: 40%" />
+</colgroup>
+<thead>
+<tr>
+<th>Technology</th>
+<th>Purpose</th>
+<th>Key Features</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Strands Agents SDK</strong></td>
+<td>Agentic platform &amp; orchestration</td>
+<td>Native MCP support, multi-agent patterns (Swarm, Graph),
+model-agnostic, 40+ built-in tools</td>
+</tr>
+<tr>
+<td><strong>Amazon Bedrock AgentCore</strong></td>
+<td>Managed agent services</td>
+<td>Serverless runtime, persistent memory, secure gateway, code
+interpreter</td>
+</tr>
+<tr>
+<td><strong>Amazon Bedrock</strong></td>
+<td>Foundation models</td>
+<td>Claude, Nova, Titan for inference at scale</td>
+</tr>
+</tbody>
+</table>
+<h3 id="architecture-components">Architecture Components</h3>
+<table>
+<colgroup>
+<col style="width: 32%" />
+<col style="width: 29%" />
+<col style="width: 38%" />
+</colgroup>
+<thead>
+<tr>
+<th>Component</th>
+<th>Function</th>
+<th>AWS Service</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Agent Runtime</strong></td>
+<td>Serverless agent deployment with auto-scaling</td>
+<td>AgentCore Runtime</td>
+</tr>
+<tr>
+<td><strong>MCP Gateway</strong></td>
+<td>Authenticated tool integration for external sources</td>
+<td>AgentCore Gateway</td>
+</tr>
+<tr>
+<td><strong>User Memory</strong></td>
+<td>Persistent memory across sessions (preferences, facts,
+summaries)</td>
+<td>AgentCore Memory</td>
+</tr>
+<tr>
+<td><strong>Code Sandbox</strong></td>
+<td>Secure execution environment for validation</td>
+<td>AgentCore Code Interpreter</td>
+</tr>
+<tr>
+<td><strong>Observability</strong></td>
+<td>Metrics, traces, logs, and alarms</td>
+<td>CloudWatch + X-Ray + OpenTelemetry</td>
+</tr>
+<tr>
+<td><strong>Identity &amp; Security</strong></td>
+<td>SSO/OAuth authentication and authorization</td>
+<td>AWS Cognito + AgentCore Gateway</td>
+</tr>
+</tbody>
+</table>
+<h3 id="agent-specializations">Agent Specializations</h3>
+<p>The fabric comprises five specialized agents built using the Strands
+Agents SDK:</p>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 40%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Responsibility</th>
+<th>Strands Pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Research Agent</strong></td>
+<td>Deep source traversal via MCP servers (ArXiv, GitHub,
+HuggingFace)</td>
+<td>Agent with MCPClient tools</td>
+</tr>
+<tr>
+<td><strong>Profiling Agent</strong></td>
+<td>Adapts findings using AgentCore Memory</td>
+<td>Agent with memory tools</td>
+</tr>
+<tr>
+<td><strong>Validation Agent</strong></td>
+<td>Executes code in AgentCore Code Interpreter</td>
+<td>Agent with code_interpreter tool</td>
+</tr>
+<tr>
+<td><strong>Synthesis Agent</strong></td>
+<td>Integrates findings into coherent narratives</td>
+<td>Agent with RAG tools</td>
+</tr>
+<tr>
+<td><strong>Dialectic Agent</strong></td>
+<td>Adversarial debate using Swarm pattern</td>
+<td>Swarm with opposing prompts</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="technical-implementation">Technical Implementation</h2>
+<h3 id="component-1-research-agent-with-native-mcp-support">Component 1:
+Research Agent with Native MCP Support</h3>
+<p>The <strong>Strands Agents SDK</strong> provides first-class MCP
+(Model Context Protocol) integration for connecting to external data
+sources.</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands <span class="im">import</span> Agent</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands.tools.mcp <span class="im">import</span> MCPClient</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> mcp <span class="im">import</span> stdio_client, StdioServerParameters</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DOVAResearchAgent:</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Multi-source research agent using Strands SDK + MCP servers.&quot;&quot;&quot;</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>):</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Initialize MCP clients for each data source</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.arxiv_mcp <span class="op">=</span> MCPClient(</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>            <span class="kw">lambda</span>: stdio_client(StdioServerParameters(</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>                command<span class="op">=</span><span class="st">&quot;uvx&quot;</span>,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>                args<span class="op">=</span>[<span class="st">&quot;mcp-server-arxiv&quot;</span>]</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>            ))</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.github_mcp <span class="op">=</span> MCPClient(</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>            <span class="kw">lambda</span>: stdio_client(StdioServerParameters(</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>                command<span class="op">=</span><span class="st">&quot;npx&quot;</span>,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>                args<span class="op">=</span>[<span class="st">&quot;-y&quot;</span>, <span class="st">&quot;@modelcontextprotocol/server-github&quot;</span>]</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>            ))</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.hf_mcp <span class="op">=</span> MCPClient(</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>            <span class="kw">lambda</span>: stdio_client(StdioServerParameters(</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>                command<span class="op">=</span><span class="st">&quot;uvx&quot;</span>,</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>                args<span class="op">=</span>[<span class="st">&quot;mcp-server-huggingface&quot;</span>]</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>            ))</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> create_agent(<span class="va">self</span>) <span class="op">-&gt;</span> Agent:</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Create the research agent with all MCP tools.&quot;&quot;&quot;</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>        all_tools <span class="op">=</span> []</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Gather tools from all MCP servers</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> <span class="va">self</span>.arxiv_mcp:</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>            all_tools.extend(<span class="va">self</span>.arxiv_mcp.list_tools_sync())</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> <span class="va">self</span>.github_mcp:</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>            all_tools.extend(<span class="va">self</span>.github_mcp.list_tools_sync())</span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> <span class="va">self</span>.hf_mcp:</span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>            all_tools.extend(<span class="va">self</span>.hf_mcp.list_tools_sync())</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> Agent(</span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>            system_prompt<span class="op">=</span><span class="st">&quot;&quot;&quot;You are DOVA, a Deep Orchestrated Versatile Agent.</span></span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a><span class="st">            Search multiple sources in parallel, cross-reference findings,</span></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a><span class="st">            and synthesize into coherent summaries with citations.&quot;&quot;&quot;</span>,</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>            tools<span class="op">=</span>all_tools</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>        )</span></code></pre></div>
+<p><strong>Key implementation detail</strong>: The Strands SDK’s
+<code>MCPClient</code> wraps MCP server connections, enabling agents to
+invoke tools from ArXiv, GitHub, and HuggingFace through a unified
+interface.</p>
+<h3 id="component-2-user-profiling-with-agentcore-memory">Component 2:
+User Profiling with AgentCore Memory</h3>
+<p><strong>AgentCore Memory</strong> provides built-in memory strategies
+for persistent user context:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands <span class="im">import</span> Agent</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands_tools.agent_core_memory <span class="im">import</span> AgentCoreMemoryToolProvider</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataclasses <span class="im">import</span> dataclass</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="at">@dataclass</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> UserProfile:</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    user_id: <span class="bu">str</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    session_id: <span class="bu">str</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    namespace: <span class="bu">str</span> <span class="op">=</span> <span class="st">&quot;dova_profiles&quot;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DOVAProfileAgent:</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;User profiling agent using AgentCore Memory.&quot;&quot;&quot;</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, memory_id: <span class="bu">str</span>, region: <span class="bu">str</span> <span class="op">=</span> <span class="st">&quot;us-west-2&quot;</span>):</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.memory_id <span class="op">=</span> memory_id</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.region <span class="op">=</span> region</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> create_agent(<span class="va">self</span>, profile: UserProfile) <span class="op">-&gt;</span> Agent:</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Create a profiling agent for a specific user.&quot;&quot;&quot;</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Initialize AgentCore Memory provider per-request</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>        memory_provider <span class="op">=</span> AgentCoreMemoryToolProvider(</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>            memory_id<span class="op">=</span><span class="va">self</span>.memory_id,</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>            actor_id<span class="op">=</span>profile.user_id,</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>            session_id<span class="op">=</span>profile.session_id,</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>            namespace<span class="op">=</span>profile.namespace,</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>            region<span class="op">=</span><span class="va">self</span>.region</span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> Agent(</span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>            system_prompt<span class="op">=</span><span class="st">&quot;&quot;&quot;You are the DOVA User Profiling Agent.</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a><span class="st">            Your responsibilities:</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a><span class="st">            1. RECORD user preferences, interests, and expertise levels</span></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a><span class="st">            2. RETRIEVE relevant user context for personalization</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a><span class="st">            3. UPDATE user profiles based on interactions</span></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a><span class="st">            Memory Actions:</span></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a><span class="st">            - action=&quot;record&quot;: Store new information about the user</span></span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a><span class="st">            - action=&quot;retrieve&quot;: Search for relevant user context</span></span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a><span class="st">            - action=&quot;list&quot;: List all stored memories</span></span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a><span class="st">            &quot;&quot;&quot;</span>,</span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>            tools<span class="op">=</span>memory_provider.tools</span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> get_user_context(<span class="va">self</span>, profile: UserProfile, query: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Retrieve relevant user context for a query.&quot;&quot;&quot;</span></span>
+<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a>        agent <span class="op">=</span> <span class="va">self</span>.create_agent(profile)</span>
+<span id="cb2-47"><a href="#cb2-47" aria-hidden="true" tabindex="-1"></a>        result <span class="op">=</span> agent(<span class="ss">f&quot;Retrieve any relevant user preferences for: </span><span class="sc">{</span>query<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb2-48"><a href="#cb2-48" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> result.message</span></code></pre></div>
+<p><strong>Memory strategies</strong> (built into AgentCore): -
+<strong>User Preferences</strong>: Research domains, output format
+preferences, notification settings - <strong>Semantic Facts</strong>:
+Learned expertise areas, saved searches, bookmarked papers -
+<strong>Session Summaries</strong>: Conversation context for multi-turn
+research sessions</p>
+<h3
+id="component-3-code-validation-with-agentcore-code-interpreter">Component
+3: Code Validation with AgentCore Code Interpreter</h3>
+<p>The <strong>AgentCore Code Interpreter</strong> provides a secure,
+managed sandbox for executing code claims.</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands <span class="im">import</span> Agent</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands_tools.code_interpreter <span class="im">import</span> AgentCoreCodeInterpreter</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DOVAValidationAgent:</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Code validation agent using AgentCore Code Interpreter.&quot;&quot;&quot;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, region: <span class="bu">str</span> <span class="op">=</span> <span class="st">&quot;us-west-2&quot;</span>):</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.code_interpreter <span class="op">=</span> AgentCoreCodeInterpreter(region<span class="op">=</span>region)</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> create_agent(<span class="va">self</span>) <span class="op">-&gt;</span> Agent:</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Create the validation agent.&quot;&quot;&quot;</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> Agent(</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>            system_prompt<span class="op">=</span><span class="st">&quot;&quot;&quot;You are the DOVA Validation Agent.</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="st">            Your responsibilities:</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="st">            1. VALIDATE code snippets from research papers</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="st">            2. TEST implementations for correctness</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="st">            3. BENCHMARK performance when relevant</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="st">            4. REPORT issues and suggestions</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a><span class="st">            When validating code:</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="st">            - First create a session for the validation task</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a><span class="st">            - Execute the code in the sandbox</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="st">            - Capture outputs, errors, and metrics</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a><span class="st">            - Provide clear pass/fail assessment with reasoning</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a><span class="st">            &quot;&quot;&quot;</span>,</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>            tools<span class="op">=</span>[<span class="va">self</span>.code_interpreter.code_interpreter]</span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> validate_snippet(</span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a>        code: <span class="bu">str</span>,</span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a>        language: <span class="bu">str</span> <span class="op">=</span> <span class="st">&quot;python&quot;</span>,</span>
+<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a>        description: <span class="bu">str</span> <span class="op">=</span> <span class="st">&quot;&quot;</span></span>
+<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a>    ) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Validate a code snippet.&quot;&quot;&quot;</span></span>
+<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a>        agent <span class="op">=</span> <span class="va">self</span>.create_agent()</span>
+<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a>        result <span class="op">=</span> agent(<span class="ss">f&quot;&quot;&quot;</span></span>
+<span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a><span class="ss">        Please validate this </span><span class="sc">{</span>language<span class="sc">}</span><span class="ss"> code:</span></span>
+<span id="cb3-39"><a href="#cb3-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-40"><a href="#cb3-40" aria-hidden="true" tabindex="-1"></a><span class="ss">        Description: </span><span class="sc">{</span>description<span class="sc">}</span></span>
+<span id="cb3-41"><a href="#cb3-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-42"><a href="#cb3-42" aria-hidden="true" tabindex="-1"></a><span class="ss">        ```</span><span class="sc">{</span>language<span class="sc">}</span></span>
+<span id="cb3-43"><a href="#cb3-43" aria-hidden="true" tabindex="-1"></a><span class="ss">        </span><span class="sc">{</span>code<span class="sc">}</span></span>
+<span id="cb3-44"><a href="#cb3-44" aria-hidden="true" tabindex="-1"></a><span class="ss">        ```</span></span>
+<span id="cb3-45"><a href="#cb3-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-46"><a href="#cb3-46" aria-hidden="true" tabindex="-1"></a><span class="ss">        Steps:</span></span>
+<span id="cb3-47"><a href="#cb3-47" aria-hidden="true" tabindex="-1"></a><span class="ss">        1. Create a validation session</span></span>
+<span id="cb3-48"><a href="#cb3-48" aria-hidden="true" tabindex="-1"></a><span class="ss">        2. Execute the code</span></span>
+<span id="cb3-49"><a href="#cb3-49" aria-hidden="true" tabindex="-1"></a><span class="ss">        3. Report results (success/failure, output, any errors)</span></span>
+<span id="cb3-50"><a href="#cb3-50" aria-hidden="true" tabindex="-1"></a><span class="ss">        &quot;&quot;&quot;</span>)</span>
+<span id="cb3-51"><a href="#cb3-51" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> {</span>
+<span id="cb3-52"><a href="#cb3-52" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;validation_result&quot;</span>: result.message,</span>
+<span id="cb3-53"><a href="#cb3-53" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;success&quot;</span>: <span class="st">&quot;error&quot;</span> <span class="kw">not</span> <span class="kw">in</span> result.message.lower()</span>
+<span id="cb3-54"><a href="#cb3-54" aria-hidden="true" tabindex="-1"></a>        }</span></code></pre></div>
+<p><strong>Security</strong>: AgentCore Code Interpreter runs in
+isolated containers with resource limits, network restrictions, and
+automatic cleanup.</p>
+<h3
+id="component-4-master-orchestrator-with-multi-agent-coordination">Component
+4: Master Orchestrator with Multi-Agent Coordination</h3>
+<p>The <strong>Strands SDK</strong> provides built-in multi-agent
+patterns for orchestration.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands <span class="im">import</span> Agent, tool</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands_tools <span class="im">import</span> batch</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> List, Dict, Any</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DOVAOrchestrator:</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Master orchestrator using Strands multi-agent patterns.&quot;&quot;&quot;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>        research_agent: Agent,</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>        profiling_agent: Agent,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>        validation_agent: Agent</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    ):</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.research_agent <span class="op">=</span> research_agent</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.profiling_agent <span class="op">=</span> profiling_agent</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.validation_agent <span class="op">=</span> validation_agent</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._setup_agent_tools()</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _setup_agent_tools(<span class="va">self</span>):</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Wrap sub-agents as tools for the orchestrator.&quot;&quot;&quot;</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>        <span class="at">@tool</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>        <span class="kw">def</span> search_research(query: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>            <span class="co">&quot;&quot;&quot;Search for research papers, code, and models.&quot;&quot;&quot;</span></span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.research_agent(query).message</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>        <span class="at">@tool</span></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>        <span class="kw">def</span> get_user_context(user_id: <span class="bu">str</span>, query: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a>            <span class="co">&quot;&quot;&quot;Retrieve user profile and preferences.&quot;&quot;&quot;</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.profiling_agent(</span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a>                <span class="ss">f&quot;Get context for user </span><span class="sc">{</span>user_id<span class="sc">}</span><span class="ss"> regarding: </span><span class="sc">{</span>query<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a>            ).message</span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a>        <span class="at">@tool</span></span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a>        <span class="kw">def</span> validate_code(code: <span class="bu">str</span>, description: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>            <span class="co">&quot;&quot;&quot;Validate code in a secure sandbox environment.&quot;&quot;&quot;</span></span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.validation_agent(</span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>                <span class="ss">f&quot;Validate this code:</span><span class="ch">\n</span><span class="ss">```</span><span class="ch">\n</span><span class="sc">{</span>code<span class="sc">}</span><span class="ch">\n</span><span class="ss">```</span><span class="ch">\n</span><span class="ss">Description: </span><span class="sc">{</span>description<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a>            ).message</span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>        <span class="at">@tool</span></span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>        <span class="kw">def</span> synthesize_findings(findings: List[<span class="bu">str</span>]) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a>            <span class="co">&quot;&quot;&quot;Synthesize multiple research findings into a summary.&quot;&quot;&quot;</span></span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>            combined <span class="op">=</span> <span class="st">&quot;</span><span class="ch">\n\n</span><span class="st">&quot;</span>.join(findings)</span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">self</span>.research_agent(</span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>                <span class="ss">f&quot;Synthesize these findings:</span><span class="ch">\n</span><span class="sc">{</span>combined<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a>            ).message</span>
+<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.tools <span class="op">=</span> [</span>
+<span id="cb4-50"><a href="#cb4-50" aria-hidden="true" tabindex="-1"></a>            search_research,</span>
+<span id="cb4-51"><a href="#cb4-51" aria-hidden="true" tabindex="-1"></a>            get_user_context,</span>
+<span id="cb4-52"><a href="#cb4-52" aria-hidden="true" tabindex="-1"></a>            validate_code,</span>
+<span id="cb4-53"><a href="#cb4-53" aria-hidden="true" tabindex="-1"></a>            synthesize_findings,</span>
+<span id="cb4-54"><a href="#cb4-54" aria-hidden="true" tabindex="-1"></a>            batch  <span class="co"># For parallel execution of independent tasks</span></span>
+<span id="cb4-55"><a href="#cb4-55" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb4-56"><a href="#cb4-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-57"><a href="#cb4-57" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> create_orchestrator(<span class="va">self</span>) <span class="op">-&gt;</span> Agent:</span>
+<span id="cb4-58"><a href="#cb4-58" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Create the master orchestrator agent.&quot;&quot;&quot;</span></span>
+<span id="cb4-59"><a href="#cb4-59" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> Agent(</span>
+<span id="cb4-60"><a href="#cb4-60" aria-hidden="true" tabindex="-1"></a>            system_prompt<span class="op">=</span><span class="st">&quot;&quot;&quot;You are the DOVA Master Orchestrator.</span></span>
+<span id="cb4-61"><a href="#cb4-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-62"><a href="#cb4-62" aria-hidden="true" tabindex="-1"></a><span class="st">            Your role is to:</span></span>
+<span id="cb4-63"><a href="#cb4-63" aria-hidden="true" tabindex="-1"></a><span class="st">            1. UNDERSTAND user intent and decompose complex queries</span></span>
+<span id="cb4-64"><a href="#cb4-64" aria-hidden="true" tabindex="-1"></a><span class="st">            2. COORDINATE multiple specialized agents</span></span>
+<span id="cb4-65"><a href="#cb4-65" aria-hidden="true" tabindex="-1"></a><span class="st">            3. PERSONALIZE responses based on user context</span></span>
+<span id="cb4-66"><a href="#cb4-66" aria-hidden="true" tabindex="-1"></a><span class="st">            4. SYNTHESIZE findings from multiple sources</span></span>
+<span id="cb4-67"><a href="#cb4-67" aria-hidden="true" tabindex="-1"></a><span class="st">            5. VALIDATE code and implementations when needed</span></span>
+<span id="cb4-68"><a href="#cb4-68" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-69"><a href="#cb4-69" aria-hidden="true" tabindex="-1"></a><span class="st">            Use the batch tool to execute independent tasks in parallel.</span></span>
+<span id="cb4-70"><a href="#cb4-70" aria-hidden="true" tabindex="-1"></a><span class="st">            Always cite sources and provide actionable insights.&quot;&quot;&quot;</span>,</span>
+<span id="cb4-71"><a href="#cb4-71" aria-hidden="true" tabindex="-1"></a>            tools<span class="op">=</span><span class="va">self</span>.tools</span>
+<span id="cb4-72"><a href="#cb4-72" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb4-73"><a href="#cb4-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-74"><a href="#cb4-74" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> process_query(<span class="va">self</span>, user_id: <span class="bu">str</span>, query: <span class="bu">str</span>) <span class="op">-&gt;</span> Dict[<span class="bu">str</span>, Any]:</span>
+<span id="cb4-75"><a href="#cb4-75" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Process a user query through the orchestration pipeline.&quot;&quot;&quot;</span></span>
+<span id="cb4-76"><a href="#cb4-76" aria-hidden="true" tabindex="-1"></a>        orchestrator <span class="op">=</span> <span class="va">self</span>.create_orchestrator()</span>
+<span id="cb4-77"><a href="#cb4-77" aria-hidden="true" tabindex="-1"></a>        result <span class="op">=</span> orchestrator(<span class="ss">f&quot;&quot;&quot;</span></span>
+<span id="cb4-78"><a href="#cb4-78" aria-hidden="true" tabindex="-1"></a><span class="ss">        User ID: </span><span class="sc">{</span>user_id<span class="sc">}</span></span>
+<span id="cb4-79"><a href="#cb4-79" aria-hidden="true" tabindex="-1"></a><span class="ss">        Query: </span><span class="sc">{</span>query<span class="sc">}</span></span>
+<span id="cb4-80"><a href="#cb4-80" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-81"><a href="#cb4-81" aria-hidden="true" tabindex="-1"></a><span class="ss">        Please:</span></span>
+<span id="cb4-82"><a href="#cb4-82" aria-hidden="true" tabindex="-1"></a><span class="ss">        1. Get user context first</span></span>
+<span id="cb4-83"><a href="#cb4-83" aria-hidden="true" tabindex="-1"></a><span class="ss">        2. Search for relevant research</span></span>
+<span id="cb4-84"><a href="#cb4-84" aria-hidden="true" tabindex="-1"></a><span class="ss">        3. Synthesize personalized findings</span></span>
+<span id="cb4-85"><a href="#cb4-85" aria-hidden="true" tabindex="-1"></a><span class="ss">        &quot;&quot;&quot;</span>)</span>
+<span id="cb4-86"><a href="#cb4-86" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> {</span>
+<span id="cb4-87"><a href="#cb4-87" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;response&quot;</span>: result.message,</span>
+<span id="cb4-88"><a href="#cb4-88" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;tools_called&quot;</span>: <span class="bu">len</span>(result.tool_calls) <span class="cf">if</span> result.tool_calls <span class="cf">else</span> <span class="dv">0</span></span>
+<span id="cb4-89"><a href="#cb4-89" aria-hidden="true" tabindex="-1"></a>        }</span></code></pre></div>
+<h3 id="component-5-collaborative-reasoning-patterns">Component 5:
+Collaborative Reasoning Patterns</h3>
+<p>DOVA implements collaborative patterns on top of Strands
+primitives:</p>
+<p><strong>Blackboard Pattern</strong> (async contribution):</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Blackboard:</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Shared workspace for collaborative agent reasoning.&quot;&quot;&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> post(</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>        agent_name: <span class="bu">str</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>        post_type: PostType,  <span class="co"># HYPOTHESIS, EVIDENCE, REFINEMENT</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>        content: <span class="bu">str</span>,</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        confidence: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    ) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Post an insight for others to build upon.&quot;&quot;&quot;</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>        post <span class="op">=</span> BlackboardPost(</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>            <span class="bu">id</span><span class="op">=</span><span class="ss">f&quot;post_</span><span class="sc">{</span>uuid4()<span class="sc">.</span><span class="bu">hex</span>[:<span class="dv">8</span>]<span class="sc">}</span><span class="ss">&quot;</span>,</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>            agent_name<span class="op">=</span>agent_name,</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>            post_type<span class="op">=</span>post_type,</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>            content<span class="op">=</span>content,</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>            confidence<span class="op">=</span>confidence,</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._posts[post.<span class="bu">id</span>] <span class="op">=</span> post</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> post.<span class="bu">id</span></span></code></pre></div>
+<p><strong>Debate Agents Pattern</strong> (Bull vs Bear using Strands
+<code>swarm</code>):</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands <span class="im">import</span> Agent</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands_tools <span class="im">import</span> swarm</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DOVADebateAgents:</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Bull vs Bear debate pattern for balanced analysis.&quot;&quot;&quot;</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> create_advocate_agent(<span class="va">self</span>) <span class="op">-&gt;</span> Agent:</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Create the Bull (advocate) agent.&quot;&quot;&quot;</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> Agent(</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>            system_prompt<span class="op">=</span><span class="st">&quot;&quot;&quot;You are the DOVA Advocate Agent (Bull).</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="st">            Present the STRONGEST CASE for the proposed solution.</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="st">            Focus on: feasibility, innovation, competitive advantages.&quot;&quot;&quot;</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> create_critic_agent(<span class="va">self</span>) <span class="op">-&gt;</span> Agent:</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Create the Bear (critic) agent.&quot;&quot;&quot;</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> Agent(</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>            system_prompt<span class="op">=</span><span class="st">&quot;&quot;&quot;You are the DOVA Critic Agent (Bear).</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a><span class="st">            Present LEGITIMATE CONCERNS about the proposed solution.</span></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="st">            Focus on: risks, costs, complexity, edge cases.&quot;&quot;&quot;</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> create_synthesis_agent(<span class="va">self</span>) <span class="op">-&gt;</span> Agent:</span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Create the synthesis agent for balanced conclusions.&quot;&quot;&quot;</span></span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> Agent(</span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>            system_prompt<span class="op">=</span><span class="st">&quot;&quot;&quot;You are the DOVA Synthesis Agent.</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a><span class="st">            Given Bull and Bear arguments, provide a balanced assessment.</span></span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a><span class="st">            Acknowledge valid points from both sides.&quot;&quot;&quot;</span>,</span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>            tools<span class="op">=</span>[swarm]  <span class="co"># Coordinate Bull/Bear in parallel</span></span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> debate(<span class="va">self</span>, topic: <span class="bu">str</span>, context: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Run a Bull vs Bear debate on a topic.&quot;&quot;&quot;</span></span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a>        bull <span class="op">=</span> <span class="va">self</span>.create_advocate_agent()</span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a>        bear <span class="op">=</span> <span class="va">self</span>.create_critic_agent()</span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a>        synthesis <span class="op">=</span> <span class="va">self</span>.create_synthesis_agent()</span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a>        bull_args <span class="op">=</span> bull(<span class="ss">f&quot;Argue FOR: </span><span class="sc">{</span>topic<span class="sc">}</span><span class="ch">\n</span><span class="ss">Context: </span><span class="sc">{</span>context<span class="sc">}</span><span class="ss">&quot;</span>).message</span>
+<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a>        bear_args <span class="op">=</span> bear(<span class="ss">f&quot;Argue AGAINST: </span><span class="sc">{</span>topic<span class="sc">}</span><span class="ch">\n</span><span class="ss">Context: </span><span class="sc">{</span>context<span class="sc">}</span><span class="ss">&quot;</span>).message</span>
+<span id="cb6-40"><a href="#cb6-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-41"><a href="#cb6-41" aria-hidden="true" tabindex="-1"></a>        final <span class="op">=</span> synthesis(<span class="ss">f&quot;&quot;&quot;</span></span>
+<span id="cb6-42"><a href="#cb6-42" aria-hidden="true" tabindex="-1"></a><span class="ss">        Topic: </span><span class="sc">{</span>topic<span class="sc">}</span></span>
+<span id="cb6-43"><a href="#cb6-43" aria-hidden="true" tabindex="-1"></a><span class="ss">        Bull arguments: </span><span class="sc">{</span>bull_args<span class="sc">}</span></span>
+<span id="cb6-44"><a href="#cb6-44" aria-hidden="true" tabindex="-1"></a><span class="ss">        Bear arguments: </span><span class="sc">{</span>bear_args<span class="sc">}</span></span>
+<span id="cb6-45"><a href="#cb6-45" aria-hidden="true" tabindex="-1"></a><span class="ss">        Provide balanced synthesis.</span></span>
+<span id="cb6-46"><a href="#cb6-46" aria-hidden="true" tabindex="-1"></a><span class="ss">        &quot;&quot;&quot;</span>)</span>
+<span id="cb6-47"><a href="#cb6-47" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> {<span class="st">&quot;bull&quot;</span>: bull_args, <span class="st">&quot;bear&quot;</span>: bear_args, <span class="st">&quot;synthesis&quot;</span>: final.message}</span></code></pre></div>
+<p><strong>Iterative Refinement</strong> (serial depth):</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> iterative_refinement(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    problem: <span class="bu">str</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    agents: <span class="bu">list</span>[Agent],</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    max_iterations: <span class="bu">int</span> <span class="op">=</span> <span class="dv">3</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Agents take turns critiquing and refining.&quot;&quot;&quot;</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    current_answer <span class="op">=</span> agents[<span class="dv">0</span>](problem).message</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, max_iterations):</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>        agent <span class="op">=</span> agents[i <span class="op">%</span> <span class="bu">len</span>(agents)]</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>        current_answer <span class="op">=</span> agent(</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f&quot;Critique and improve: </span><span class="sc">{</span>current_answer<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>        ).message</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> current_answer</span></code></pre></div>
+<hr />
+<h2 id="deployment-with-agentcore">Deployment with AgentCore</h2>
+<h3 id="project-setup">Project Setup</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Clone the fullstack AgentCore template</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/awslabs/fullstack-solution-template-for-agentcore</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> fullstack-solution-template-for-agentcore</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Deploy infrastructure (Cognito, API Gateway, Frontend)</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> infra-cdk <span class="kw">&amp;&amp;</span> <span class="ex">npm</span> install <span class="kw">&amp;&amp;</span> <span class="ex">cdk</span> bootstrap <span class="kw">&amp;&amp;</span> <span class="ex">cdk</span> deploy</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Install DOVA</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install strands-agents strands-agents-tools</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> <span class="st">&quot;.[dev]&quot;</span></span></code></pre></div>
+<h3 id="deploy-to-agentcore-runtime">Deploy to AgentCore Runtime</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install AgentCore toolkit</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install bedrock-agentcore-starter-toolkit</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Configure agent entry point</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="ex">agentcore</span> configure <span class="at">-e</span> dova/main.py</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Deploy to AgentCore Runtime (serverless)</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="ex">agentcore</span> launch</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Test the deployed agent</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="ex">agentcore</span> invoke <span class="st">&#39;{&quot;query&quot;: &quot;Latest advances in multi-agent systems&quot;}&#39;</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="co"># View logs and traces</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="ex">agentcore</span> logs</span></code></pre></div>
+<h3 id="reasoning-mode-configuration">Reasoning Mode Configuration</h3>
+<table>
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 19%" />
+<col style="width: 32%" />
+<col style="width: 36%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Use Case</th>
+<th>Strands Pattern</th>
+<th>AgentCore Services</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>quick</code></td>
+<td>Real-time queries</td>
+<td>Single Agent</td>
+<td>Runtime only</td>
+</tr>
+<tr>
+<td><code>standard</code></td>
+<td>Most requests</td>
+<td>Agent + reflection</td>
+<td>Runtime + Memory</td>
+</tr>
+<tr>
+<td><code>deep</code></td>
+<td>Complex analysis</td>
+<td>Batch + Debate agents</td>
+<td>Runtime + Memory + Code Interpreter</td>
+</tr>
+<tr>
+<td><code>collaborative</code></td>
+<td>Research projects</td>
+<td>Full orchestration</td>
+<td>All services</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="observability-and-monitoring">Observability and Monitoring</h2>
+<p>DOVA leverages built-in observability through Strands SDK and AWS
+services.</p>
+<h3 id="opentelemetry-integration">OpenTelemetry Integration</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands <span class="im">import</span> Agent</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> strands.telemetry <span class="im">import</span> configure_telemetry</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Configure OpenTelemetry + CloudWatch</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>configure_telemetry(</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    service_name<span class="op">=</span><span class="st">&quot;dova&quot;</span>,</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    exporter<span class="op">=</span><span class="st">&quot;cloudwatch&quot;</span>,  <span class="co"># Also supports: langfuse, jaeger, otlp</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> Agent(system_prompt<span class="op">=</span><span class="st">&quot;Research agent with tracing enabled&quot;</span>)</span></code></pre></div>
+<h3 id="cloudwatch-metrics-and-alarms">CloudWatch Metrics and
+Alarms</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Description</th>
+<th>Alarm Threshold</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AgentInvocations</code></td>
+<td>Total agent calls</td>
+<td>N/A (monitoring)</td>
+</tr>
+<tr>
+<td><code>AgentLatencyP99</code></td>
+<td>99th percentile latency</td>
+<td>&gt; 30s</td>
+</tr>
+<tr>
+<td><code>MCPToolErrors</code></td>
+<td>MCP server failures</td>
+<td>&gt; 5% error rate</td>
+</tr>
+<tr>
+<td><code>MemoryOperations</code></td>
+<td>AgentCore Memory calls</td>
+<td>N/A (monitoring)</td>
+</tr>
+<tr>
+<td><code>CodeInterpreterExecutions</code></td>
+<td>Sandbox runs</td>
+<td>N/A (monitoring)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="results-and-benefits">Results and Benefits</h2>
+<h3 id="operational-improvements">Operational Improvements</h3>
+<ul>
+<li><strong>Research depth</strong>: Multi-agent collaboration surfaces
+insights missed by single-agent systems</li>
+<li><strong>Quality assurance</strong>: Adversarial dialectic patterns
+catch errors before output</li>
+<li><strong>Auditability</strong>: Full reasoning traces via
+OpenTelemetry enable review of conclusions</li>
+<li><strong>Scalability</strong>: AgentCore Runtime auto-scales based on
+demand</li>
+<li><strong>Cost efficiency</strong>: Serverless deployment reduces
+infrastructure overhead by 50-70%</li>
+</ul>
+<h3 id="key-learnings">Key Learnings</h3>
+<hr />
+<h2 id="conclusion">Conclusion</h2>
+<p>DOVA demonstrates that multi-agent collaboration, implemented through
+the <strong>Strands Agents SDK</strong> for orchestration and
+<strong>Amazon Bedrock AgentCore</strong> for managed services, can
+significantly improve automated research quality while reducing
+infrastructure complexity.</p>
+<p>The combination of: - <strong>Strands SDK</strong> for native MCP
+support, multi-agent patterns, and model-agnostic design -
+<strong>AgentCore Runtime</strong> for serverless deployment -
+<strong>AgentCore Memory</strong> for persistent user context -
+<strong>AgentCore Gateway</strong> for secure tool integration -
+<strong>AgentCore Code Interpreter</strong> for sandboxed validation</p>
+<p>…enables teams to deploy sophisticated research automation that
+adapts to complexity without managing infrastructure.</p>
+<hr />
+<h2 id="learn-more">Learn More</h2>
+<ul>
+<li><strong>Strands Agents SDK</strong>: <a
+href="https://strandsagents.com">strandsagents.com</a></li>
+<li><strong>Strands GitHub</strong>: <a
+href="https://github.com/strands-agents/sdk-python">github.com/strands-agents/sdk-python</a></li>
+<li><strong>Amazon Bedrock AgentCore</strong>: <a
+href="https://docs.aws.amazon.com/bedrock-agentcore">docs.aws.amazon.com/bedrock-agentcore</a></li>
+<li><strong>FAST Template</strong>: <a
+href="https://github.com/awslabs/fullstack-solution-template-for-agentcore">github.com/awslabs/fullstack-solution-template-for-agentcore</a></li>
+</ul>
+<hr />
+</body>
+</html>
