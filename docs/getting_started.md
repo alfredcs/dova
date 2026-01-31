@@ -171,13 +171,74 @@ SANDBOX_MAX_CONCURRENT=5
 
 ### MCP Server Configuration
 
-DOVA integrates with Model Context Protocol (MCP) servers for external data sources:
+DOVA integrates with Model Context Protocol (MCP) servers for external data sources. Configuration is stored in `~/.dova.json` (similar to `~/.claude.json`).
 
-| Server | Purpose | Configuration |
-|--------|---------|---------------|
-| ArXiv | Academic papers | No API key required |
-| GitHub | Code repositories | `GITHUB_TOKEN` (optional, increases rate limits) |
-| HuggingFace | ML models/datasets | `HF_TOKEN` (optional) |
+#### Quick Setup
+
+```bash
+# Add ArXiv server (no auth required)
+dova mcp add arxiv --url http://infs.cavatar.info:8084/mcp
+
+# Add HuggingFace server
+dova mcp add huggingface --url https://huggingface.co/mcp
+
+# Add GitHub server with token (pass token directly with -H)
+dova mcp add github --url https://api.githubcopilot.com/mcp -H ghp_yourtoken
+
+# List configured servers
+dova mcp list
+
+# Test a server
+dova mcp test huggingface --tool model_search
+```
+
+#### Configuration File
+
+MCP servers are stored in `~/.dova.json`:
+
+```json
+{
+  "mcpServers": {
+    "arxiv": {
+      "type": "http",
+      "url": "http://infs.cavatar.info:8084/mcp"
+    },
+    "huggingface": {
+      "type": "http",
+      "url": "https://huggingface.co/mcp"
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ghp_yourtoken"
+      }
+    }
+  }
+}
+```
+
+#### Server Name Requirements
+
+Server names must match what the research agent expects:
+
+| Server Name | Purpose | Required |
+|-------------|---------|----------|
+| `arxiv` | Academic papers | Yes (for paper search) |
+| `github` | Code repositories | Yes (for code search) |
+| `huggingface` | ML models/datasets | Yes (for model search) |
+
+#### MCP CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `dova mcp add <name> --url <url>` | Add or update an MCP server |
+| `dova mcp add <name> --url <url> -H <token>` | Add server with Bearer auth token |
+| `dova mcp add <name> --url <url> -H "Key: Value"` | Add server with custom header |
+| `dova mcp remove <name>` | Remove an MCP server |
+| `dova mcp list` | List all configured servers |
+| `dova mcp show` | Show full config file |
+| `dova mcp test <name>` | Test server connectivity |
 
 ### Custom Sources
 
@@ -298,6 +359,34 @@ dova profile show user-123
 # Update profile
 dova profile update user-123 -i "machine learning" -i "NLP" -e advanced
 ```
+
+### MCP Server Management
+
+Manage MCP server configurations stored in `~/.dova.json`:
+
+```bash
+# Add MCP servers
+dova mcp add arxiv --url http://infs.cavatar.info:8084/mcp
+dova mcp add huggingface --url https://huggingface.co/mcp
+dova mcp add github --url https://api.githubcopilot.com/mcp -H ghp_yourtoken
+
+# List configured servers
+dova mcp list
+
+# Show full configuration
+dova mcp show
+
+# Test server connectivity
+dova mcp test huggingface
+dova mcp test huggingface --tool model_search
+
+# Remove a server
+dova mcp remove arxiv
+```
+
+The `-H` flag accepts either:
+- **Token shorthand**: `-H ghp_token` → becomes `Authorization: Bearer ghp_token`
+- **Full header**: `-H "X-Api-Key: mykey"` → becomes `X-Api-Key: mykey`
 
 ---
 
@@ -1307,9 +1396,31 @@ MCPConnectionError: Failed to connect to arxiv server
 ```
 
 **Solution:**
-- Check network connectivity
-- Verify MCP server URLs in configuration
-- Check if rate limits are hit
+
+1. Check if MCP servers are configured:
+   ```bash
+   dova mcp list
+   ```
+
+2. If no servers configured, add them:
+   ```bash
+   dova mcp add arxiv --url http://infs.cavatar.info:8084/mcp
+   dova mcp add huggingface --url https://huggingface.co/mcp
+   dova mcp add github --url https://api.githubcopilot.com/mcp -H ghp_yourtoken
+   ```
+
+3. Test server connectivity:
+   ```bash
+   dova mcp test arxiv
+   dova mcp test huggingface --tool model_search
+   ```
+
+4. Check `~/.dova.json` for correct configuration:
+   ```bash
+   dova mcp show
+   ```
+
+5. Verify server names match expected names: `arxiv`, `github`, `huggingface`
 
 #### 5. Redis Connection Failed
 

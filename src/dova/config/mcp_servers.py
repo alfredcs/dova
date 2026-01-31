@@ -47,6 +47,7 @@ class MCPServerConfig:
     transport: MCPTransport
     command: str | None = None  # For stdio transport
     url: str | None = None  # For http/sse transport
+    headers: dict[str, str] = field(default_factory=dict)  # For http transport
     enabled: bool = True
     priority: int = 5  # 1=highest, 10=lowest
     tools: list[MCPTool] = field(default_factory=list)
@@ -325,14 +326,10 @@ class MCPRegistry:
     servers: dict[str, MCPServerConfig] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Initialize with default servers."""
-        if not self.servers:
-            self.servers = {
-                "arxiv": ARXIV_MCP,
-                "github": GITHUB_MCP,
-                "huggingface": HUGGINGFACE_MCP,
-                "aws_docs": AWS_DOCS_MCP,
-            }
+        """Initialize registry. Does not auto-load built-in STDIO servers."""
+        # Built-in STDIO servers require uvx/npx and are disabled by default.
+        # Users should configure HTTP MCP servers in ~/.dova.json instead.
+        pass
 
     def get_server(self, name: str) -> MCPServerConfig | None:
         """Get server configuration by name."""
@@ -382,5 +379,173 @@ class MCPRegistry:
 
 
 def get_default_registry() -> MCPRegistry:
-    """Get the default MCP server registry."""
-    return MCPRegistry()
+    """Get the default MCP server registry, loading from ~/.dova.json if present."""
+    registry = MCPRegistry()
+
+    # Load user config from ~/.dova.json
+    user_servers = load_user_mcp_config()
+    for name, config in user_servers.items():
+        registry.register_server(config)
+
+    return registry
+
+
+def get_dova_config_path() -> str:
+    """Get the path to ~/.dova.json."""
+    import os
+
+    return os.path.expanduser("~/.dova.json")
+
+
+def load_user_mcp_config() -> dict[str, MCPServerConfig]:
+    """Load MCP server configurations from ~/.dova.json."""
+    import json
+    import os
+
+    config_path = get_dova_config_path()
+    if not os.path.exists(config_path):
+        return {}
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+    servers = {}
+    mcp_servers = config.get("mcpServers", {})
+
+    for name, server_config in mcp_servers.items():
+        transport_type = server_config.get("type", "http")
+        if transport_type == "http":
+            transport = MCPTransport.HTTP
+        elif transport_type == "sse":
+            transport = MCPTransport.SSE
+        else:
+            transport = MCPTransport.STDIO
+
+        servers[name] = MCPServerConfig(
+            name=name,
+            description=f"User-configured MCP server: {name}",
+            transport=transport,
+            url=server_config.get("url"),
+            headers=server_config.get("headers", {}),
+            command=server_config.get("command"),
+            enabled=server_config.get("enabled", True),
+            priority=server_config.get("priority", 1),
+            timeout_seconds=server_config.get("timeout", 30),
+        )
+
+    return servers
+
+
+def save_user_mcp_config(servers: dict[str, dict[str, Any]]) -> None:
+    """Save MCP server configurations to ~/.dova.json."""
+    import json
+    import os
+
+    config_path = get_dova_config_path()
+
+    # Load existing config or create new
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            config = {}
+    else:
+        config = {}
+
+    # Update mcpServers
+    config["mcpServers"] = servers
+
+    # Write config
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+
+def add_mcp_server(
+    name: str,
+    url: str,
+    server_type: str = "http",
+    headers: dict[str, str] | None = None,
+) -> None:
+    """Add or update an MCP server in ~/.dova.json."""
+    import json
+    import os
+
+    config_path = get_dova_config_path()
+
+    # Load existing config
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            config = {}
+    else:
+        config = {}
+
+    # Ensure mcpServers exists
+    if "mcpServers" not in config:
+        config["mcpServers"] = {}
+
+    # Add/update server
+    server_config: dict[str, Any] = {
+        "type": server_type,
+        "url": url,
+    }
+    if headers:
+        server_config["headers"] = headers
+
+    config["mcpServers"][name] = server_config
+
+    # Write config
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+
+def remove_mcp_server(name: str) -> bool:
+    """Remove an MCP server from ~/.dova.json."""
+    import json
+    import os
+
+    config_path = get_dova_config_path()
+
+    if not os.path.exists(config_path):
+        return False
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return False
+
+    if "mcpServers" not in config or name not in config["mcpServers"]:
+        return False
+
+    del config["mcpServers"][name]
+
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+    return True
+
+
+def list_mcp_servers() -> dict[str, dict[str, Any]]:
+    """List all MCP servers from ~/.dova.json."""
+    import json
+    import os
+
+    config_path = get_dova_config_path()
+
+    if not os.path.exists(config_path):
+        return {}
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+    return config.get("mcpServers", {})

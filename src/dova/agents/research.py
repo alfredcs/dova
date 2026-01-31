@@ -364,7 +364,16 @@ When analyzing search results:
 
     def _build_github_query(self, query: str, entities: dict[str, Any]) -> str:
         """Build optimized GitHub query from entities."""
-        parts = [query]
+        # Extract keywords from topics if available, otherwise clean the query
+        topics = entities.get("topics", [])
+        if topics:
+            # Use extracted topics as the main search terms
+            search_terms = " ".join(topics[:3])  # Limit to top 3 topics
+        else:
+            # Clean natural language query to extract keywords
+            search_terms = self._extract_search_keywords(query)
+
+        parts = [search_terms]
 
         # Add language filter
         technologies = entities.get("technologies", [])
@@ -375,10 +384,43 @@ When analyzing search results:
                 parts.append(f"language:{lang_map[tech_lower]}")
                 break
 
-        # Add minimum stars for quality
-        parts.append("stars:>10")
+        # Add date filter if time_range is specified
+        time_range = entities.get("time_range")
+        if time_range:
+            # Format: pushed:>2025-01-01
+            parts.append(f"pushed:>{time_range}")
+
+        # Add minimum stars for quality (but lower threshold for broader results)
+        parts.append("stars:>5")
 
         return " ".join(parts)
+
+    def _extract_search_keywords(self, query: str) -> str:
+        """Extract meaningful keywords from natural language query."""
+        import re
+
+        # Remove common stop words and phrases
+        stop_phrases = [
+            r'\bshow me\b', r'\bfind\b', r'\bsearch for\b', r'\blooking for\b',
+            r'\bthe\b', r'\ba\b', r'\ban\b', r'\bwhat is\b', r'\bwhat are\b',
+            r'\bhow to\b', r'\bpublish\b', r'\bpublished\b', r'\brepo\b',
+            r'\brepository\b', r'\brepositories\b', r'\bsince\b', r'\bfrom\b',
+            r'\bon\b', r'\babout\b', r'\brelated to\b', r'\bme\b',
+        ]
+
+        cleaned = query.lower()
+        for phrase in stop_phrases:
+            cleaned = re.sub(phrase, ' ', cleaned, flags=re.IGNORECASE)
+
+        # Remove date patterns like "Oct 2025", "October 2025", "2025-01"
+        cleaned = re.sub(r'\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{4}\b', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\b\d{4}[-/]\d{1,2}([-/]\d{1,2})?\b', '', cleaned)
+        cleaned = re.sub(r'\b\d{4}\b', '', cleaned)
+
+        # Clean up extra whitespace
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+        return cleaned if cleaned else query
 
     def _count_results(self, findings: ResearchFindings) -> int:
         """Count total results in findings."""

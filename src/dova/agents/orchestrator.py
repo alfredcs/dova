@@ -223,6 +223,19 @@ Respond with JSON:
         """Build task execution graph based on intent."""
         graph: dict[str, TaskNode] = {}
 
+        # Get requested sources from task params (defaults to all if not specified)
+        requested_sources = parent_task.params.get("sources", ["arxiv", "github", "huggingface"])
+
+        # Filter to only configured sources (check MCP registry)
+        available_sources = []
+        if self.mcp_client:
+            for source in requested_sources:
+                server = self.mcp_client.registry.get_server(source)
+                if server:
+                    available_sources.append(source)
+        else:
+            available_sources = requested_sources
+
         # Always add research tasks based on intent
         if intent.intent in [
             UserIntent.RESEARCH_QUERY,
@@ -230,50 +243,53 @@ Respond with JSON:
             UserIntent.CODE_SEARCH,
             UserIntent.MODEL_SEARCH,
         ]:
-            # ArXiv search
-            graph["arxiv_search"] = TaskNode(
-                id="arxiv_search",
-                agent_type="research",
-                task=AgentTask(
-                    type="search",
-                    params={
-                        "source": "arxiv",
-                        "query": query,
-                        "entities": intent.entities,
-                    },
-                    user_id=parent_task.user_id,
-                ),
-            )
+            # ArXiv search (only if configured)
+            if "arxiv" in available_sources:
+                graph["arxiv_search"] = TaskNode(
+                    id="arxiv_search",
+                    agent_type="research",
+                    task=AgentTask(
+                        type="search",
+                        params={
+                            "source": "arxiv",
+                            "query": query,
+                            "entities": intent.entities,
+                        },
+                        user_id=parent_task.user_id,
+                    ),
+                )
 
-            # GitHub search
-            graph["github_search"] = TaskNode(
-                id="github_search",
-                agent_type="research",
-                task=AgentTask(
-                    type="search",
-                    params={
-                        "source": "github",
-                        "query": query,
-                        "entities": intent.entities,
-                    },
-                    user_id=parent_task.user_id,
-                ),
-            )
+            # GitHub search (only if configured)
+            if "github" in available_sources:
+                graph["github_search"] = TaskNode(
+                    id="github_search",
+                    agent_type="research",
+                    task=AgentTask(
+                        type="search",
+                        params={
+                            "source": "github",
+                            "query": query,
+                            "entities": intent.entities,
+                        },
+                        user_id=parent_task.user_id,
+                    ),
+                )
 
-            # HuggingFace search
-            graph["hf_search"] = TaskNode(
-                id="hf_search",
-                agent_type="research",
-                task=AgentTask(
-                    type="search",
-                    params={
-                        "source": "huggingface",
-                        "query": query,
-                        "entities": intent.entities,
-                    },
-                    user_id=parent_task.user_id,
-                ),
-            )
+            # HuggingFace search (only if configured)
+            if "huggingface" in available_sources:
+                graph["hf_search"] = TaskNode(
+                    id="hf_search",
+                    agent_type="research",
+                    task=AgentTask(
+                        type="search",
+                        params={
+                            "source": "huggingface",
+                            "query": query,
+                            "entities": intent.entities,
+                        },
+                        user_id=parent_task.user_id,
+                    ),
+                )
 
         # Add profiling if needed
         if intent.requires_profiling and parent_task.user_id:
@@ -376,52 +392,64 @@ Respond with JSON:
         results: dict[str, AgentResult],
     ) -> dict[str, Any]:
         """Synthesize results from all agents into a coherent response."""
-        # If we have a synthesis agent result, use it
+        # Collect raw search results
+        raw_results = self._collect_raw_results(results)
+
+        # If we have a synthesis agent result, merge it with raw results
         if "synthesis" in results and results["synthesis"].success:
-            return results["synthesis"].data
-
-        # Otherwise, do basic aggregation
-        synthesis_prompt = f"""Synthesize these research results into a coherent response.
-
-Original Query: "{query}"
-Intent: {intent.intent.value}
-
-Results from different sources:
-{self._format_results_for_synthesis(results)}
-
-Provide a synthesized response that:
-1. Highlights the most relevant findings
-2. Cross-references related papers, code, and models
-3. Identifies key trends or patterns
-4. Suggests next steps or deeper investigations
-
-Format your response as JSON with sections for:
-- summary: Brief executive summary
-- papers: Relevant papers with key findings
-- code: Relevant repositories or implementations
-- models: Relevant ML models
-- insights: Key insights and connections
-- recommendations: Suggested next steps"""
-
-        response = await self.think(
-            synthesis_prompt,
-            task_type=TaskType.SUMMARIZATION,
-            temperature=0.5,
-        )
-
-        import json
-
-        try:
-            if "```json" in response:
-                response = response.split("```json")[1].split("```")[0]
-            elif "```" in response:
-                response = response.split("```")[1].split("```")[0]
-            return json.loads(response.strip())
-        except json.JSONDecodeError:
+            synthesis_data = results["synthesis"].data
+            # Merge raw results into synthesis output
             return {
-                "summary": response,
-                "raw_results": {k: v.data for k, v in results.items() if v.success},
+                "summary": synthesis_data.get("executive_summary", ""),
+                "papers": raw_results.get("papers", []),
+                "repositories": raw_results.get("repositories", []),
+                "models": raw_results.get("models", []),
+                "datasets": raw_results.get("datasets", []),
+                "insights": synthesis_data.get("key_findings", []),
+                "recommendations": synthesis_data.get("recommendations", []),
+                "knowledge_gaps": synthesis_data.get("knowledge_gaps", []),
+                "confidence_score": synthesis_data.get("confidence_score", 0.5),
             }
+
+    def _collect_raw_results(self, results: dict[str, AgentResult]) -> dict[str, list]:
+        """Collect raw search results from agent results."""
+        collected = {
+            "papers": [],
+            "repositories": [],
+            "models": [],
+            "datasets": [],
+        }
+
+        for node_id, result in results.items():
+            if not result.success or not result.data:
+                continue
+
+            data = result.data
+            if hasattr(data, "papers"):
+                # ResearchFindings object
+                collected["papers"].extend(
+                    [{"title": p.title, "url": p.url, "description": p.description, **p.metadata}
+                     for p in data.papers] if hasattr(data, "papers") else []
+                )
+                collected["repositories"].extend(
+                    [{"name": r.title, "url": r.url, "description": r.description, **r.metadata}
+                     for r in data.repositories] if hasattr(data, "repositories") else []
+                )
+                collected["models"].extend(
+                    [{"id": m.title, "url": m.url, "description": m.description, **m.metadata}
+                     for m in data.models] if hasattr(data, "models") else []
+                )
+                collected["datasets"].extend(
+                    [{"id": d.title, "url": d.url, "description": d.description, **d.metadata}
+                     for d in data.datasets] if hasattr(data, "datasets") else []
+                )
+            elif isinstance(data, dict):
+                # Dict-based results
+                for key in ["papers", "repositories", "models", "datasets"]:
+                    if key in data and isinstance(data[key], list):
+                        collected[key].extend(data[key])
+
+        return collected
 
     def _format_results_for_synthesis(self, results: dict[str, AgentResult]) -> str:
         """Format agent results for the synthesis prompt."""

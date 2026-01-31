@@ -142,16 +142,16 @@ class BedrockProvider(LLMProvider):
 
         model_config = self.get_model_config(request.task_type)
 
-        messages = request.messages
-        if request.system_prompt:
-            messages = [{"role": "system", "content": request.system_prompt}] + messages
-
         body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": request.max_tokens or model_config.max_tokens,
             "temperature": request.temperature or model_config.temperature,
-            "messages": messages,
+            "messages": request.messages,
         }
+
+        # System prompt must be a top-level parameter, not a message
+        if request.system_prompt:
+            body["system"] = request.system_prompt
 
         start_time = time.time()
         response = self.client.invoke_model(
@@ -180,16 +180,16 @@ class BedrockProvider(LLMProvider):
 
         model_config = self.get_model_config(request.task_type)
 
-        messages = request.messages
-        if request.system_prompt:
-            messages = [{"role": "system", "content": request.system_prompt}] + messages
-
         body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": request.max_tokens or model_config.max_tokens,
             "temperature": request.temperature or model_config.temperature,
-            "messages": messages,
+            "messages": request.messages,
         }
+
+        # System prompt must be a top-level parameter, not a message
+        if request.system_prompt:
+            body["system"] = request.system_prompt
 
         response = self.client.invoke_model_with_response_stream(
             modelId=model_config.model_id,
@@ -479,3 +479,165 @@ class LLMRouter:
             raise RuntimeError("No providers configured for embeddings")
 
         return await providers_with_embedding[0][1].embed(texts)
+
+
+def create_llm_router_from_settings() -> LLMRouter:
+    """
+    Create an LLMRouter with providers configured from settings.
+
+    Returns:
+        LLMRouter with configured providers
+    """
+    import os
+
+    from dotenv import load_dotenv
+
+    from dova.config.settings import get_settings
+
+    # Load .env file to ensure env vars are available
+    load_dotenv()
+
+    settings = get_settings()
+    providers: dict[str, LLMProvider] = {}
+
+    # Configure Bedrock provider if AWS credentials are available
+    if settings.llm.default_provider == "bedrock" or os.environ.get("AWS_ACCESS_KEY_ID"):
+        # Check both BEDROCK_MODEL_ID and AWS_BEDROCK_MODEL_ID for flexibility
+        bedrock_model_id = (
+            os.environ.get("BEDROCK_MODEL_ID")
+            or os.environ.get("AWS_BEDROCK_MODEL_ID")
+            or settings.aws.bedrock_model_id
+        )
+        logger.info("bedrock_model_selected", model_id=bedrock_model_id)
+        bedrock_config = ProviderConfig(
+            name="bedrock",
+            enabled=True,
+            priority=1,
+            models={
+                TaskType.REASONING: ModelConfig(
+                    model_id=bedrock_model_id,
+                    max_tokens=4096,
+                    temperature=0.7,
+                ),
+                TaskType.SUMMARIZATION: ModelConfig(
+                    model_id=bedrock_model_id,
+                    max_tokens=2048,
+                    temperature=0.3,
+                ),
+                TaskType.CODE_GENERATION: ModelConfig(
+                    model_id=bedrock_model_id,
+                    max_tokens=8192,
+                    temperature=0.2,
+                ),
+                TaskType.CLASSIFICATION: ModelConfig(
+                    model_id=bedrock_model_id,
+                    max_tokens=10240,
+                    temperature=0.0,
+                ),
+            },
+        )
+        try:
+            providers["bedrock"] = BedrockProvider(
+                bedrock_config, region=settings.aws.region
+            )
+            logger.info("bedrock_provider_configured", region=settings.aws.region)
+        except Exception as e:
+            logger.warning("bedrock_provider_init_failed", error=str(e))
+
+    # Configure Anthropic provider if API key is available and package is installed
+    anthropic_key = settings.llm.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
+    anthropic_available = False
+    try:
+        import anthropic  # noqa: F401
+        anthropic_available = True
+    except ImportError:
+        pass
+
+    if anthropic_key and not anthropic_key.startswith("${") and anthropic_available:
+        anthropic_config = ProviderConfig(
+            name="anthropic",
+            enabled=True,
+            priority=2,
+            models={
+                TaskType.REASONING: ModelConfig(
+                    model_id="claude-sonnet-4-20250514",
+                    max_tokens=4096,
+                    temperature=0.7,
+                ),
+                TaskType.SUMMARIZATION: ModelConfig(
+                    model_id="claude-sonnet-4-20250514",
+                    max_tokens=2048,
+                    temperature=0.3,
+                ),
+                TaskType.CODE_GENERATION: ModelConfig(
+                    model_id="claude-sonnet-4-20250514",
+                    max_tokens=8192,
+                    temperature=0.2,
+                ),
+                TaskType.CLASSIFICATION: ModelConfig(
+                    model_id="claude-haiku-3-5-20241022",
+                    max_tokens=10240,
+                    temperature=0.0,
+                ),
+            },
+        )
+        try:
+            providers["anthropic"] = AnthropicProvider(anthropic_config, api_key=anthropic_key)
+            logger.info("anthropic_provider_configured")
+        except Exception as e:
+            logger.warning("anthropic_provider_init_failed", error=str(e))
+
+    # Configure OpenAI provider if API key is available and package is installed
+    openai_key = settings.llm.openai_api_key or os.environ.get("OPENAI_API_KEY")
+    openai_available = False
+    try:
+        import openai  # noqa: F401
+        openai_available = True
+    except ImportError:
+        pass
+
+    if openai_key and not openai_key.startswith("${") and openai_available:
+        openai_config = ProviderConfig(
+            name="openai",
+            enabled=True,
+            priority=3,
+            models={
+                TaskType.REASONING: ModelConfig(
+                    model_id="gpt-4o",
+                    max_tokens=4096,
+                    temperature=0.7,
+                ),
+                TaskType.SUMMARIZATION: ModelConfig(
+                    model_id="gpt-4o-mini",
+                    max_tokens=2048,
+                    temperature=0.3,
+                ),
+                TaskType.CODE_GENERATION: ModelConfig(
+                    model_id="gpt-4o",
+                    max_tokens=8192,
+                    temperature=0.2,
+                ),
+                TaskType.CLASSIFICATION: ModelConfig(
+                    model_id="gpt-4o-mini",
+                    max_tokens=10240,
+                    temperature=0.0,
+                ),
+                TaskType.EMBEDDING: ModelConfig(
+                    model_id="text-embedding-3-small",
+                    max_tokens=8192,
+                ),
+            },
+        )
+        try:
+            providers["openai"] = OpenAIProvider(openai_config, api_key=openai_key)
+            logger.info("openai_provider_configured")
+        except Exception as e:
+            logger.warning("openai_provider_init_failed", error=str(e))
+
+    if not providers:
+        logger.error(
+            "no_llm_providers_configured",
+            hint="Set AWS credentials for Bedrock, ANTHROPIC_API_KEY, or OPENAI_API_KEY",
+        )
+
+    return LLMRouter(providers=providers)

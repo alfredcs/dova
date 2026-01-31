@@ -85,29 +85,56 @@ def research(
     """
     from dova.agents.base import AgentTask
     from dova.agents.orchestrator import DOVAOrchestrator
-    from dova.config.providers import LLMRouter
+    from dova.agents.research import ResearchAgent
+    from dova.agents.synthesis import SynthesisAgent
+    from dova.config.providers import create_llm_router_from_settings
+    from dova.tools.mcp_registry import MCPClient
 
     async def run_research():
         click.echo(f"Researching: {query}")
-        click.echo(f"Sources: {', '.join(sources)}")
-        click.echo("")
-
-        settings = ctx.obj["settings"]
 
         # Initialize components
-        # Note: In real usage, these would be properly configured
-        llm_router = LLMRouter(providers={})  # Would be configured from settings
+        llm_router = create_llm_router_from_settings()
+        mcp_client = MCPClient()
+
+        # Filter to only configured sources
+        source_to_server = {
+            "arxiv": "arxiv",
+            "github": "github",
+            "huggingface": "huggingface",
+        }
+        available_sources = []
+        for source in sources:
+            server_name = source_to_server.get(source, source)
+            server = mcp_client.registry.get_server(server_name)
+            if server:
+                available_sources.append(source)
+
+        if not available_sources:
+            click.echo(click.style("No MCP servers configured. Run 'dova mcp list' to check.", fg="yellow"))
+            return
+
+        click.echo(f"Sources: {', '.join(available_sources)}")
+        click.echo("")
+
+        # Create specialized agents with MCP client
+        research_agent = ResearchAgent(llm_router=llm_router, mcp_client=mcp_client)
+        synthesis_agent = SynthesisAgent(llm_router=llm_router)
 
         orchestrator = DOVAOrchestrator(
             llm_router=llm_router,
-            mcp_client=None,  # Would be configured
+            mcp_client=mcp_client,
+            agents={
+                "research": research_agent,
+                "synthesis": synthesis_agent,
+            },
         )
 
         task = AgentTask(
             type="research",
             params={
                 "query": query,
-                "sources": list(sources),
+                "sources": available_sources,
                 "max_results": max_results,
             },
             user_id="cli-user",
@@ -138,55 +165,93 @@ def format_research_results(data: dict) -> str:
     """Format research results for text output."""
     lines = []
 
-    if "summary" in data:
+    # Check if any actual results were found
+    has_results = any([
+        data.get("papers"),
+        data.get("repositories"),
+        data.get("models"),
+        data.get("datasets"),
+    ])
+
+    if "summary" in data and data["summary"]:
         lines.append("=" * 60)
         lines.append("SUMMARY")
         lines.append("=" * 60)
-        lines.append(data["summary"])
+        summary = data["summary"]
+        if isinstance(summary, dict):
+            # Handle dict summary (e.g., from synthesis agent)
+            summary = summary.get("text", summary.get("content", str(summary)))
+        lines.append(str(summary))
         lines.append("")
 
     if "papers" in data and data["papers"]:
         lines.append("=" * 60)
-        lines.append("PAPERS")
+        lines.append(f"PAPERS ({len(data['papers'])} found)")
         lines.append("=" * 60)
-        for i, paper in enumerate(data["papers"], 1):
+        for i, paper in enumerate(data["papers"][:10], 1):  # Limit to 10
             lines.append(f"{i}. {paper.get('title', 'Unknown')}")
             if "authors" in paper:
-                lines.append(f"   Authors: {', '.join(paper['authors'][:3])}")
-            if "id" in paper:
-                lines.append(f"   ID: {paper['id']}")
+                authors = paper["authors"][:3] if isinstance(paper["authors"], list) else [paper["authors"]]
+                lines.append(f"   Authors: {', '.join(str(a) for a in authors)}")
+            if "url" in paper:
+                lines.append(f"   URL: {paper['url']}")
             lines.append("")
 
     if "repositories" in data and data["repositories"]:
         lines.append("=" * 60)
-        lines.append("REPOSITORIES")
+        lines.append(f"REPOSITORIES ({len(data['repositories'])} found)")
         lines.append("=" * 60)
-        for i, repo in enumerate(data["repositories"], 1):
-            lines.append(f"{i}. {repo.get('name', 'Unknown')}")
+        for i, repo in enumerate(data["repositories"][:10], 1):  # Limit to 10
+            name = repo.get('name', repo.get('title', 'Unknown'))
+            lines.append(f"{i}. {name}")
+            desc = repo.get("description")
+            if desc:
+                desc_str = str(desc)[:100] if desc else ""
+                if desc_str:
+                    lines.append(f"   {desc_str}...")
             if "stars" in repo:
-                lines.append(f"   Stars: {repo['stars']}")
+                lines.append(f"   ⭐ {repo['stars']} stars")
             if "url" in repo:
                 lines.append(f"   URL: {repo['url']}")
             lines.append("")
 
     if "models" in data and data["models"]:
         lines.append("=" * 60)
-        lines.append("MODELS")
+        lines.append(f"MODELS ({len(data['models'])} found)")
         lines.append("=" * 60)
-        for i, model in enumerate(data["models"], 1):
-            lines.append(f"{i}. {model.get('id', 'Unknown')}")
+        for i, model in enumerate(data["models"][:10], 1):  # Limit to 10
+            lines.append(f"{i}. {model.get('id', model.get('title', 'Unknown'))}")
             if "downloads" in model:
                 lines.append(f"   Downloads: {model['downloads']:,}")
-            if "task" in model:
-                lines.append(f"   Task: {model['task']}")
+            if "pipeline_tag" in model:
+                lines.append(f"   Task: {model['pipeline_tag']}")
+            if "url" in model:
+                lines.append(f"   URL: {model['url']}")
+            lines.append("")
+
+    if "datasets" in data and data["datasets"]:
+        lines.append("=" * 60)
+        lines.append(f"DATASETS ({len(data['datasets'])} found)")
+        lines.append("=" * 60)
+        for i, ds in enumerate(data["datasets"][:10], 1):  # Limit to 10
+            lines.append(f"{i}. {ds.get('id', ds.get('title', 'Unknown'))}")
+            if "downloads" in ds:
+                lines.append(f"   Downloads: {ds['downloads']:,}")
+            if "url" in ds:
+                lines.append(f"   URL: {ds['url']}")
             lines.append("")
 
     if "insights" in data and data["insights"]:
         lines.append("=" * 60)
-        lines.append("INSIGHTS")
+        lines.append("KEY FINDINGS")
         lines.append("=" * 60)
         for insight in data["insights"]:
-            lines.append(f"• {insight}")
+            if isinstance(insight, dict):
+                lines.append(f"• {insight.get('title', insight.get('summary', str(insight)))}")
+                if insight.get("summary") and insight.get("title"):
+                    lines.append(f"  {insight['summary']}")
+            else:
+                lines.append(f"• {insight}")
         lines.append("")
 
     if "recommendations" in data and data["recommendations"]:
@@ -194,8 +259,21 @@ def format_research_results(data: dict) -> str:
         lines.append("RECOMMENDATIONS")
         lines.append("=" * 60)
         for rec in data["recommendations"]:
-            lines.append(f"→ {rec}")
+            if isinstance(rec, dict):
+                priority = rec.get("priority", "")
+                action = rec.get("action", rec.get("recommendation", str(rec)))
+                lines.append(f"→ [{priority}] {action}" if priority else f"→ {action}")
+                if rec.get("details") or rec.get("description"):
+                    lines.append(f"  {rec.get('details', rec.get('description', ''))}")
+            else:
+                lines.append(f"→ {rec}")
         lines.append("")
+
+    if not has_results and not lines:
+        lines.append("No results found. Try:")
+        lines.append("  - Using different search terms")
+        lines.append("  - Checking MCP server connectivity: dova mcp list")
+        lines.append("  - Adding more sources: dova mcp add <name> --url <url>")
 
     return "\n".join(lines)
 
@@ -219,7 +297,7 @@ def validate(
     """
     from dova.agents.base import AgentTask
     from dova.agents.validation import ValidationAgent
-    from dova.config.providers import LLMRouter
+    from dova.config.providers import create_llm_router_from_settings
 
     async def run_validation():
         click.echo(f"Validating: {code_path}")
@@ -230,7 +308,7 @@ def validate(
         with open(code_path, "r") as f:
             code = f.read()
 
-        llm_router = LLMRouter(providers={})
+        llm_router = create_llm_router_from_settings()
 
         validator = ValidationAgent(
             llm_router=llm_router,
@@ -407,6 +485,237 @@ def profile_update(
     if expertise:
         click.echo(f"  Expertise: {expertise}")
     click.echo("(Profile update not implemented in CLI)")
+
+
+@cli.group()
+def mcp() -> None:
+    """Manage MCP server configurations."""
+    pass
+
+
+@mcp.command("add")
+@click.argument("name")
+@click.option("--url", "-u", required=True, help="MCP server URL")
+@click.option(
+    "--type",
+    "-t",
+    "server_type",
+    default="http",
+    type=click.Choice(["http", "sse"]),
+    help="Transport type",
+)
+@click.option(
+    "--header",
+    "-H",
+    multiple=True,
+    help="Auth token or header. Use just the token value, or 'Key: Value' format",
+)
+def mcp_add(name: str, url: str, server_type: str, header: tuple[str, ...]) -> None:
+    """Add or update an MCP server configuration.
+
+    Example:
+        dova mcp add arxiv --url http://localhost:8084/mcp
+        dova mcp add github --url https://api.github.com/mcp -H ghp_xxxtoken
+        dova mcp add custom --url https://example.com/mcp -H "X-Api-Key: mykey"
+    """
+    from dova.config.mcp_servers import add_mcp_server
+
+    # Parse headers - support both token shorthand and Key: Value format
+    headers = {}
+    for h in header:
+        if ":" in h:
+            # Full header format: "Key: Value"
+            key, value = h.split(":", 1)
+            headers[key.strip()] = value.strip()
+        else:
+            # Token shorthand: just the token value -> "Authorization: Bearer token"
+            headers["Authorization"] = f"Bearer {h}"
+
+    add_mcp_server(name, url, server_type, headers if headers else None)
+    click.echo(f"Added MCP server: {name}")
+    click.echo(f"  URL: {url}")
+    click.echo(f"  Type: {server_type}")
+    if headers:
+        click.echo(f"  Headers: {len(headers)} configured")
+
+
+@mcp.command("remove")
+@click.argument("name")
+def mcp_remove(name: str) -> None:
+    """Remove an MCP server configuration.
+
+    Example:
+        dova mcp remove arxiv
+    """
+    from dova.config.mcp_servers import remove_mcp_server
+
+    if remove_mcp_server(name):
+        click.echo(f"Removed MCP server: {name}")
+    else:
+        click.echo(f"MCP server not found: {name}", err=True)
+
+
+@mcp.command("list")
+@click.option("--no-check", is_flag=True, help="Skip health checks")
+def mcp_list(no_check: bool) -> None:
+    """List all configured MCP servers with health status.
+
+    Example:
+        dova mcp list
+        dova mcp list --no-check
+    """
+    import httpx
+
+    from dova.config.mcp_servers import list_mcp_servers, get_dova_config_path
+
+    servers = list_mcp_servers()
+
+    if not servers:
+        click.echo(f"No MCP servers configured in {get_dova_config_path()}")
+        click.echo("\nAdd servers with: dova mcp add <name> --url <url>")
+        return
+
+    async def check_server_health(name: str, config: dict) -> tuple[str, bool, str]:
+        """Check if an MCP server is reachable."""
+        url = config.get("url")
+        if not url:
+            return (name, False, "No URL configured")
+
+        headers = {"Content-Type": "application/json"}
+        headers.update(config.get("headers", {}))
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                # Send a simple JSON-RPC request to check connectivity
+                response = await client.post(
+                    url,
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {},
+                            "clientInfo": {"name": "dova", "version": "0.1.0"},
+                        },
+                    },
+                    headers=headers,
+                )
+                if response.status_code == 200:
+                    return (name, True, "OK")
+                else:
+                    return (name, False, f"HTTP {response.status_code}")
+        except httpx.ConnectError:
+            return (name, False, "Connection refused")
+        except httpx.TimeoutException:
+            return (name, False, "Timeout")
+        except Exception as e:
+            return (name, False, str(e)[:30])
+
+    async def check_all_servers():
+        import asyncio
+
+        tasks = [check_server_health(name, config) for name, config in servers.items()]
+        return await asyncio.gather(*tasks)
+
+    click.echo(click.style("Configured MCP Servers", bold=True))
+    click.echo(f"Config file: {get_dova_config_path()}")
+    click.echo("-" * 50)
+
+    # Run health checks if not disabled
+    health_results = {}
+    if not no_check:
+        click.echo("Checking connectivity...")
+        results = asyncio.run(check_all_servers())
+        health_results = {name: (ok, msg) for name, ok, msg in results}
+
+    for name, config in servers.items():
+        # Determine status indicator
+        if no_check:
+            status = click.style("?", fg="yellow")
+            status_msg = ""
+        elif name in health_results:
+            ok, msg = health_results[name]
+            if ok:
+                status = click.style("✓", fg="green")
+                status_msg = ""
+            else:
+                status = click.style("✗", fg="red")
+                status_msg = f" ({msg})"
+        else:
+            status = click.style("?", fg="yellow")
+            status_msg = ""
+
+        click.echo(f"\n{status} {click.style(name, bold=True)}{status_msg}")
+        click.echo(f"  Type: {config.get('type', 'http')}")
+        click.echo(f"  URL: {config.get('url', 'N/A')}")
+        if config.get("headers"):
+            click.echo(f"  Headers: {len(config['headers'])} configured")
+
+
+@mcp.command("show")
+def mcp_show() -> None:
+    """Show the full MCP configuration file.
+
+    Example:
+        dova mcp show
+    """
+    import json
+    import os
+
+    from dova.config.mcp_servers import get_dova_config_path
+
+    config_path = get_dova_config_path()
+
+    if not os.path.exists(config_path):
+        click.echo(f"Config file not found: {config_path}")
+        return
+
+    with open(config_path, "r") as f:
+        config = json.load(f)
+
+    click.echo(json.dumps(config, indent=2))
+
+
+@mcp.command("test")
+@click.argument("name")
+@click.option("--tool", "-t", default=None, help="Tool name to test (optional)")
+def mcp_test(name: str, tool: Optional[str]) -> None:
+    """Test connectivity to an MCP server.
+
+    Example:
+        dova mcp test huggingface
+        dova mcp test huggingface --tool model_search
+    """
+    from dova.tools.mcp_registry import MCPClient
+
+    async def run_test():
+        client = MCPClient()
+
+        server_config = client.registry.get_server(name)
+        if not server_config:
+            click.echo(f"MCP server not found: {name}", err=True)
+            click.echo("\nConfigured servers:")
+            for s in client.registry.servers:
+                click.echo(f"  - {s}")
+            return
+
+        click.echo(f"Testing MCP server: {name}")
+        click.echo(f"  URL: {server_config.url}")
+        click.echo(f"  Transport: {server_config.transport.value}")
+
+        if tool:
+            click.echo(f"\nInvoking tool: {tool}")
+            try:
+                result = await client.invoke(name, tool, {"query": "test", "limit": 1})
+                click.echo(click.style("✓ Success", fg="green"))
+                click.echo(f"Result: {result}")
+            except Exception as e:
+                click.echo(click.style(f"✗ Failed: {e}", fg="red"))
+        else:
+            click.echo(click.style("✓ Server configured", fg="green"))
+
+    asyncio.run(run_test())
 
 
 def main() -> None:

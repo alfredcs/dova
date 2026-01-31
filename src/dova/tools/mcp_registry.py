@@ -173,9 +173,6 @@ class MCPClient:
         params: dict[str, Any],
     ) -> Any:
         """Invoke MCP tool via stdio transport."""
-        # Note: In production, this would use the MCP SDK's stdio client
-        # For now, we simulate the invocation
-
         self._logger.debug(
             "stdio_invoke",
             server=server_config.name,
@@ -183,14 +180,9 @@ class MCPClient:
             command=server_config.command,
         )
 
-        # Placeholder - actual implementation would:
-        # 1. Start subprocess with server_config.command
-        # 2. Send JSON-RPC request over stdin
-        # 3. Read response from stdout
-        # 4. Parse and return result
-
         raise NotImplementedError(
-            f"STDIO transport for {server_config.name} requires MCP SDK integration"
+            f"STDIO transport for {server_config.name} not supported. "
+            "Configure HTTP MCP servers in ~/.dova.json instead."
         )
 
     async def _invoke_http(
@@ -201,17 +193,110 @@ class MCPClient:
     ) -> Any:
         """Invoke MCP tool via HTTP transport."""
         import httpx
+        import json
 
         if not server_config.url:
             raise ValueError(f"No URL configured for HTTP server: {server_config.name}")
 
+        # Build headers
+        headers = {"Content-Type": "application/json"}
+        headers.update(server_config.headers)
+
+        self._logger.debug(
+            "http_invoke",
+            server=server_config.name,
+            tool=tool,
+            url=server_config.url,
+        )
+
         async with httpx.AsyncClient(timeout=server_config.timeout_seconds) as client:
+            # MCP HTTP uses JSON-RPC 2.0
+            request_body = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": tool, "arguments": params},
+            }
+
             response = await client.post(
-                f"{server_config.url}/tools/{tool}",
-                json=params,
+                server_config.url,
+                json=request_body,
+                headers=headers,
             )
-            response.raise_for_status()
-            return response.json()
+
+            # Check for HTTP errors with detailed message
+            if response.status_code >= 400:
+                self._logger.error(
+                    "http_error",
+                    server=server_config.name,
+                    status=response.status_code,
+                    body=response.text[:500] if response.text else "(empty)",
+                )
+                response.raise_for_status()
+
+            # Handle empty response
+            if not response.text or not response.text.strip():
+                raise RuntimeError(
+                    f"Empty response from {server_config.name}. "
+                    f"Status: {response.status_code}. "
+                    "Check server URL and authentication."
+                )
+
+            # Try to parse response - handle both JSON and SSE formats
+            response_text = response.text.strip()
+            result = None
+
+            # Check if response is SSE format (starts with "event:" or "data:")
+            if response_text.startswith("event:") or response_text.startswith("data:"):
+                # Parse SSE format - extract JSON from data lines
+                for line in response_text.split("\n"):
+                    line = line.strip()
+                    if line.startswith("data:"):
+                        json_str = line[5:].strip()
+                        if json_str:
+                            try:
+                                result = json.loads(json_str)
+                                break
+                            except json.JSONDecodeError:
+                                continue
+
+                if result is None:
+                    self._logger.error(
+                        "sse_parse_error",
+                        server=server_config.name,
+                        body=response_text[:500],
+                    )
+                    raise RuntimeError(f"Could not parse SSE response from {server_config.name}")
+            else:
+                # Regular JSON response
+                try:
+                    result = response.json()
+                except Exception as e:
+                    self._logger.error(
+                        "json_parse_error",
+                        server=server_config.name,
+                        body=response_text[:500],
+                    )
+                    raise RuntimeError(f"Invalid JSON from {server_config.name}: {e}")
+
+            # Handle JSON-RPC response
+            if "error" in result:
+                raise RuntimeError(f"MCP error: {result['error']}")
+
+            # Extract content from result
+            mcp_result = result.get("result", {})
+            content = mcp_result.get("content", [])
+
+            if content and isinstance(content, list):
+                texts = [c.get("text", "") for c in content if c.get("type") == "text"]
+                if texts:
+                    combined = "\n".join(texts)
+                    try:
+                        return json.loads(combined)
+                    except json.JSONDecodeError:
+                        return combined
+
+            return mcp_result
 
     async def _invoke_sse(
         self,
