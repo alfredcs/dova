@@ -1319,6 +1319,9 @@ redis.exceptions.ConnectionError
 
 **Solution:**
 ```bash
+# Check Redis status (if installed as system service)
+sudo systemctl status redis
+
 # Start Redis with Docker
 docker-compose up -d redis
 
