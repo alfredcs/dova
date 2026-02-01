@@ -59,6 +59,25 @@ class ProviderConfig:
 
 
 @dataclass
+class ThinkingConfig:
+    """Configuration for extended thinking/reasoning."""
+
+    enabled: bool = False
+    budget_tokens: int = 0
+
+    def to_api_params(self) -> dict:
+        """Convert to API parameters for LLM request."""
+        if not self.enabled or self.budget_tokens <= 0:
+            return {}
+        return {
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": self.budget_tokens,
+            }
+        }
+
+
+@dataclass
 class LLMRequest:
     """Request to an LLM provider."""
 
@@ -69,6 +88,7 @@ class LLMRequest:
     temperature: float | None = None
     stream: bool = False
     user_id: str | None = None
+    thinking: ThinkingConfig | None = None
 
 
 @dataclass

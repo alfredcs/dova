@@ -11,12 +11,13 @@ This guide will walk you through setting up, configuring, and using the DOVA (De
 5. [Using the CLI](#using-the-cli)
 6. [API Usage](#api-usage)
 7. [Agentic Reasoning](#agentic-reasoning)
-8. [Managing Custom Sources](#managing-custom-sources)
-9. [Proactive Recommendations](#proactive-recommendations)
-10. [Sandbox Execution](#sandbox-execution)
-11. [Architecture Overview](#architecture-overview)
-12. [Deployment](#deployment)
-13. [Troubleshooting](#troubleshooting)
+8. [Advanced Agent Intelligence](#advanced-agent-intelligence)
+9. [Managing Custom Sources](#managing-custom-sources)
+10. [Proactive Recommendations](#proactive-recommendations)
+11. [Sandbox Execution](#sandbox-execution)
+12. [Architecture Overview](#architecture-overview)
+13. [Deployment](#deployment)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -144,6 +145,17 @@ SANDBOX_ENABLED=false
 SANDBOX_DOCKER_HOST=unix:///var/run/docker.sock
 SANDBOX_NETWORK_ENABLED=false
 SANDBOX_MAX_CONCURRENT=5
+
+# Advanced Intelligence (OpenClaw-inspired)
+THINKING_DEFAULT_LEVEL=medium
+THINKING_AUTO_SELECT_ENABLED=true
+EVAL_AUTO_EVALUATE_RESPONSES=false
+EVAL_MIN_CONFIDENCE_THRESHOLD=0.6
+SESSION_STALE_AFTER_SECONDS=1800
+SESSION_EXPIRE_AFTER_SECONDS=86400
+DISCOVERY_AUTO_DISCOVER_ON_STARTUP=true
+MEMORY_ENHANCED_MMR_LAMBDA=0.5
+HEARTBEAT_ENABLED=true
 ```
 
 ### AWS Bedrock Setup
@@ -396,17 +408,153 @@ The `-H` flag accepts either:
 
 DOVA supports two authentication methods:
 
-1. **JWT Token** (for user applications):
-   ```bash
-   curl -H "Authorization: Bearer <jwt-token>" \
-        http://localhost:8000/api/v1/research
-   ```
+1. **JWT Token** (for user applications) - Issued by AWS Cognito
+2. **API Key** (for programmatic access) - Generated via DOVA API
 
-2. **API Key** (for programmatic access):
-   ```bash
-   curl -H "X-API-Key: <api-key>" \
-        http://localhost:8000/api/v1/research
-   ```
+#### Configuring AWS Cognito for JWT Authentication
+
+JWT tokens are issued by AWS Cognito. To enable JWT authentication:
+
+**1. Set Environment Variables**
+
+```bash
+# Required Cognito configuration
+export AUTH_COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
+export AUTH_COGNITO_CLIENT_ID=your-cognito-app-client-id
+
+# Optional: KMS key for credential encryption
+export AUTH_KMS_KEY_ID=alias/dova-credentials
+```
+
+**2. Create a Cognito User Pool (if not using CDK deployment)**
+
+```bash
+# Create user pool
+aws cognito-idp create-user-pool \
+  --pool-name dova-users \
+  --policies 'PasswordPolicy={MinimumLength=8,RequireUppercase=true,RequireLowercase=true,RequireNumbers=true}' \
+  --auto-verified-attributes email \
+  --schema Name=email,Required=true,Mutable=true
+
+# Note the UserPoolId from the response
+
+# Create app client (no secret for public clients)
+aws cognito-idp create-user-pool-client \
+  --user-pool-id <UserPoolId> \
+  --client-name dova-api \
+  --no-generate-secret \
+  --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_REFRESH_TOKEN_AUTH
+
+# Note the ClientId from the response
+```
+
+**3. User Registration and Login**
+
+```bash
+# Sign up a new user
+aws cognito-idp sign-up \
+  --client-id <ClientId> \
+  --username user@example.com \
+  --password "YourSecurePassword123!" \
+  --user-attributes Name=email,Value=user@example.com
+
+# Confirm the user (admin action, or user confirms via email)
+aws cognito-idp admin-confirm-sign-up \
+  --user-pool-id <UserPoolId> \
+  --username user@example.com
+
+# Sign in to get JWT tokens
+aws cognito-idp initiate-auth \
+  --client-id <ClientId> \
+  --auth-flow USER_PASSWORD_AUTH \
+  --auth-parameters USERNAME=user@example.com,PASSWORD="YourSecurePassword123!"
+```
+
+The response contains:
+- `IdToken` - Use this as the Bearer token for DOVA API
+- `AccessToken` - Can also be used for authentication
+- `RefreshToken` - Use to obtain new tokens when they expire
+
+**4. Using the JWT Token**
+
+```bash
+curl -H "Authorization: Bearer <IdToken>" \
+     http://localhost:8000/api/v1/research
+```
+
+#### Obtaining an API Key
+
+API keys provide programmatic access without going through the Cognito login flow. You must first authenticate (via JWT or in development mode) to create an API key.
+
+**1. Create an API Key (requires authentication)**
+
+```bash
+# Using JWT authentication
+curl -X POST http://localhost:8000/api/v1/credentials/api-keys \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-cli-key",
+    "roles": ["api_user"],
+    "expires_in_days": 365
+  }'
+```
+
+**Response:**
+```json
+{
+  "key_id": "dova_key_a1b2c3d4",
+  "api_key": "dova_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789",
+  "name": "my-cli-key",
+  "roles": ["api_user"],
+  "expires_at": "2027-01-31T00:00:00Z"
+}
+```
+
+> **Important:** The `api_key` value is shown only once. Store it securely.
+
+**2. Using the API Key**
+
+```bash
+curl -H "X-API-Key: dova_aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789" \
+     http://localhost:8000/api/v1/research
+```
+
+**3. Managing API Keys**
+
+```bash
+# List your API keys (metadata only, secrets not shown)
+curl http://localhost:8000/api/v1/credentials/api-keys \
+  -H "Authorization: Bearer <jwt-token>"
+
+# Revoke an API key
+curl -X DELETE http://localhost:8000/api/v1/credentials/api-keys/dova_key_a1b2c3d4 \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+#### Development Mode (No Auth Required)
+
+In development mode (`ENVIRONMENT=development`), authentication is optional:
+
+```bash
+# Anonymous access (development only)
+curl http://localhost:8000/api/v1/research
+
+# Or use any key starting with "dova_" (development only)
+curl -H "X-API-Key: dova_test123" \
+     http://localhost:8000/api/v1/research
+```
+
+> **Warning:** Development mode bypasses real authentication. Never use in production.
+
+#### Authentication Summary
+
+| Method | Source | Use Case | Production |
+|--------|--------|----------|------------|
+| JWT Token | AWS Cognito | User apps with login flow | ✅ Yes |
+| API Key | DOVA `/credentials/api-keys` | CLI tools, scripts, automation | ✅ Yes |
+| Anonymous | N/A | Local development | ❌ Dev only |
+| `dova_*` prefix | N/A | Quick testing | ❌ Dev only |
 
 ### Research Endpoint
 
@@ -459,10 +607,12 @@ curl -X POST http://localhost:8000/api/v1/search/arxiv \
 
 # Search GitHub repositories
 curl -X POST http://localhost:8000/api/v1/search/github \
+  -H "Content-Type: application/json" \
   -d '{"query": "pytorch transformers", "max_results": 10}'
 
 # Search HuggingFace models
 curl -X POST http://localhost:8000/api/v1/search/huggingface \
+  -H "Content-Type: application/json" \
   -d '{"query": "text generation", "max_results": 10}'
 ```
 
@@ -475,6 +625,7 @@ curl http://localhost:8000/api/v1/profile \
 
 # Update profile
 curl -X PUT http://localhost:8000/api/v1/profile \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
     "interests": ["deep learning", "computer vision"],
@@ -487,6 +638,7 @@ curl -X PUT http://localhost:8000/api/v1/profile \
 ```bash
 # Static analysis (always available)
 curl -X POST http://localhost:8000/api/v1/validate \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
     "code": "def hello(): print(\"world\")",
@@ -495,6 +647,7 @@ curl -X POST http://localhost:8000/api/v1/validate \
 
 # Execute code in sandbox (requires SANDBOX_ENABLED=true)
 curl -X POST http://localhost:8000/api/v1/validate/execute \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
     "code": "print(2 + 2)",
@@ -775,6 +928,283 @@ dova research "find papers and validate implementations" --reasoning tool_augmen
 
 ---
 
+## Advanced Agent Intelligence
+
+DOVA includes OpenClaw-inspired features for enhanced agent intelligence, including adaptive thinking, self-evaluation, session management, and proactive maintenance.
+
+### Multi-Tiered Thinking System
+
+The thinking system provides configurable reasoning depth based on task complexity:
+
+| Level | Budget Tokens | Use Case |
+|-------|---------------|----------|
+| `off` | 0 | Simple lookups, no reasoning needed |
+| `minimal` | 1,024 | Quick classifications, simple decisions |
+| `low` | 4,096 | Summarization, basic analysis |
+| `medium` | 16,384 | Code generation, moderate reasoning (default) |
+| `high` | 32,768 | Complex research, multi-step analysis |
+| `xhigh` | 65,536 | Deep reasoning, comprehensive research |
+
+```python
+from dova.services.thinking import ThinkingService, ThinkingLevel
+
+# Initialize service
+thinking = ThinkingService(default_level=ThinkingLevel.MEDIUM)
+
+# Auto-select level based on task
+level = thinking.select_level_for_task(
+    task_type="reasoning",
+    query="Compare transformer architectures for sequence modeling",
+    complexity_hint="complex"
+)
+
+# Create thinking parameters for LLM request
+params = thinking.create_thinking_params(level)
+# Returns: {"thinking": {"type": "enabled", "budget_tokens": 32768}}
+```
+
+**Configuration:**
+```bash
+THINKING_DEFAULT_LEVEL=medium
+THINKING_AUTO_SELECT_ENABLED=true
+THINKING_MAX_BUDGET_TOKENS=65536
+```
+
+### Self-Evaluation and Error Diagnosis
+
+The evaluation service assesses response quality and diagnoses errors:
+
+```python
+from dova.services.evaluation import SelfEvaluator, ErrorType
+
+evaluator = SelfEvaluator(min_confidence=0.6)
+
+# Evaluate a response
+result = await evaluator.evaluate(
+    response="The transformer architecture uses self-attention...",
+    prompt="Explain transformer architecture",
+    expected_format="markdown"
+)
+
+print(f"Confidence: {result.confidence}")  # 0.0 to 1.0
+print(f"Should retry: {result.should_retry}")
+print(f"Caveats: {result.caveats}")
+
+# Diagnose an error
+diagnosis = evaluator.diagnose_error(
+    error="Rate limit exceeded",
+    context={"provider": "anthropic", "model": "claude-3"}
+)
+
+print(f"Error type: {diagnosis.error_type}")  # TRANSIENT
+print(f"Action: {diagnosis.action}")  # RETRY_WITH_BACKOFF
+print(f"Retry after: {diagnosis.retry_after_seconds}s")
+```
+
+**Error Types and Recovery Actions:**
+
+| Error Type | Description | Default Action |
+|------------|-------------|----------------|
+| `transient` | Temporary failures (rate limits, timeouts) | Retry with backoff |
+| `configuration` | Setup issues (invalid keys, permissions) | Alert user |
+| `capability` | Model limitations (context length, unsupported) | Fallback to different model |
+| `unknown` | Unclassified errors | Log and continue |
+
+**Configuration:**
+```bash
+EVAL_AUTO_EVALUATE_RESPONSES=false
+EVAL_MIN_CONFIDENCE_THRESHOLD=0.6
+```
+
+### Session Management
+
+The session service tracks user sessions with automatic freshness evaluation:
+
+```python
+from dova.services.session import SessionManager, SessionAction
+from dova.utils.cache import InMemoryCache
+
+cache = InMemoryCache()
+session_mgr = SessionManager(
+    cache=cache,
+    stale_after_seconds=1800,   # 30 minutes
+    expire_after_seconds=86400  # 24 hours
+)
+
+# Create a session
+session = await session_mgr.create_session(
+    user_id="user-123",
+    context={"query_history": [], "preferences": {}}
+)
+
+# Update session activity
+session = await session_mgr.update_activity(session.id)
+
+# Evaluate session freshness
+state, action = session_mgr.evaluate_freshness(session)
+
+# Execute recovery action if needed
+if action != SessionAction.CONTINUE:
+    session = await session_mgr.execute_action(session, action)
+```
+
+**Session States and Actions:**
+
+| State | Trigger | Recommended Action |
+|-------|---------|-------------------|
+| `active` | Recent activity | Continue normally |
+| `stale` | No activity for 30+ min | Refresh context |
+| `expired` | No activity for 24+ hours | Fork to new session |
+
+**Configuration:**
+```bash
+SESSION_STALE_AFTER_SECONDS=1800
+SESSION_EXPIRE_AFTER_SECONDS=86400
+```
+
+### Enhanced Memory with Semantic Search
+
+The enhanced memory service provides semantic search with MMR diversity ranking:
+
+```python
+from dova.services.memory_enhanced import EnhancedMemoryService, MemoryType
+from dova.utils.cache import InMemoryCache
+
+cache = InMemoryCache()
+memory = EnhancedMemoryService(
+    cache=cache,
+    llm_router=llm_router,  # For embeddings
+    mmr_lambda=0.5  # Balance relevance (1.0) vs diversity (0.0)
+)
+
+# Store a memory
+entry_id = await memory.store(
+    memory_type=MemoryType.LONG_TERM,
+    content={"text": "User prefers detailed technical explanations"},
+    importance=0.8,
+    user_id="user-123",
+    tags=["preference", "technical"]
+)
+
+# Semantic search with MMR reranking
+results = await memory.search_semantic(
+    query="technical documentation style",
+    user_id="user-123",
+    top_k=5,
+    use_mmr=True  # Ensures diverse results
+)
+
+for result in results:
+    print(f"Score: {result.score}, Content: {result.entry.content}")
+```
+
+**Memory Types:**
+
+| Type | Description | Persistence |
+|------|-------------|-------------|
+| `short_term` | Session-scoped, temporary | 24 hours TTL |
+| `long_term` | Persistent across sessions | No expiry |
+| `procedural` | How-to knowledge, skills | No expiry |
+
+**Configuration:**
+```bash
+MEMORY_ENHANCED_SEMANTIC_SEARCH_ENABLED=true
+MEMORY_ENHANCED_MMR_LAMBDA=0.5
+MEMORY_ENHANCED_EMBEDDING_CACHE_TTL=3600
+```
+
+### Auto-Discovery Service
+
+The discovery service automatically finds available models and MCP servers:
+
+```python
+from dova.services.discovery import AutoDiscovery
+from dova.utils.cache import InMemoryCache
+
+cache = InMemoryCache()
+discovery = AutoDiscovery(
+    cache=cache,
+    llm_router=llm_router,
+    cache_ttl=3600
+)
+
+# Discover available models
+models = await discovery.discover_models()
+for model in models:
+    print(f"{model.provider}/{model.model_id}: {model.capabilities}")
+
+# Find a model with specific capability
+vision_model = await discovery.get_model_by_capability(
+    capability="vision",
+    prefer_provider="bedrock"
+)
+
+# Discover MCP servers
+servers = await discovery.discover_mcp_servers()
+for server in servers:
+    print(f"{server.name}: {server.tools}, healthy={server.healthy}")
+
+# Refresh all discovery caches
+summary = await discovery.refresh_all()
+print(f"Found {summary['models']['total']} models, {summary['mcp_servers']['total']} MCP servers")
+```
+
+**Configuration:**
+```bash
+DISCOVERY_AUTO_DISCOVER_ON_STARTUP=true
+DISCOVERY_CACHE_TTL_SECONDS=3600
+```
+
+### Proactive Heartbeat System
+
+The heartbeat processor runs scheduled maintenance tasks:
+
+```python
+from dova.jobs.heartbeat import HeartbeatProcessor, HeartbeatTask
+
+# Initialize with default tasks
+heartbeat = HeartbeatProcessor(auto_register_defaults=True)
+
+# Default tasks include:
+# - subscription_monitor: */15 * * * * (every 15 min)
+# - recommendation_refresh: 0 */4 * * * (every 4 hours)
+# - mcp_health_check: */5 * * * * (every 5 min)
+# - session_cleanup: 0 3 * * * (daily at 3 AM)
+
+# Add a custom task
+heartbeat.register_task(HeartbeatTask(
+    name="cache_warmup",
+    cron_schedule="0 */6 * * *",  # Every 6 hours
+    handler="warmup_caches",
+))
+
+# Register a custom handler
+async def warmup_caches():
+    print("Warming up caches...")
+
+heartbeat.register_handler("warmup_caches", warmup_caches)
+
+# Start the heartbeat processor
+await heartbeat.start()
+
+# Run a task immediately
+await heartbeat.run_task_now("mcp_health_check")
+
+# Stop gracefully
+await heartbeat.stop()
+```
+
+**Configuration:**
+```bash
+HEARTBEAT_ENABLED=true
+HEARTBEAT_SUBSCRIPTION_MONITOR_CRON="*/15 * * * *"
+HEARTBEAT_RECOMMENDATION_REFRESH_CRON="0 */4 * * *"
+HEARTBEAT_MCP_HEALTH_CHECK_CRON="*/5 * * * *"
+HEARTBEAT_SESSION_CLEANUP_CRON="0 3 * * *"
+```
+
+---
+
 ## Managing Custom Sources
 
 DOVA supports user-defined custom sources beyond the built-in ArXiv, GitHub, and HuggingFace integrations. Custom sources can be Web URLs, RSS/Atom feeds, or custom API endpoints.
@@ -931,11 +1361,13 @@ curl -X POST http://localhost:8000/api/v1/subscriptions \
 
 # Subscribe to ArXiv keyword
 curl -X POST http://localhost:8000/api/v1/subscriptions \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{"type": "arxiv_keyword", "value": "transformer"}'
 
 # Subscribe to HuggingFace task
 curl -X POST http://localhost:8000/api/v1/subscriptions \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{"type": "hf_task", "value": "text-generation"}'
 
@@ -995,6 +1427,7 @@ curl http://localhost:8000/api/v1/subscriptions/preferences \
 
 # Update preferences
 curl -X PATCH http://localhost:8000/api/v1/subscriptions/preferences \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
     "max_daily": 20,
@@ -1073,6 +1506,7 @@ curl -X POST http://localhost:8000/api/v1/validate/execute \
 
 # With dependencies
 curl -X POST http://localhost:8000/api/v1/validate/execute \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
     "code": "import numpy as np\nprint(np.array([1,2,3]).sum())",
@@ -1082,6 +1516,7 @@ curl -X POST http://localhost:8000/api/v1/validate/execute \
 
 # Specify tier explicitly
 curl -X POST http://localhost:8000/api/v1/validate/execute \
+  -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
     "code": "import torch\nprint(torch.cuda.is_available())",
@@ -1260,6 +1695,17 @@ Sandbox containers run with:
 | **Collaborative** | Unified orchestrator combining blackboard, ensemble, iterative, and tool-augmented |
 | **ToolResolver** | Proactive tool discovery and execution plan creation |
 | **TaskAnalyzer** | Pattern-based task analysis to detect required capabilities |
+
+### Advanced Intelligence Services
+
+| Service | Purpose |
+|---------|---------|
+| **ThinkingService** | Multi-tiered thinking budgets with auto-selection based on task complexity |
+| **SelfEvaluator** | Response quality assessment, confidence scoring, and error diagnosis |
+| **SessionManager** | Session lifecycle management with freshness evaluation and recovery |
+| **EnhancedMemoryService** | Semantic search with embeddings and MMR diversity reranking |
+| **AutoDiscovery** | Runtime discovery of models and MCP servers with capability caching |
+| **HeartbeatProcessor** | Cron-based proactive maintenance tasks |
 
 ### Services
 
@@ -1519,14 +1965,18 @@ logging.basicConfig(level=logging.DEBUG)
 
 1. **Explore the API** - Try different research queries
 2. **Experiment with Reasoning Modes** - Try `quick`, `standard`, `deep`, `collaborative`, and `tool_augmented` modes
-3. **Add Custom Sources** - Configure RSS feeds, web scrapers, or custom APIs
-4. **Set Up Subscriptions** - Subscribe to ArXiv categories, HuggingFace tasks, or GitHub topics
-5. **Enable Sandbox Execution** - Set `SANDBOX_ENABLED=true` for code execution
-6. **Start Background Workers** - Run `docker-compose up worker` for proactive monitoring
-7. **Customize Agents** - Extend agents with custom actions in the ReAct loop
-8. **Implement Custom Collaboration** - Use blackboard/ensemble/tool-augmented patterns for your domain
-9. **Use Tool-Augmented Mode** - Let DOVA automatically discover and use the best tools for your tasks
-10. **Deploy to Production** - Use the CDK stack
+3. **Configure Thinking Levels** - Adjust `THINKING_DEFAULT_LEVEL` for your use case
+4. **Enable Self-Evaluation** - Set `EVAL_AUTO_EVALUATE_RESPONSES=true` for quality monitoring
+5. **Add Custom Sources** - Configure RSS feeds, web scrapers, or custom APIs
+6. **Set Up Subscriptions** - Subscribe to ArXiv categories, HuggingFace tasks, or GitHub topics
+7. **Enable Sandbox Execution** - Set `SANDBOX_ENABLED=true` for code execution
+8. **Start Background Workers** - Run `docker-compose up worker` for proactive monitoring
+9. **Enable Heartbeat Tasks** - Configure cron schedules for automated maintenance
+10. **Use Enhanced Memory** - Leverage semantic search for better recall
+11. **Customize Agents** - Extend agents with custom actions in the ReAct loop
+12. **Implement Custom Collaboration** - Use blackboard/ensemble/tool-augmented patterns for your domain
+13. **Use Tool-Augmented Mode** - Let DOVA automatically discover and use the best tools for your tasks
+14. **Deploy to Production** - Use the CDK stack
 
 For more detailed documentation, see:
 - [Architecture Guide](./architecture.md)

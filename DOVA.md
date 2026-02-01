@@ -162,6 +162,447 @@ The orchestrator supports different reasoning depth levels:
 
 ---
 
+## 🔮 Advanced Agent Intelligence (OpenClaw-Inspired Features)
+
+DOVA incorporates advanced agent intelligence patterns inspired by OpenClaw's design principles, enabling more sophisticated reasoning, proactive behavior, and self-improvement capabilities.
+
+### Multi-Tiered Thinking System
+
+Agents support configurable thinking depth levels that balance response quality with latency and cost:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         THINKING LEVEL SYSTEM                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Level     │ Tokens  │ Use Case                    │ Cost Factor            │
+│  ──────────┼─────────┼─────────────────────────────┼────────────────────    │
+│  OFF       │ 0       │ Simple lookups, caching     │ 0x                     │
+│  MINIMAL   │ 1024    │ Quick answers, routing      │ 1x                     │
+│  LOW       │ 4096    │ Standard queries            │ 2x                     │
+│  MEDIUM    │ 16384   │ Complex analysis            │ 4x                     │
+│  HIGH      │ 32768   │ Deep research, synthesis    │ 8x                     │
+│  XHIGH     │ 65536   │ Novel problems, innovation  │ 16x                    │
+│                                                                              │
+│  Auto-selection based on:                                                    │
+│  • Query complexity (keyword triggers, length)                               │
+│  • User preference settings                                                  │
+│  • Task type classification                                                  │
+│  • Available compute budget                                                  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation:**
+```python
+class ThinkingLevel(Enum):
+    OFF = "off"        # No extended thinking
+    MINIMAL = "minimal" # 1K tokens
+    LOW = "low"        # 4K tokens
+    MEDIUM = "medium"  # 16K tokens
+    HIGH = "high"      # 32K tokens
+    XHIGH = "xhigh"    # 65K tokens
+
+class ThinkingConfig:
+    """Auto-selects thinking level based on task characteristics."""
+
+    def select_level(self, query: str, task_type: TaskType) -> ThinkingLevel:
+        # Complex research queries need deeper thinking
+        if task_type == TaskType.INNOVATION:
+            return ThinkingLevel.XHIGH
+        elif task_type == TaskType.SYNTHESIS:
+            return ThinkingLevel.HIGH
+        elif task_type == TaskType.RESEARCH:
+            return ThinkingLevel.MEDIUM
+        elif task_type == TaskType.CLASSIFICATION:
+            return ThinkingLevel.LOW
+        else:
+            return ThinkingLevel.MINIMAL
+```
+
+### Heartbeat & Proactive Intelligence System
+
+DOVA agents operate with a heartbeat system enabling autonomous background operations, proactive recommendations, and scheduled intelligence gathering:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         HEARTBEAT SYSTEM                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐       │
+│  │   SCHEDULER     │     │   HEARTBEAT     │     │   TASK QUEUE    │       │
+│  │   (APScheduler) │────►│   PROCESSOR     │────►│   (Redis/Kafka) │       │
+│  │                 │     │                 │     │                 │       │
+│  │  Cron triggers  │     │  • Health check │     │  • Priority Q   │       │
+│  │  Interval jobs  │     │  • Monitor scan │     │  • Dead letter  │       │
+│  │  Date triggers  │     │  • Proactive AI │     │  • Retry logic  │       │
+│  └─────────────────┘     └─────────────────┘     └─────────────────┘       │
+│                                                                              │
+│  Proactive Tasks:                                                            │
+│  ┌──────────────────────────────────────────────────────────────────┐       │
+│  │ • Monitor subscribed topics for new papers/repos                 │       │
+│  │ • Evaluate recommendation freshness and regenerate if stale      │       │
+│  │ • Pre-fetch trending content for personalized feeds              │       │
+│  │ • Health check MCP servers and failover if needed                │       │
+│  │ • Analyze usage patterns and suggest profile updates             │       │
+│  │ • Clean up expired cache entries and memory items                │       │
+│  └──────────────────────────────────────────────────────────────────┘       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Heartbeat Configuration:**
+```python
+@dataclass
+class HeartbeatConfig:
+    """Configuration for proactive agent heartbeat."""
+
+    interval_seconds: int = 60  # Check interval
+
+    # Proactive task schedule
+    tasks: list[HeartbeatTask] = field(default_factory=lambda: [
+        HeartbeatTask(
+            name="subscription_monitor",
+            cron="*/15 * * * *",  # Every 15 minutes
+            handler="check_subscriptions",
+        ),
+        HeartbeatTask(
+            name="recommendation_refresh",
+            cron="0 */4 * * *",   # Every 4 hours
+            handler="refresh_recommendations",
+        ),
+        HeartbeatTask(
+            name="mcp_health_check",
+            cron="*/5 * * * *",   # Every 5 minutes
+            handler="check_mcp_servers",
+        ),
+        HeartbeatTask(
+            name="session_cleanup",
+            cron="0 0 * * *",     # Daily at midnight
+            handler="cleanup_stale_sessions",
+        ),
+    ])
+```
+
+### Enhanced Memory with Semantic Search
+
+Memory service enhanced with embedding-based semantic search for intelligent context retrieval:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ENHANCED MEMORY ARCHITECTURE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐        │
+│  │                    MEMORY LAYERS                                 │        │
+│  │                                                                  │        │
+│  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │        │
+│  │   │ SHORT-TERM   │  │  LONG-TERM   │  │  PROCEDURAL  │         │        │
+│  │   │ (Session)    │  │  (Persistent)│  │  (Skills)    │         │        │
+│  │   │              │  │              │  │              │         │        │
+│  │   │ TTL: 24h     │  │ TTL: ∞       │  │ TTL: ∞       │         │        │
+│  │   │ Fast access  │  │ Vector DB    │  │ Code/Config  │         │        │
+│  │   └──────────────┘  └──────────────┘  └──────────────┘         │        │
+│  └─────────────────────────────────────────────────────────────────┘        │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐        │
+│  │                    SEMANTIC SEARCH                               │        │
+│  │                                                                  │        │
+│  │   Query: "transformer attention mechanisms"                      │        │
+│  │                    │                                             │        │
+│  │                    ▼                                             │        │
+│  │   ┌──────────────────────────────────────────┐                  │        │
+│  │   │ Embedding: [0.23, -0.45, 0.12, ...]      │                  │        │
+│  │   └──────────────────────────────────────────┘                  │        │
+│  │                    │                                             │        │
+│  │                    ▼                                             │        │
+│  │   ┌──────────────────────────────────────────┐                  │        │
+│  │   │ Vector Search (cosine similarity)        │                  │        │
+│  │   │ Top-K retrieval with MMR deduplication   │                  │        │
+│  │   └──────────────────────────────────────────┘                  │        │
+│  │                    │                                             │        │
+│  │                    ▼                                             │        │
+│  │   Results ranked by: relevance × recency × importance            │        │
+│  │                                                                  │        │
+│  └─────────────────────────────────────────────────────────────────┘        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation:**
+```python
+class EnhancedMemoryService:
+    """Memory service with semantic search capabilities."""
+
+    async def search(
+        self,
+        query: str,
+        user_id: str,
+        memory_types: list[MemoryType] | None = None,
+        top_k: int = 10,
+        min_relevance: float = 0.7,
+    ) -> list[MemoryItem]:
+        """Semantic search across memory stores."""
+        # Generate query embedding
+        embedding = await self.embedder.embed(query)
+
+        # Search vector store with filters
+        results = await self.vector_store.search(
+            embedding=embedding,
+            filter={"user_id": user_id, "type": {"$in": memory_types}},
+            top_k=top_k * 2,  # Over-fetch for MMR
+        )
+
+        # Apply MMR for diversity
+        diverse_results = self._apply_mmr(results, top_k)
+
+        # Filter by relevance threshold
+        return [r for r in diverse_results if r.score >= min_relevance]
+```
+
+### Model & Capability Auto-Discovery
+
+Dynamic discovery of LLM providers, models, and agent capabilities:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    AUTO-DISCOVERY SYSTEM                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐        │
+│  │                    DISCOVERY TYPES                               │        │
+│  │                                                                  │        │
+│  │  1. MODEL DISCOVERY                                              │        │
+│  │     • Probe configured providers for available models            │        │
+│  │     • Cache capabilities (context length, vision, tools)         │        │
+│  │     • Auto-select best model for task type                       │        │
+│  │                                                                  │        │
+│  │  2. MCP SERVER DISCOVERY                                         │        │
+│  │     • Scan ~/.dova.json for configured servers                   │        │
+│  │     • Health check and capability probe                          │        │
+│  │     • Dynamic tool registration                                  │        │
+│  │                                                                  │        │
+│  │  3. AGENT CAPABILITY DISCOVERY                                   │        │
+│  │     • Introspect registered agents                               │        │
+│  │     • Build capability matrix                                    │        │
+│  │     • Route tasks to capable agents                              │        │
+│  │                                                                  │        │
+│  └─────────────────────────────────────────────────────────────────┘        │
+│                                                                              │
+│  Discovery Flow:                                                             │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐              │
+│  │ Startup  │───►│ Probe    │───►│ Validate │───►│ Register │              │
+│  │ Trigger  │    │ Endpoints│    │ Caps     │    │ & Cache  │              │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation:**
+```python
+class AutoDiscovery:
+    """Auto-discovery system for models and capabilities."""
+
+    async def discover_models(self) -> dict[str, ModelInfo]:
+        """Discover available models from all configured providers."""
+        discovered = {}
+
+        for provider in self.providers:
+            try:
+                models = await provider.list_models()
+                for model in models:
+                    discovered[model.id] = ModelInfo(
+                        provider=provider.name,
+                        model_id=model.id,
+                        context_length=model.context_length,
+                        supports_vision=model.supports_vision,
+                        supports_tools=model.supports_tools,
+                        cost_per_1k_tokens=model.pricing,
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to discover {provider.name}: {e}")
+
+        return discovered
+
+    async def discover_mcp_servers(self) -> dict[str, MCPServerInfo]:
+        """Discover and validate configured MCP servers."""
+        from dova.config.mcp_servers import list_mcp_servers
+
+        servers = {}
+        for name, config in list_mcp_servers().items():
+            try:
+                # Health check
+                healthy = await self._probe_mcp_server(config)
+                if healthy:
+                    servers[name] = MCPServerInfo(
+                        name=name,
+                        url=config.get("url"),
+                        tools=await self._discover_tools(config),
+                        healthy=True,
+                    )
+            except Exception as e:
+                logger.warning(f"MCP server {name} unhealthy: {e}")
+
+        return servers
+```
+
+### Self-Evaluation & Error Diagnosis
+
+Agents incorporate self-evaluation mechanisms for quality assurance and automatic error recovery:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SELF-EVALUATION SYSTEM                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐        │
+│  │                    EVALUATION PIPELINE                           │        │
+│  │                                                                  │        │
+│  │   Agent Output                                                   │        │
+│  │        │                                                         │        │
+│  │        ▼                                                         │        │
+│  │   ┌──────────────────────┐                                       │        │
+│  │   │ QUALITY EVALUATOR    │                                       │        │
+│  │   │ • Completeness check │                                       │        │
+│  │   │ • Coherence scoring  │                                       │        │
+│  │   │ • Factual grounding  │                                       │        │
+│  │   │ • Citation validity  │                                       │        │
+│  │   └──────────────────────┘                                       │        │
+│  │        │                                                         │        │
+│  │        ▼                                                         │        │
+│  │   ┌──────────────────────┐                                       │        │
+│  │   │ CONFIDENCE SCORER    │                                       │        │
+│  │   │ Score: 0.0 - 1.0     │                                       │        │
+│  │   │                      │                                       │        │
+│  │   │ < 0.5: Retry/Escalate│                                       │        │
+│  │   │ < 0.7: Add caveats   │                                       │        │
+│  │   │ ≥ 0.7: Accept        │                                       │        │
+│  │   └──────────────────────┘                                       │        │
+│  │                                                                  │        │
+│  └─────────────────────────────────────────────────────────────────┘        │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐        │
+│  │                    ERROR DIAGNOSIS & RECOVERY                    │        │
+│  │                                                                  │        │
+│  │   Error Types:                                                   │        │
+│  │   ┌────────────────┐  ┌────────────────┐  ┌────────────────┐    │        │
+│  │   │ TRANSIENT      │  │ CONFIGURATION  │  │ CAPABILITY     │    │        │
+│  │   │ Rate limits    │  │ Missing keys   │  │ Unsupported    │    │        │
+│  │   │ Timeouts       │  │ Invalid URLs   │  │ task type      │    │        │
+│  │   │ → Retry        │  │ → Alert user   │  │ → Fallback     │    │        │
+│  │   └────────────────┘  └────────────────┘  └────────────────┘    │        │
+│  │                                                                  │        │
+│  │   Recovery Actions:                                              │        │
+│  │   • Automatic retry with exponential backoff                     │        │
+│  │   • Failover to alternate provider/model                         │        │
+│  │   • Graceful degradation with partial results                    │        │
+│  │   • User notification for unrecoverable errors                   │        │
+│  │                                                                  │        │
+│  └─────────────────────────────────────────────────────────────────┘        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation:**
+```python
+class SelfEvaluator:
+    """Self-evaluation and error diagnosis for agents."""
+
+    async def evaluate(self, output: AgentResult, task: AgentTask) -> EvaluationResult:
+        """Evaluate agent output quality."""
+        scores = {
+            "completeness": await self._check_completeness(output, task),
+            "coherence": await self._check_coherence(output),
+            "grounding": await self._check_factual_grounding(output),
+        }
+
+        confidence = sum(scores.values()) / len(scores)
+
+        return EvaluationResult(
+            confidence=confidence,
+            scores=scores,
+            should_retry=confidence < 0.5,
+            caveats=self._generate_caveats(scores) if confidence < 0.7 else [],
+        )
+
+    def diagnose_error(self, error: Exception) -> ErrorDiagnosis:
+        """Classify error and suggest recovery action."""
+        if isinstance(error, RateLimitError):
+            return ErrorDiagnosis(
+                error_type=ErrorType.TRANSIENT,
+                action=RecoveryAction.RETRY_WITH_BACKOFF,
+                retry_after=error.retry_after,
+            )
+        elif isinstance(error, AuthenticationError):
+            return ErrorDiagnosis(
+                error_type=ErrorType.CONFIGURATION,
+                action=RecoveryAction.ALERT_USER,
+                message="API key invalid or expired",
+            )
+        elif isinstance(error, UnsupportedOperationError):
+            return ErrorDiagnosis(
+                error_type=ErrorType.CAPABILITY,
+                action=RecoveryAction.FALLBACK,
+                fallback_model=self._find_capable_model(error.operation),
+            )
+        else:
+            return ErrorDiagnosis(
+                error_type=ErrorType.UNKNOWN,
+                action=RecoveryAction.LOG_AND_ALERT,
+            )
+```
+
+### Session Freshness & State Management
+
+Intelligent session management with freshness evaluation and state repair:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SESSION MANAGEMENT                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Session Lifecycle:                                                          │
+│                                                                              │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐              │
+│  │ CREATE   │───►│ ACTIVE   │───►│ STALE    │───►│ EXPIRED  │              │
+│  │          │    │          │    │          │    │          │              │
+│  │ Init     │    │ < 30min  │    │ < 24h    │    │ > 24h    │              │
+│  │ context  │    │ inactiv  │    │ inactive │    │ cleanup  │              │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘              │
+│                        │              │                                      │
+│                        ▼              ▼                                      │
+│                  ┌──────────────────────────┐                               │
+│                  │   FRESHNESS EVALUATOR    │                               │
+│                  │                          │                               │
+│                  │   Factors:               │                               │
+│                  │   • Last activity time   │                               │
+│                  │   • Context validity     │                               │
+│                  │   • Model version match  │                               │
+│                  │   • User profile changes │                               │
+│                  └──────────────────────────┘                               │
+│                                                                              │
+│  Session Actions:                                                            │
+│  • CONTINUE: Session fresh, use existing context                             │
+│  • REFRESH: Update stale context, preserve conversation                      │
+│  • FORK: Create new session from checkpoint                                  │
+│  • REPAIR: Rebuild corrupted session state                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Files (OpenClaw-Inspired)
+
+| File | Purpose |
+|------|---------|
+| `src/dova/services/thinking.py` | Multi-tiered thinking level system |
+| `src/dova/jobs/heartbeat.py` | Proactive heartbeat task system |
+| `src/dova/services/memory_enhanced.py` | Semantic search memory service |
+| `src/dova/services/discovery.py` | Model and capability auto-discovery |
+| `src/dova/services/evaluation.py` | Self-evaluation and error diagnosis |
+| `src/dova/services/session.py` | Session freshness and state management |
+
+---
+
 ## 🏛️ System Architecture Overview
 
 ```

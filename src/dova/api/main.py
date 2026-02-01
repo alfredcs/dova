@@ -69,6 +69,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         memory_service=app.state.memory_service
     )
 
+    # Initialize LLM router and MCP client
+    from dova.config.providers import create_llm_router_from_settings
+    from dova.tools.mcp_registry import MCPManager
+
+    app.state.llm_router = create_llm_router_from_settings()
+    app.state.mcp_manager = MCPManager()
+    app.state.mcp_client = app.state.mcp_manager.get_client()
+    logger.info("llm_router_initialized", default_provider=settings.llm.default_provider)
+
+    # Initialize research agent
+    from dova.agents.research import ResearchAgent
+
+    app.state.research_agent = ResearchAgent(
+        llm_router=app.state.llm_router,
+        mcp_client=app.state.mcp_client,
+        memory_service=app.state.memory_service,
+        source_registry=app.state.source_registry,
+        tavily_api_key=settings.mcp.tavily_api_key,
+    )
+    logger.info(
+        "research_agent_initialized",
+        web_search_enabled=bool(settings.mcp.tavily_api_key),
+    )
+
     # Initialize JWT verifier if Cognito is configured
     if settings.auth.cognito_user_pool_id and settings.auth.cognito_client_id:
         app.state.jwt_verifier = CognitoJWTVerifier(

@@ -62,12 +62,19 @@ def serve(ctx: click.Context, host: str, port: int, reload: bool) -> None:
     "--sources",
     "-s",
     multiple=True,
-    default=["arxiv", "github", "huggingface"],
-    help="Sources to search",
+    default=["github", "huggingface", "web"],
+    help="Sources to search (arxiv, github, huggingface, web)",
 )
 @click.option("--max-results", "-n", default=10, help="Maximum results per source")
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 @click.option("--format", "-f", type=click.Choice(["json", "text"]), default="text")
+@click.option(
+    "--reasoning",
+    "-r",
+    type=click.Choice(["quick", "standard", "deep", "collaborative", "tool_augmented"]),
+    default="standard",
+    help="Reasoning mode: quick (no reflection), standard (ReAct+reflection), deep (ensemble), collaborative (full), tool_augmented (auto tool discovery)",
+)
 @click.pass_context
 def research(
     ctx: click.Context,
@@ -76,24 +83,28 @@ def research(
     max_results: int,
     output: Optional[str],
     format: str,
+    reasoning: str,
 ) -> None:
     """Run a research query through DOVA.
 
     Example:
         dova research "transformer architecture for NLP"
         dova research "reinforcement learning" -s arxiv -s github -n 5
+        dova research "what is BERT?" --reasoning quick
     """
     from dova.agents.base import AgentTask
     from dova.agents.orchestrator import DOVAOrchestrator
     from dova.agents.research import ResearchAgent
     from dova.agents.synthesis import SynthesisAgent
     from dova.config.providers import create_llm_router_from_settings
+    from dova.config.settings import get_settings
     from dova.tools.mcp_registry import MCPClient
 
     async def run_research():
         click.echo(f"Researching: {query}")
 
         # Initialize components
+        settings = get_settings()
         llm_router = create_llm_router_from_settings()
         mcp_client = MCPClient()
 
@@ -102,23 +113,34 @@ def research(
             "arxiv": "arxiv",
             "github": "github",
             "huggingface": "huggingface",
+            "web": None,  # Web search uses Tavily directly, not MCP
         }
         available_sources = []
         for source in sources:
-            server_name = source_to_server.get(source, source)
-            server = mcp_client.registry.get_server(server_name)
-            if server:
-                available_sources.append(source)
+            if source == "web":
+                # Web search is available if Tavily API key is configured
+                if settings.mcp.tavily_api_key:
+                    available_sources.append(source)
+            else:
+                server_name = source_to_server.get(source, source)
+                server = mcp_client.registry.get_server(server_name)
+                if server:
+                    available_sources.append(source)
 
         if not available_sources:
             click.echo(click.style("No MCP servers configured. Run 'dova mcp list' to check.", fg="yellow"))
             return
 
         click.echo(f"Sources: {', '.join(available_sources)}")
+        click.echo(f"Reasoning: {reasoning}")
         click.echo("")
 
         # Create specialized agents with MCP client
-        research_agent = ResearchAgent(llm_router=llm_router, mcp_client=mcp_client)
+        research_agent = ResearchAgent(
+            llm_router=llm_router,
+            mcp_client=mcp_client,
+            tavily_api_key=settings.mcp.tavily_api_key,
+        )
         synthesis_agent = SynthesisAgent(llm_router=llm_router)
 
         orchestrator = DOVAOrchestrator(
@@ -136,6 +158,7 @@ def research(
                 "query": query,
                 "sources": available_sources,
                 "max_results": max_results,
+                "reasoning_mode": reasoning,
             },
             user_id="cli-user",
         )
@@ -161,9 +184,13 @@ def research(
     asyncio.run(run_research())
 
 
-def format_research_results(data: dict) -> str:
+def format_research_results(data: dict | None) -> str:
     """Format research results for text output."""
     lines = []
+
+    # Handle None or empty data
+    if not data:
+        return "No results found."
 
     # Check if any actual results were found
     has_results = any([
@@ -429,22 +456,43 @@ def config(ctx: click.Context) -> None:
     # AWS
     click.echo("\nAWS:")
     click.echo(f"  Region: {settings.aws.region}")
-    click.echo(f"  Profile: {settings.aws.profile or 'default'}")
+    click.echo(f"  Bedrock Model: {settings.aws.bedrock_model_id}")
 
     # LLM
     click.echo("\nLLM:")
-    click.echo(f"  Primary Provider: {settings.llm.primary_provider}")
-    click.echo(f"  Fallback Chain: {', '.join(settings.llm.fallback_chain)}")
+    click.echo(f"  Default Provider: {settings.llm.default_provider}")
+    click.echo(f"  Temperature: {settings.llm.temperature}")
+    click.echo(f"  Max Tokens: {settings.llm.max_tokens}")
 
     # MCP
     click.echo("\nMCP Servers:")
-    for server in settings.mcp.enabled_servers:
-        click.echo(f"  • {server}")
+    if settings.mcp.arxiv_enabled:
+        click.echo("  • arxiv")
+    if settings.mcp.github_enabled:
+        click.echo("  • github")
+    if settings.mcp.huggingface_enabled:
+        click.echo("  • huggingface")
 
     # API
     click.echo("\nAPI:")
     click.echo(f"  Host: {settings.api.host}")
     click.echo(f"  Port: {settings.api.port}")
+
+    # Advanced Intelligence
+    click.echo("\nAdvanced Intelligence:")
+    click.echo(f"  Thinking Level: {settings.thinking.default_level}")
+    click.echo(f"  Auto-Select Thinking: {settings.thinking.auto_select_enabled}")
+    click.echo(f"  Auto-Evaluate: {settings.evaluation.auto_evaluate_responses}")
+    click.echo(f"  Min Confidence: {settings.evaluation.min_confidence_threshold}")
+
+    # Session
+    click.echo("\nSession:")
+    click.echo(f"  Stale After: {settings.session.stale_after_seconds}s")
+    click.echo(f"  Expire After: {settings.session.expire_after_seconds}s")
+
+    # Heartbeat
+    click.echo("\nHeartbeat:")
+    click.echo(f"  Enabled: {settings.heartbeat.enabled}")
 
 
 @cli.group()
@@ -581,7 +629,10 @@ def mcp_list(no_check: bool) -> None:
         if not url:
             return (name, False, "No URL configured")
 
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",  # Required by some MCP servers (e.g., HuggingFace)
+        }
         headers.update(config.get("headers", {}))
 
         try:

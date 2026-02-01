@@ -61,10 +61,13 @@ class ResearchAgent(BaseAgent):
         metrics: MetricsCollector | None = None,
         memory_service: Any | None = None,
         source_registry: SourceRegistry | None = None,
+        tavily_api_key: str | None = None,
     ):
         super().__init__(llm_router, mcp_client, metrics, memory_service=memory_service)
         self.source_registry = source_registry
         self.source_fetcher = SourceFetcher()
+        self.tavily_api_key = tavily_api_key
+        self._tavily_client = None
 
     @property
     def system_prompt(self) -> str:
@@ -103,6 +106,8 @@ When analyzing search results:
                 results = await self._search_github(query, entities)
             elif source == "huggingface":
                 results = await self._search_huggingface(query, entities)
+            elif source == "web":
+                results = await self._search_web(query, entities)
             elif source == "all":
                 results = await self._search_all(query, entities, user_id=task.user_id)
             else:
@@ -157,6 +162,9 @@ When analyzing search results:
         if result.success and result.data:
             papers = result.data if isinstance(result.data, list) else [result.data]
             for paper in papers:
+                # Skip non-dict items (e.g., error message strings)
+                if not isinstance(paper, dict):
+                    continue
                 findings.papers.append(
                     SearchResult(
                         source="arxiv",
@@ -190,6 +198,9 @@ When analyzing search results:
             repos = result.data.get("items", result.data) if isinstance(result.data, dict) else result.data
             if isinstance(repos, list):
                 for repo in repos:
+                    # Skip non-dict items (e.g., error message strings)
+                    if not isinstance(repo, dict):
+                        continue
                     findings.repositories.append(
                         SearchResult(
                             source="github",
@@ -217,11 +228,18 @@ When analyzing search results:
         """Search HuggingFace for models and datasets."""
         findings = ResearchFindings()
 
+        # Build optimized search query using primary_subject
+        search_query = self._build_huggingface_query(query, entities)
+        self._logger.debug("huggingface_query", original=query, optimized=search_query)
+
         # Search models
-        model_result = await self.search_huggingface(query, search_type="models", limit=15)
+        model_result = await self.search_huggingface(search_query, search_type="models", limit=15)
         if model_result.success and model_result.data:
             models = model_result.data if isinstance(model_result.data, list) else [model_result.data]
             for model in models:
+                # Skip non-dict items (e.g., "No models found" message strings)
+                if not isinstance(model, dict):
+                    continue
                 findings.models.append(
                     SearchResult(
                         source="huggingface",
@@ -240,10 +258,13 @@ When analyzing search results:
                 )
 
         # Search datasets
-        dataset_result = await self.search_huggingface(query, search_type="datasets", limit=10)
+        dataset_result = await self.search_huggingface(search_query, search_type="datasets", limit=10)
         if dataset_result.success and dataset_result.data:
             datasets = dataset_result.data if isinstance(dataset_result.data, list) else [dataset_result.data]
             for dataset in datasets:
+                # Skip non-dict items (e.g., "No datasets found" message strings)
+                if not isinstance(dataset, dict):
+                    continue
                 findings.datasets.append(
                     SearchResult(
                         source="huggingface",
@@ -257,6 +278,78 @@ When analyzing search results:
                         },
                     )
                 )
+
+        return findings
+
+    async def _search_web(
+        self,
+        query: str,
+        entities: dict[str, Any],
+    ) -> ResearchFindings:
+        """Search the web using Tavily."""
+        findings = ResearchFindings()
+
+        if not self.tavily_api_key:
+            self._logger.warning("tavily_not_configured", message="Tavily API key not set")
+            return findings
+
+        try:
+            # Lazy initialization of Tavily client
+            if self._tavily_client is None:
+                from tavily import TavilyClient
+                self._tavily_client = TavilyClient(api_key=self.tavily_api_key)
+
+            # Build search query using primary_subject for best results
+            primary_subject = entities.get("primary_subject", "")
+            search_aspects = entities.get("search_aspects", [])
+
+            if primary_subject:
+                # Use primary subject as the core, add aspects if specified
+                if search_aspects:
+                    search_query = f"{primary_subject} {' '.join(search_aspects[:2])}"
+                else:
+                    search_query = primary_subject
+            else:
+                # Fallback to original query
+                search_query = query
+
+            self._logger.debug("tavily_search", query=search_query, primary_subject=primary_subject)
+
+            # Perform web search
+            response = self._tavily_client.search(
+                query=search_query,
+                search_depth="advanced",
+                max_results=10,
+            )
+
+            results = response.get("results", [])
+            for result in results:
+                if not isinstance(result, dict):
+                    continue
+                findings.web_results.append(
+                    SearchResult(
+                        source="web",
+                        title=result.get("title", ""),
+                        url=result.get("url", ""),
+                        description=result.get("content", "")[:500],
+                        metadata={
+                            "score": result.get("score", 0),
+                            "published_date": result.get("published_date", ""),
+                        },
+                        relevance_score=result.get("score", 0),
+                    )
+                )
+
+            self._logger.info(
+                "tavily_search_complete",
+                query=search_query,
+                results_count=len(findings.web_results),
+            )
+
+        except ImportError:
+            self._logger.error("tavily_not_installed", message="Install tavily-python: pip install tavily-python")
+        except Exception as e:
+            self._logger.error("tavily_search_error", error=str(e))
 
         return findings
 
@@ -301,6 +394,7 @@ When analyzing search results:
             self._search_arxiv(query, entities),
             self._search_github(query, entities),
             self._search_huggingface(query, entities),
+            self._search_web(query, entities),
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -333,8 +427,19 @@ When analyzing search results:
 
     def _build_arxiv_query(self, query: str, entities: dict[str, Any]) -> str:
         """Build optimized ArXiv query from entities."""
-        # Start with base query
-        parts = [query]
+        # PRIORITY: Use primary_subject if available (the main thing being searched)
+        primary_subject = entities.get("primary_subject", "")
+        search_terms = entities.get("search_terms", [])
+
+        if primary_subject:
+            # Build query around the primary subject
+            parts = [primary_subject]
+        elif search_terms:
+            # Use extracted search terms
+            parts = [" OR ".join(search_terms[:3])]
+        else:
+            # Fallback to cleaned query
+            parts = [self._extract_search_keywords(query)]
 
         # Add author filter if specified
         authors = entities.get("authors", [])
@@ -352,6 +457,7 @@ When analyzing search results:
             "reinforcement learning": "cs.LG",
             "transformers": "cs.CL",
             "llm": "cs.CL",
+            "language model": "cs.CL",
         }
         for topic in topics:
             topic_lower = topic.lower()
@@ -360,24 +466,38 @@ When analyzing search results:
                     parts.append(f"cat:{category}")
                     break
 
-        return " AND ".join(parts) if len(parts) > 1 else query
+        return " AND ".join(parts) if len(parts) > 1 else parts[0] if parts else query
 
     def _build_github_query(self, query: str, entities: dict[str, Any]) -> str:
         """Build optimized GitHub query from entities."""
-        # Extract keywords from topics if available, otherwise clean the query
-        topics = entities.get("topics", [])
-        if topics:
-            # Use extracted topics as the main search terms
-            search_terms = " ".join(topics[:3])  # Limit to top 3 topics
-        else:
-            # Clean natural language query to extract keywords
-            search_terms = self._extract_search_keywords(query)
-
-        parts = [search_terms]
-
-        # Add language filter
+        # PRIORITY 1: Use primary_subject (the main entity being searched)
+        primary_subject = entities.get("primary_subject", "")
+        search_terms = entities.get("search_terms", [])
         technologies = entities.get("technologies", [])
-        lang_map = {"python": "python", "javascript": "javascript", "typescript": "typescript", "rust": "rust"}
+
+        # Build the core search query
+        if primary_subject:
+            # Primary subject is the most important - use it as the main search
+            core_terms = [primary_subject]
+            # Add variations from search_terms that relate to primary subject
+            for term in search_terms[:2]:
+                if term.lower() != primary_subject.lower() and primary_subject.lower() in term.lower():
+                    core_terms.append(term)
+            search_query = " OR ".join(core_terms) if len(core_terms) > 1 else primary_subject
+        elif search_terms:
+            # Use the extracted search terms
+            search_query = " ".join(search_terms[:3])
+        elif technologies:
+            # Use technologies as search terms (often contains model/library names)
+            search_query = " ".join(technologies[:3])
+        else:
+            # Fallback to cleaned query
+            search_query = self._extract_search_keywords(query)
+
+        parts = [search_query]
+
+        # Add language filter only for programming language technologies
+        lang_map = {"python": "python", "javascript": "javascript", "typescript": "typescript", "rust": "rust", "go": "go", "java": "java"}
         for tech in technologies:
             tech_lower = tech.lower()
             if tech_lower in lang_map:
@@ -387,13 +507,32 @@ When analyzing search results:
         # Add date filter if time_range is specified
         time_range = entities.get("time_range")
         if time_range:
-            # Format: pushed:>2025-01-01
             parts.append(f"pushed:>{time_range}")
 
-        # Add minimum stars for quality (but lower threshold for broader results)
+        # Add minimum stars for quality
         parts.append("stars:>5")
 
         return " ".join(parts)
+
+    def _build_huggingface_query(self, query: str, entities: dict[str, Any]) -> str:
+        """Build optimized HuggingFace query from entities."""
+        # PRIORITY: Use primary_subject (the model/dataset name being searched)
+        primary_subject = entities.get("primary_subject", "")
+        search_terms = entities.get("search_terms", [])
+        technologies = entities.get("technologies", [])
+
+        if primary_subject:
+            # Primary subject is the best search term for HuggingFace
+            return primary_subject
+        elif search_terms:
+            # Use the first search term (most specific)
+            return search_terms[0]
+        elif technologies:
+            # Technologies often contain model names
+            return technologies[0]
+        else:
+            # Fallback to extracting keywords from query
+            return self._extract_search_keywords(query)
 
     def _extract_search_keywords(self, query: str) -> str:
         """Extract meaningful keywords from natural language query."""

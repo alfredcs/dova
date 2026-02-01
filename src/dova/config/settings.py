@@ -56,8 +56,18 @@ class MCPSettings(BaseSettings):
     arxiv_enabled: bool = Field(default=True, description="Enable ArXiv MCP server")
     github_enabled: bool = Field(default=True, description="Enable GitHub MCP server")
     huggingface_enabled: bool = Field(default=True, description="Enable HuggingFace MCP")
+    web_search_enabled: bool = Field(default=True, description="Enable web search via Tavily")
     tavily_api_key: str | None = Field(default=None, description="Tavily API key for web search")
     github_token: str | None = Field(default=None, description="GitHub token for MCP")
+
+    def __init__(self, **kwargs):
+        # Check common env var names for Tavily before init
+        import os
+        for env_name in ["TAVILY_API_KEY", "TAVILY_API_TOKEN", "tavily_api_key", "tavily_api_token"]:
+            if os.environ.get(env_name) and not os.environ.get("MCP_TAVILY_API_KEY"):
+                os.environ["MCP_TAVILY_API_KEY"] = os.environ[env_name]
+                break
+        super().__init__(**kwargs)
 
 
 class AuthSettings(BaseSettings):
@@ -141,6 +151,77 @@ class SandboxSettings(BaseSettings):
     default_gpu_quota_seconds: int = Field(default=600, description="Default daily GPU quota")
 
 
+class ThinkingSettings(BaseSettings):
+    """Thinking level configuration for LLM reasoning."""
+
+    model_config = SettingsConfigDict(env_prefix="THINKING_")
+
+    default_level: str = Field(default="medium", description="Default thinking level")
+    auto_select_enabled: bool = Field(default=True, description="Auto-select level based on task")
+    max_budget_tokens: int = Field(default=65536, description="Maximum thinking budget tokens")
+
+
+class HeartbeatSettings(BaseSettings):
+    """Heartbeat task configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="HEARTBEAT_")
+
+    enabled: bool = Field(default=True, description="Enable heartbeat tasks")
+    subscription_monitor_cron: str = Field(
+        default="*/15 * * * *", description="Subscription monitor schedule"
+    )
+    recommendation_refresh_cron: str = Field(
+        default="0 */4 * * *", description="Recommendation refresh schedule"
+    )
+    mcp_health_check_cron: str = Field(
+        default="*/5 * * * *", description="MCP health check schedule"
+    )
+    session_cleanup_cron: str = Field(
+        default="0 3 * * *", description="Session cleanup schedule"
+    )
+
+
+class MemoryEnhancedSettings(BaseSettings):
+    """Enhanced memory service configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="MEMORY_ENHANCED_")
+
+    semantic_search_enabled: bool = Field(default=True, description="Enable semantic search")
+    mmr_lambda: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="MMR diversity parameter"
+    )
+    embedding_cache_ttl: int = Field(default=3600, description="Embedding cache TTL in seconds")
+
+
+class DiscoverySettings(BaseSettings):
+    """Auto-discovery service configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="DISCOVERY_")
+
+    auto_discover_on_startup: bool = Field(default=True, description="Discover on startup")
+    cache_ttl_seconds: int = Field(default=3600, description="Discovery cache TTL")
+
+
+class EvaluationSettings(BaseSettings):
+    """Self-evaluation service configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="EVAL_")
+
+    auto_evaluate_responses: bool = Field(default=False, description="Auto-evaluate responses")
+    min_confidence_threshold: float = Field(
+        default=0.6, ge=0.0, le=1.0, description="Minimum confidence threshold"
+    )
+
+
+class SessionSettings(BaseSettings):
+    """Session management configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="SESSION_")
+
+    stale_after_seconds: int = Field(default=1800, description="Session stale timeout (30 min)")
+    expire_after_seconds: int = Field(default=86400, description="Session expiry timeout (24h)")
+
+
 class Settings(BaseSettings):
     """Main DOVA settings aggregating all sub-configurations."""
 
@@ -169,6 +250,12 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     jobs: JobSettings = Field(default_factory=JobSettings)
     sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
+    thinking: ThinkingSettings = Field(default_factory=ThinkingSettings)
+    heartbeat: HeartbeatSettings = Field(default_factory=HeartbeatSettings)
+    memory_enhanced: MemoryEnhancedSettings = Field(default_factory=MemoryEnhancedSettings)
+    discovery: DiscoverySettings = Field(default_factory=DiscoverySettings)
+    evaluation: EvaluationSettings = Field(default_factory=EvaluationSettings)
+    session: SessionSettings = Field(default_factory=SessionSettings)
 
     @property
     def is_production(self) -> bool:

@@ -73,4 +73,29 @@ For multi-step tasks, state a brief plan:
 When implementing authentication:
 - validate inputs, handle errors securely, follow auth/ patterns
 
+# 6. VIBE CODING VALIDATION REQUIREMENTS
+All code generated through vibe coding MUST be thoroughly tested and validated before deployment:
+### 6.1 Feature Validation
+- [ ] Verify ALL requested features are implemented correctly
+- [ ] Confirm edge cases are handled appropriately
+- [ ] Validate input/output behavior matches specifications
+### 6.2 Functionality Testing
+- [ ] Execute unit tests for all functions/methods
+- [ ] Run integration tests for component interactions
+- [ ] Perform end-to-end testing for complete workflows
+- [ ] Test error handling and exception scenarios
+### 6.3 Operability Verification
+- [ ] Confirm code runs in target environment(s)
+- [ ] Validate dependencies are properly declared
+- [ ] Test performance under expected load
+- [ ] Verify logging, monitoring, and observability
+- [ ] Ensure graceful degradation and recovery
+### 6.4 Code Quality
+- [ ] Review for security vulnerabilities
+- [ ] Check for code smells and anti-patterns
+- [ ] Validate documentation completeness
+- [ ] Confirm coding standards compliance
+
+**🚫 DO NOT deploy or merge vibe-coded solutions without completing this checklist.**
+
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.

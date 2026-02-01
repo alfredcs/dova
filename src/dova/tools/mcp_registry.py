@@ -58,6 +58,7 @@ class MCPClient:
         self.retry_config = retry_config or RetryConfig(max_retries=3)
         self.circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60)
         self._connections: dict[str, Any] = {}
+        self._sessions: dict[str, str] = {}  # server_name -> session_id
         self._logger = logger.bind(component="mcp_client")
 
     async def invoke(
@@ -191,25 +192,37 @@ class MCPClient:
         tool: str,
         params: dict[str, Any],
     ) -> Any:
-        """Invoke MCP tool via HTTP transport."""
+        """Invoke MCP tool via HTTP transport with session management."""
         import httpx
         import json
 
         if not server_config.url:
             raise ValueError(f"No URL configured for HTTP server: {server_config.name}")
 
-        # Build headers
-        headers = {"Content-Type": "application/json"}
-        headers.update(server_config.headers)
-
-        self._logger.debug(
-            "http_invoke",
-            server=server_config.name,
-            tool=tool,
-            url=server_config.url,
-        )
-
         async with httpx.AsyncClient(timeout=server_config.timeout_seconds) as client:
+            # Ensure we have a session for this server
+            if server_config.name not in self._sessions:
+                await self._initialize_session(client, server_config)
+
+            # Build headers with session ID
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            }
+            headers.update(server_config.headers)
+
+            # Add session ID if we have one
+            session_id = self._sessions.get(server_config.name)
+            if session_id:
+                headers["Mcp-Session-Id"] = session_id
+
+            self._logger.debug(
+                "http_invoke",
+                server=server_config.name,
+                tool=tool,
+                url=server_config.url,
+            )
+
             # MCP HTTP uses JSON-RPC 2.0
             request_body = {
                 "jsonrpc": "2.0",
@@ -224,6 +237,10 @@ class MCPClient:
                 headers=headers,
             )
 
+            # Update session ID from response if provided
+            if "mcp-session-id" in response.headers:
+                self._sessions[server_config.name] = response.headers["mcp-session-id"]
+
             # Check for HTTP errors with detailed message
             if response.status_code >= 400:
                 self._logger.error(
@@ -234,69 +251,141 @@ class MCPClient:
                 )
                 response.raise_for_status()
 
-            # Handle empty response
-            if not response.text or not response.text.strip():
-                raise RuntimeError(
-                    f"Empty response from {server_config.name}. "
-                    f"Status: {response.status_code}. "
-                    "Check server URL and authentication."
+            return self._parse_http_response(server_config.name, response)
+
+    async def _initialize_session(
+        self,
+        client: Any,
+        server_config: MCPServerConfig,
+    ) -> None:
+        """Initialize an MCP session with the server."""
+        import json
+
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        headers.update(server_config.headers)
+
+        self._logger.debug(
+            "session_init",
+            server=server_config.name,
+            url=server_config.url,
+        )
+
+        # Send initialize request per MCP spec
+        init_body = {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "dova",
+                    "version": "1.0.0",
+                },
+            },
+        }
+
+        response = await client.post(
+            server_config.url,
+            json=init_body,
+            headers=headers,
+        )
+
+        # Capture session ID from response header
+        session_id = response.headers.get("mcp-session-id")
+        if session_id:
+            self._sessions[server_config.name] = session_id
+            self._logger.debug(
+                "session_created",
+                server=server_config.name,
+                session_id=session_id[:16] + "..." if len(session_id) > 16 else session_id,
+            )
+        else:
+            # Some servers might not require session IDs
+            self._logger.debug(
+                "session_no_id",
+                server=server_config.name,
+            )
+
+        if response.status_code >= 400:
+            self._logger.error(
+                "session_init_error",
+                server=server_config.name,
+                status=response.status_code,
+                body=response.text[:500] if response.text else "(empty)",
+            )
+            response.raise_for_status()
+
+    def _parse_http_response(self, server_name: str, response: Any) -> Any:
+        """Parse HTTP response from MCP server."""
+        import json
+
+        # Handle empty response
+        if not response.text or not response.text.strip():
+            raise RuntimeError(
+                f"Empty response from {server_name}. "
+                f"Status: {response.status_code}. "
+                "Check server URL and authentication."
+            )
+
+        # Try to parse response - handle both JSON and SSE formats
+        response_text = response.text.strip()
+        result = None
+
+        # Check if response is SSE format (starts with "event:" or "data:")
+        if response_text.startswith("event:") or response_text.startswith("data:"):
+            # Parse SSE format - extract JSON from data lines
+            for line in response_text.split("\n"):
+                line = line.strip()
+                if line.startswith("data:"):
+                    json_str = line[5:].strip()
+                    if json_str:
+                        try:
+                            result = json.loads(json_str)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+
+            if result is None:
+                self._logger.error(
+                    "sse_parse_error",
+                    server=server_name,
+                    body=response_text[:500],
                 )
+                raise RuntimeError(f"Could not parse SSE response from {server_name}")
+        else:
+            # Regular JSON response
+            try:
+                result = response.json()
+            except Exception as e:
+                self._logger.error(
+                    "json_parse_error",
+                    server=server_name,
+                    body=response_text[:500],
+                )
+                raise RuntimeError(f"Invalid JSON from {server_name}: {e}")
 
-            # Try to parse response - handle both JSON and SSE formats
-            response_text = response.text.strip()
-            result = None
+        # Handle JSON-RPC response
+        if "error" in result:
+            raise RuntimeError(f"MCP error: {result['error']}")
 
-            # Check if response is SSE format (starts with "event:" or "data:")
-            if response_text.startswith("event:") or response_text.startswith("data:"):
-                # Parse SSE format - extract JSON from data lines
-                for line in response_text.split("\n"):
-                    line = line.strip()
-                    if line.startswith("data:"):
-                        json_str = line[5:].strip()
-                        if json_str:
-                            try:
-                                result = json.loads(json_str)
-                                break
-                            except json.JSONDecodeError:
-                                continue
+        # Extract content from result
+        mcp_result = result.get("result", {})
+        content = mcp_result.get("content", [])
 
-                if result is None:
-                    self._logger.error(
-                        "sse_parse_error",
-                        server=server_config.name,
-                        body=response_text[:500],
-                    )
-                    raise RuntimeError(f"Could not parse SSE response from {server_config.name}")
-            else:
-                # Regular JSON response
+        if content and isinstance(content, list):
+            texts = [c.get("text", "") for c in content if c.get("type") == "text"]
+            if texts:
+                combined = "\n".join(texts)
                 try:
-                    result = response.json()
-                except Exception as e:
-                    self._logger.error(
-                        "json_parse_error",
-                        server=server_config.name,
-                        body=response_text[:500],
-                    )
-                    raise RuntimeError(f"Invalid JSON from {server_config.name}: {e}")
+                    return json.loads(combined)
+                except json.JSONDecodeError:
+                    return combined
 
-            # Handle JSON-RPC response
-            if "error" in result:
-                raise RuntimeError(f"MCP error: {result['error']}")
-
-            # Extract content from result
-            mcp_result = result.get("result", {})
-            content = mcp_result.get("content", [])
-
-            if content and isinstance(content, list):
-                texts = [c.get("text", "") for c in content if c.get("type") == "text"]
-                if texts:
-                    combined = "\n".join(texts)
-                    try:
-                        return json.loads(combined)
-                    except json.JSONDecodeError:
-                        return combined
-
-            return mcp_result
+        return mcp_result
 
     async def _invoke_sse(
         self,

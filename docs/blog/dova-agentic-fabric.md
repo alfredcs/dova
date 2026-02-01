@@ -70,6 +70,17 @@ DOVA addresses these challenges through an **Agentic Fabric**—a dynamic multi-
 | **Observability** | Metrics, traces, logs, and alarms | CloudWatch + X-Ray + OpenTelemetry |
 | **Identity & Security** | SSO/OAuth authentication and authorization | AWS Cognito + AgentCore Gateway |
 
+### Advanced Intelligence Components
+
+| Component | Function | Description |
+|-----------|----------|-------------|
+| **Thinking Service** | Adaptive reasoning depth | Multi-tiered token budgets with auto-selection |
+| **Self-Evaluator** | Response quality control | Confidence scoring, format validation, error diagnosis |
+| **Session Manager** | Conversation lifecycle | Freshness evaluation, staleness detection, recovery actions |
+| **Enhanced Memory** | Semantic retrieval | Embedding-based search with MMR diversity reranking |
+| **Auto-Discovery** | Runtime capability detection | Model and MCP server discovery with caching |
+| **Heartbeat Processor** | Proactive maintenance | Cron-based health checks, cleanups, and refreshes |
+
 ### Agent Specializations
 
 The fabric comprises five specialized agents built using the Strands Agents SDK:
@@ -462,6 +473,100 @@ async def iterative_refinement(
     return current_answer
 ```
 
+### Component 6: Advanced Intelligence Services (OpenClaw-Inspired)
+
+DOVA includes advanced intelligence features inspired by OpenClaw for enhanced agent capabilities:
+
+**Multi-Tiered Thinking System**:
+```python
+from dova.services.thinking import ThinkingService, ThinkingLevel
+
+thinking = ThinkingService(default_level=ThinkingLevel.MEDIUM)
+
+# Auto-select thinking level based on task complexity
+level = thinking.select_level_for_task(
+    task_type="reasoning",
+    query="Compare transformer architectures",
+    complexity_hint="complex"
+)
+
+# Budget tokens: OFF=0, MINIMAL=1K, LOW=4K, MEDIUM=16K, HIGH=32K, XHIGH=64K
+params = thinking.create_thinking_params(level)
+```
+
+**Self-Evaluation and Error Diagnosis**:
+```python
+from dova.services.evaluation import SelfEvaluator
+
+evaluator = SelfEvaluator(min_confidence=0.6)
+
+# Evaluate response quality
+result = await evaluator.evaluate(response, prompt, expected_format="markdown")
+print(f"Confidence: {result.confidence}, Retry: {result.should_retry}")
+
+# Diagnose errors with recovery recommendations
+diagnosis = evaluator.diagnose_error("Rate limit exceeded")
+# Returns: ErrorType.TRANSIENT -> RecoveryAction.RETRY_WITH_BACKOFF
+```
+
+**Session Freshness Management**:
+```python
+from dova.services.session import SessionManager, SessionAction
+
+session_mgr = SessionManager(cache, stale_after_seconds=1800)
+
+session = await session_mgr.create_session(user_id, context)
+state, action = session_mgr.evaluate_freshness(session)
+
+if action != SessionAction.CONTINUE:
+    session = await session_mgr.execute_action(session, action)
+    # Actions: CONTINUE, REFRESH (stale), FORK (expired), REPAIR
+```
+
+**Enhanced Memory with Semantic Search**:
+```python
+from dova.services.memory_enhanced import EnhancedMemoryService, MemoryType
+
+memory = EnhancedMemoryService(cache, llm_router, mmr_lambda=0.5)
+
+# Store with embeddings
+await memory.store(MemoryType.LONG_TERM, content, importance=0.8, user_id=user_id)
+
+# Semantic search with MMR diversity reranking
+results = await memory.search_semantic(query, user_id, top_k=5, use_mmr=True)
+```
+
+**Auto-Discovery of Models and MCP Servers**:
+```python
+from dova.services.discovery import AutoDiscovery
+
+discovery = AutoDiscovery(cache, llm_router, cache_ttl=3600)
+
+# Discover available models with capabilities
+models = await discovery.discover_models()
+vision_model = await discovery.get_model_by_capability("vision", prefer_provider="bedrock")
+
+# Discover MCP servers
+servers = await discovery.discover_mcp_servers()
+```
+
+**Proactive Heartbeat Tasks**:
+```python
+from dova.jobs.heartbeat import HeartbeatProcessor, HeartbeatTask
+
+heartbeat = HeartbeatProcessor(auto_register_defaults=True)
+# Default tasks: subscription_monitor, recommendation_refresh, mcp_health_check, session_cleanup
+
+# Add custom maintenance task
+heartbeat.register_task(HeartbeatTask(
+    name="cache_warmup",
+    cron_schedule="0 */6 * * *",
+    handler="warmup_caches"
+))
+
+await heartbeat.start()
+```
+
 ---
 
 ## Deployment with AgentCore
@@ -502,12 +607,12 @@ agentcore logs
 
 ### Reasoning Mode Configuration
 
-| Mode | Use Case | Strands Pattern | AgentCore Services |
-|------|----------|-----------------|-------------------|
-| `quick` | Real-time queries | Single Agent | Runtime only |
-| `standard` | Most requests | Agent + reflection | Runtime + Memory |
-| `deep` | Complex analysis | Batch + Debate agents | Runtime + Memory + Code Interpreter |
-| `collaborative` | Research projects | Full orchestration | All services |
+| Mode | Use Case | Strands Pattern | AgentCore Services | Thinking Level |
+|------|----------|-----------------|-------------------|----------------|
+| `quick` | Real-time queries | Single Agent | Runtime only | OFF/MINIMAL |
+| `standard` | Most requests | Agent + reflection | Runtime + Memory | LOW/MEDIUM |
+| `deep` | Complex analysis | Batch + Debate agents | Runtime + Memory + Code Interpreter | HIGH |
+| `collaborative` | Research projects | Full orchestration | All services | HIGH/XHIGH |
 
 ---
 
@@ -566,6 +671,12 @@ agent = Agent(system_prompt="Research agent with tracing enabled")
 
 \textbf{5. Observability is built-in.} OpenTelemetry integration provided production-ready tracing from day one.
 
+\textbf{6. Adaptive thinking improves efficiency.} Multi-tiered thinking budgets reduce token costs by 40-60\% for simple tasks while enabling deep reasoning when needed.
+
+\textbf{7. Self-evaluation catches quality issues early.} Automated response evaluation with confidence scoring prevents low-quality outputs from reaching users.
+
+\textbf{8. Session management prevents context drift.} Automatic staleness detection and recovery actions maintain conversation quality over extended sessions.
+
 \end{tcolorbox}
 
 ---
@@ -580,6 +691,14 @@ The combination of:
 - **AgentCore Memory** for persistent user context
 - **AgentCore Gateway** for secure tool integration
 - **AgentCore Code Interpreter** for sandboxed validation
+
+Enhanced with **OpenClaw-inspired intelligence features**:
+- **Multi-tiered thinking** for adaptive reasoning depth based on task complexity
+- **Self-evaluation** for automated quality control and error recovery
+- **Session management** for maintaining conversation quality over time
+- **Semantic memory** with MMR diversity for relevant and varied recall
+- **Auto-discovery** for runtime capability detection
+- **Proactive heartbeat** for automated maintenance and health monitoring
 
 ...enables teams to deploy sophisticated research automation that adapts to complexity without managing infrastructure.
 

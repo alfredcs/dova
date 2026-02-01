@@ -4,18 +4,30 @@ DOVA is an enterprise-grade, multi-agent research automation system built on AWS
 
 ## Features
 
+### Core Capabilities
 - **Multi-Agent Architecture**: Specialized agents for research, profiling, validation, and synthesis
 - **Agentic Reasoning**: ReAct-style reasoning loops, self-reflection, and working memory for smarter agents
 - **Collaborative Intelligence**: Blackboard, ensemble, iterative refinement, and tool-augmented patterns for synergistic multi-agent reasoning (1+1>2)
 - **Proactive Tool Discovery**: Automatic task analysis and tool selection from MCP servers, sandbox, and internal services
 - **MCP Integration**: Unified protocol for ArXiv, GitHub, HuggingFace, and web search
+- **Multi-Provider LLM**: AWS Bedrock, Anthropic, OpenAI with automatic fallback
+
+### Advanced Agent Intelligence (OpenClaw-Inspired)
+- **Multi-Tiered Thinking**: Configurable thinking budgets (OFF→MINIMAL→LOW→MEDIUM→HIGH→XHIGH) with auto-selection based on task complexity
+- **Self-Evaluation**: Response quality assessment with confidence scoring, format validation, and relevance checking
+- **Intelligent Error Recovery**: Automatic error diagnosis (transient/configuration/capability) with recommended recovery actions
+- **Session Management**: Automatic session freshness evaluation with staleness detection and recovery actions (continue/refresh/fork/repair)
+- **Enhanced Memory**: Semantic search with MMR (Maximal Marginal Relevance) reranking for diverse, relevant results
+- **Auto-Discovery**: Runtime discovery of available models and MCP servers with capability caching
+- **Proactive Heartbeat**: Cron-based background tasks for health checks, cleanups, and periodic maintenance
+
+### User & Content Features
 - **Custom Sources**: User-defined research sources (Web URLs, RSS feeds, APIs) with quality learning
 - **Proactive Recommendations**: Background monitoring of ArXiv/HuggingFace with personalized content delivery
 - **User Profiling**: Personalized research recommendations with AgentCore Memory
 - **Sandbox Execution**: Docker-based isolated code execution with resource tiers and quota management
 - **Code Validation**: Static analysis and sandbox execution for validating research implementations
 - **Bull/Bear Debate**: Balanced analysis through adversarial agent discussions
-- **Multi-Provider LLM**: AWS Bedrock, Anthropic, OpenAI with automatic fallback
 - **Background Jobs**: Redis Streams-based job queue with APScheduler for periodic tasks
 
 ## Quick Start
@@ -169,7 +181,8 @@ DOVA/
 │   │   ├── jobs.py      # Job dataclass and types
 │   │   ├── streams.py   # Redis Streams job queue
 │   │   ├── scheduler.py # APScheduler for periodic jobs
-│   │   └── worker.py    # Background job processor
+│   │   ├── worker.py    # Background job processor
+│   │   └── heartbeat.py # Cron-based proactive task system
 │   ├── services/        # Core services
 │   │   ├── blackboard.py    # Shared workspace for collaborative reasoning
 │   │   ├── ensemble.py      # Ensemble reasoning with aggregation strategies
@@ -177,6 +190,11 @@ DOVA/
 │   │   ├── tool_resolver.py # Proactive tool discovery and selection
 │   │   ├── sources.py       # Source registry and fetcher
 │   │   ├── memory.py        # AgentCore memory integration
+│   │   ├── thinking.py      # Multi-tiered thinking level system
+│   │   ├── evaluation.py    # Self-evaluation and error diagnosis
+│   │   ├── session.py       # Session freshness and state management
+│   │   ├── memory_enhanced.py # Semantic search with MMR reranking
+│   │   ├── discovery.py     # Model and MCP auto-discovery
 │   │   ├── recommendation/  # Proactive recommendation services
 │   │   │   ├── monitors.py      # ArXiv/HuggingFace polling
 │   │   │   ├── processor.py     # Content normalization & embedding
@@ -284,6 +302,16 @@ make deploy
 | `SANDBOX_ENABLED` | Enable sandbox execution | No (default: false) |
 | `SANDBOX_DOCKER_HOST` | Docker socket path | No |
 | `SANDBOX_MAX_CONCURRENT` | Max concurrent sandbox executions | No (default: 5) |
+| `THINKING_DEFAULT_LEVEL` | Default thinking level (off/minimal/low/medium/high/xhigh) | No (default: medium) |
+| `THINKING_AUTO_SELECT_ENABLED` | Auto-select thinking level based on task | No (default: true) |
+| `HEARTBEAT_ENABLED` | Enable proactive heartbeat tasks | No (default: true) |
+| `EVAL_AUTO_EVALUATE_RESPONSES` | Auto-evaluate LLM responses | No (default: false) |
+| `EVAL_MIN_CONFIDENCE_THRESHOLD` | Minimum confidence threshold (0-1) | No (default: 0.6) |
+| `SESSION_STALE_AFTER_SECONDS` | Session staleness timeout | No (default: 1800) |
+| `SESSION_EXPIRE_AFTER_SECONDS` | Session expiry timeout | No (default: 86400) |
+| `DISCOVERY_AUTO_DISCOVER_ON_STARTUP` | Auto-discover models on startup | No (default: true) |
+| `MEMORY_ENHANCED_SEMANTIC_SEARCH_ENABLED` | Enable semantic memory search | No (default: true) |
+| `MEMORY_ENHANCED_MMR_LAMBDA` | MMR diversity parameter (0-1) | No (default: 0.5) |
 
 ## License
 
