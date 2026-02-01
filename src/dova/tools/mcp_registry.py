@@ -173,7 +173,10 @@ class MCPClient:
         tool: str,
         params: dict[str, Any],
     ) -> Any:
-        """Invoke MCP tool via stdio transport."""
+        """Invoke MCP tool via stdio transport with proper initialization."""
+        import json
+        import os
+
         self._logger.debug(
             "stdio_invoke",
             server=server_config.name,
@@ -181,10 +184,124 @@ class MCPClient:
             command=server_config.command,
         )
 
-        raise NotImplementedError(
-            f"STDIO transport for {server_config.name} not supported. "
-            "Configure HTTP MCP servers in ~/.dova.json instead."
-        )
+        if not server_config.command:
+            raise ValueError(f"No command configured for STDIO server: {server_config.name}")
+
+        # Get command from repo manager if available
+        from dova.services.mcp_repo_manager import get_mcp_repo_manager
+
+        repo_manager = get_mcp_repo_manager()
+        cmd_info = repo_manager.get_server_command(server_config.name)
+
+        if cmd_info:
+            command, args, env_vars = cmd_info
+            full_command = [command] + args
+            env = {**os.environ, **env_vars}
+        else:
+            # Fallback to configured command
+            full_command = server_config.command.split()
+            env = {**os.environ, **server_config.env_vars}
+
+        # Start process
+        process = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *full_command,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+
+            async def send_and_receive(request: dict, request_id: int) -> dict:
+                """Send a JSON-RPC request and read the response."""
+                request["id"] = request_id
+                request_line = json.dumps(request) + "\n"
+                process.stdin.write(request_line.encode())
+                await process.stdin.drain()
+
+                # Read response line
+                response_line = await asyncio.wait_for(
+                    process.stdout.readline(),
+                    timeout=server_config.timeout_seconds,
+                )
+                if not response_line:
+                    raise RuntimeError("No response from server")
+                return json.loads(response_line.decode().strip())
+
+            # Step 1: Initialize
+            init_request = {
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "dova", "version": "1.1.0"},
+                },
+            }
+            init_response = await send_and_receive(init_request, 0)
+            if "error" in init_response:
+                raise RuntimeError(f"Initialize failed: {init_response['error']}")
+
+            # Step 2: Send initialized notification
+            initialized_notif = {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+            }
+            process.stdin.write((json.dumps(initialized_notif) + "\n").encode())
+            await process.stdin.drain()
+
+            # Step 3: Call the tool
+            tool_request = {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": tool, "arguments": params},
+            }
+            tool_response = await send_and_receive(tool_request, 1)
+
+            # Cleanup
+            process.stdin.close()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                process.kill()
+
+            return self._parse_stdio_result(tool_response)
+
+        except asyncio.TimeoutError:
+            self._logger.error(
+                "stdio_timeout",
+                server=server_config.name,
+                timeout=server_config.timeout_seconds,
+            )
+            if process:
+                process.kill()
+            raise RuntimeError(f"STDIO request timed out after {server_config.timeout_seconds}s")
+        except Exception as e:
+            if process and process.returncode is None:
+                process.kill()
+            raise
+
+    def _parse_stdio_result(self, response: dict[str, Any]) -> Any:
+        """Parse JSON-RPC response from STDIO server."""
+        import json
+
+        if "error" in response:
+            raise RuntimeError(f"MCP error: {response['error']}")
+
+        result = response.get("result", {})
+        content = result.get("content", [])
+
+        if content and isinstance(content, list):
+            texts = [c.get("text", "") for c in content if c.get("type") == "text"]
+            if texts:
+                combined = "\n".join(texts)
+                try:
+                    return json.loads(combined)
+                except json.JSONDecodeError:
+                    return combined
+
+        return result
 
     async def _invoke_http(
         self,
@@ -283,7 +400,7 @@ class MCPClient:
                 "capabilities": {},
                 "clientInfo": {
                     "name": "dova",
-                    "version": "1.0.0",
+                    "version": "1.1.0",
                 },
             },
         }

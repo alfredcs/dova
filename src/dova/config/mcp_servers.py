@@ -65,7 +65,7 @@ ARXIV_MCP = MCPServerConfig(
     priority=1,
     tools=[
         MCPTool(
-            name="search_arxiv",
+            name="search_papers",
             description="Search ArXiv papers by query string",
             input_schema={
                 "type": "object",
@@ -379,7 +379,7 @@ class MCPRegistry:
 
 
 def get_default_registry() -> MCPRegistry:
-    """Get the default MCP server registry, loading from ~/.dova.json if present."""
+    """Get the default MCP server registry, loading from ~/.dova.json and managed repos."""
     registry = MCPRegistry()
 
     # Load user config from ~/.dova.json
@@ -387,7 +387,87 @@ def get_default_registry() -> MCPRegistry:
     for name, config in user_servers.items():
         registry.register_server(config)
 
+    # Load managed MCP repos (e.g., arxiv-mcp-server)
+    managed_servers = load_managed_mcp_servers()
+    for name, config in managed_servers.items():
+        # Don't override user config
+        if name not in registry.servers:
+            registry.register_server(config)
+
     return registry
+
+
+def load_managed_mcp_servers() -> dict[str, MCPServerConfig]:
+    """Load MCP server configurations from managed repos (cloned via dova mcp setup)."""
+    from pathlib import Path
+
+    servers = {}
+
+    # Check for arxiv-mcp-server
+    arxiv_path = Path.home() / ".dova" / "mcp-servers" / "arxiv-mcp-server"
+    if arxiv_path.exists():
+        storage_path = Path.home() / ".dova" / "arxiv-papers"
+        storage_path.mkdir(parents=True, exist_ok=True)
+
+        servers["arxiv"] = MCPServerConfig(
+            name="arxiv",
+            description="ArXiv paper search and download (blazickjp/arxiv-mcp-server)",
+            transport=MCPTransport.STDIO,
+            command=f"uv --directory {arxiv_path} run arxiv-mcp-server --storage-path {storage_path}",
+            enabled=True,
+            priority=1,
+            tools=[
+                MCPTool(
+                    name="search_papers",
+                    description="Search ArXiv papers by query",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Search query"},
+                            "max_results": {"type": "integer", "default": 10},
+                            "date_from": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                            "categories": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["query"],
+                    },
+                    capabilities=[MCPCapability.SEARCH],
+                ),
+                MCPTool(
+                    name="download_paper",
+                    description="Download a paper by arXiv ID",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "paper_id": {"type": "string", "description": "ArXiv paper ID"},
+                        },
+                        "required": ["paper_id"],
+                    },
+                    capabilities=[MCPCapability.FETCH],
+                ),
+                MCPTool(
+                    name="read_paper",
+                    description="Read the content of a downloaded paper",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "paper_id": {"type": "string", "description": "ArXiv paper ID"},
+                        },
+                        "required": ["paper_id"],
+                    },
+                    capabilities=[MCPCapability.FETCH],
+                ),
+                MCPTool(
+                    name="list_papers",
+                    description="List all downloaded papers",
+                    input_schema={"type": "object", "properties": {}},
+                    capabilities=[MCPCapability.LIST],
+                ),
+            ],
+            rate_limit_rpm=30,
+            timeout_seconds=60,
+        )
+
+    return servers
 
 
 def get_dova_config_path() -> str:

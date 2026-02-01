@@ -7,6 +7,13 @@ from dova.services.collaborative import (
     CollaborativeResult,
 )
 from dova.services.discovery import AutoDiscovery, MCPServerInfo, ModelInfo
+from dova.services.mcp_repo_manager import (
+    MCPRepoConfig,
+    MCPRepoManager,
+    get_mcp_repo_manager,
+    setup_mcp_repos,
+    update_mcp_repos,
+)
 from dova.services.ensemble import (
     AggregationMethod,
     AgentAnswer,
@@ -75,4 +82,10 @@ __all__ = [
     "ModelInfo",
     "MCPServerInfo",
     "AutoDiscovery",
+    # MCP Repo Manager
+    "MCPRepoConfig",
+    "MCPRepoManager",
+    "get_mcp_repo_manager",
+    "setup_mcp_repos",
+    "update_mcp_repos",
 ]

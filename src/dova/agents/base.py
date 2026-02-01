@@ -245,7 +245,7 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         """Convenience method for ArXiv search."""
         return await self.call_tool(
             "arxiv",
-            "search_arxiv",
+            "search_papers",
             {"query": query, "max_results": max_results},
         )
 

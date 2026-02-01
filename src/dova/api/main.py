@@ -78,6 +78,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.mcp_client = app.state.mcp_manager.get_client()
     logger.info("llm_router_initialized", default_provider=settings.llm.default_provider)
 
+    # Setup MCP server repos (clone/update arxiv-mcp-server etc.)
+    from dova.services.mcp_repo_manager import setup_mcp_repos
+
+    try:
+        mcp_repo_results = await setup_mcp_repos()
+        logger.info("mcp_repos_setup", results=mcp_repo_results)
+    except Exception as e:
+        logger.warning("mcp_repos_setup_failed", error=str(e))
+
     # Initialize research agent
     from dova.agents.research import ResearchAgent
 
@@ -157,6 +166,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning("job_scheduler_start_error", error=str(e))
 
+    # Initialize heartbeat processor for proactive tasks (weekly MCP updates, etc.)
+    from dova.jobs.heartbeat import HeartbeatProcessor
+
+    try:
+        app.state.heartbeat = HeartbeatProcessor(
+            job_queue=app.state.job_queue,
+            auto_register_defaults=True,
+        )
+        await app.state.heartbeat.start()
+        logger.info(
+            "heartbeat_started",
+            tasks=[t.name for t in app.state.heartbeat.list_tasks()],
+        )
+    except Exception as e:
+        logger.warning("heartbeat_start_error", error=str(e))
+        app.state.heartbeat = None
+
     # Initialize sandbox executor if enabled
     if settings.sandbox.enabled:
         from dova.services.sandbox.executor import DockerExecutor
@@ -183,6 +209,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Shutdown
+    if hasattr(app.state, "heartbeat") and app.state.heartbeat:
+        await app.state.heartbeat.stop()
     if hasattr(app.state, "scheduler") and app.state.scheduler:
         await app.state.scheduler.stop()
     if hasattr(app.state, "redis") and app.state.redis:

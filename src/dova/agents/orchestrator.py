@@ -20,6 +20,7 @@ from dova.agents.base import AgentResult, AgentTask, BaseAgent
 from dova.config.providers import LLMRouter, TaskType
 from dova.services.collaborative import CollaborativeReasoning, CollaborationMode
 from dova.services.evaluation import SelfEvaluator
+from dova.services.web_search import WebSearchService, create_web_search_service
 from dova.utils.metrics import MetricsCollector
 
 logger = structlog.get_logger(__name__)
@@ -85,6 +86,7 @@ class DOVAOrchestrator(BaseAgent):
         mcp_client: Any | None = None,
         metrics: MetricsCollector | None = None,
         reasoning_mode: ReasoningMode = ReasoningMode.STANDARD,
+        web_search_service: WebSearchService | None = None,
     ):
         super().__init__(llm_router, mcp_client, metrics)
         self.agents = agents or {}
@@ -92,6 +94,7 @@ class DOVAOrchestrator(BaseAgent):
         self.reasoning_mode = reasoning_mode
         self._collaborative = CollaborativeReasoning(llm_func=self.think)
         self._evaluator = SelfEvaluator(min_confidence=0.6)
+        self._web_search_service = web_search_service
 
     @property
     def system_prompt(self) -> str:
@@ -314,15 +317,12 @@ Example for "Lookup qwen3-max-thinking architectures":
             selected=smart_sources,
         )
 
-        # Filter to only configured sources (check MCP registry or Tavily)
+        # Filter to only configured sources (check MCP registry or web search service)
         available_sources = []
         for source in smart_sources:
             if source == "web":
-                # Web search is available if Tavily is configured
-                from dova.config.settings import get_settings
-                settings = get_settings()
-                if settings.mcp.tavily_api_key:
-                    available_sources.append(source)
+                # Web search is always available (DuckDuckGo fallback)
+                available_sources.append(source)
             elif self.mcp_client:
                 server = self.mcp_client.registry.get_server(source)
                 if server:
@@ -620,7 +620,7 @@ Instructions:
                 try:
                     if server_name == "arxiv":
                         result = await self.mcp_client.invoke(
-                            server_name, "search_arxiv",
+                            server_name, "search_papers",
                             {"query": query, "max_results": 3}
                         )
                         if result:
@@ -705,47 +705,36 @@ Instructions:
         return sources
 
     async def _search_web_for_context(self, query: str) -> str:
-        """Search the web using Tavily for current information."""
+        """Search the web using multi-provider service for current information."""
         try:
-            from dova.config.settings import get_settings
-            settings = get_settings()
+            # Lazy initialization of web search service
+            if self._web_search_service is None:
+                self._web_search_service = create_web_search_service()
 
-            if not settings.mcp.tavily_api_key:
-                self._logger.debug("tavily_not_configured_for_context")
-                return ""
+            self._logger.debug("web_context_search", query=query)
 
-            from tavily import TavilyClient
-            client = TavilyClient(api_key=settings.mcp.tavily_api_key)
-
-            self._logger.debug("tavily_context_search", query=query)
-
-            response = client.search(
+            response = await self._web_search_service.search(
                 query=query,
-                search_depth="advanced",
                 max_results=5,
             )
 
-            results = response.get("results", [])
-            if not results:
+            if response.error or not response.results:
+                self._logger.debug("web_search_no_results", error=response.error)
                 return ""
 
             # Format results for context
-            formatted = ["**Web Search Results:**"]
-            for i, result in enumerate(results[:5], 1):
-                if not isinstance(result, dict):
-                    continue
-                title = result.get("title", "No title")
-                url = result.get("url", "")
-                content = result.get("content", "")[:300]
-                formatted.append(f"\n{i}. **{title}**\n   URL: {url}\n   {content}...")
+            formatted = [f"**Web Search Results (via {response.provider}):**"]
+            for i, result in enumerate(response.results[:5], 1):
+                title = result.title or "No title"
+                url = result.url or ""
+                content = result.snippet[:300] if result.snippet else ""
+                date_str = f" ({result.published_date})" if result.published_date else ""
+                formatted.append(f"\n{i}. **{title}**{date_str}\n   URL: {url}\n   {content}...")
 
             return "\n".join(formatted)
 
-        except ImportError:
-            self._logger.warning("tavily_not_installed")
-            return ""
         except Exception as e:
-            self._logger.warning("tavily_context_error", error=str(e))
+            self._logger.warning("web_context_error", error=str(e))
             return ""
 
     async def _synthesize_results(

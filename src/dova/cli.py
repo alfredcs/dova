@@ -535,6 +535,90 @@ def profile_update(
     click.echo("(Profile update not implemented in CLI)")
 
 
+@cli.command()
+@click.pass_context
+def models(ctx: click.Context) -> None:
+    """Show LLM model configuration and tier mapping.
+
+    Displays which models are used for different task types,
+    organized by capability tier (basic, standard, advanced, reasoning).
+    """
+    from dova.config.providers import (
+        DEFAULT_ANTHROPIC_MODELS,
+        DEFAULT_BEDROCK_MODELS,
+        DEFAULT_OPENAI_MODELS,
+        TASK_TIER_MAPPING,
+        ModelTier,
+        create_llm_router_from_settings,
+    )
+
+    click.echo(click.style("\n=== DOVA Model Configuration ===\n", bold=True))
+
+    # Task to Tier mapping
+    click.echo(click.style("Task → Tier Mapping:", bold=True))
+    click.echo("-" * 50)
+    tier_colors = {
+        ModelTier.BASIC: "green",
+        ModelTier.STANDARD: "yellow",
+        ModelTier.ADVANCED: "red",
+        ModelTier.REASONING: "magenta",
+    }
+    for task_type, tier in TASK_TIER_MAPPING.items():
+        color = tier_colors.get(tier, "white")
+        click.echo(f"  {task_type.value:20s} → {click.style(tier.value, fg=color)}")
+
+    # Default models by provider
+    click.echo(click.style("\n\nDefault Models by Provider:", bold=True))
+    click.echo("-" * 60)
+
+    providers = [
+        ("Bedrock (AWS)", DEFAULT_BEDROCK_MODELS, "cyan"),
+        ("Anthropic", DEFAULT_ANTHROPIC_MODELS, "blue"),
+        ("OpenAI", DEFAULT_OPENAI_MODELS, "green"),
+    ]
+
+    for provider_name, models, color in providers:
+        click.echo(click.style(f"\n{provider_name}:", fg=color, bold=True))
+        for tier, model_id in models.items():
+            tier_color = tier_colors.get(tier, "white")
+            tier_str = f"{tier.value:12s}"
+            click.echo(f"  {click.style(tier_str, fg=tier_color)} → {model_id}")
+
+    # Currently configured router
+    click.echo(click.style("\n\nCurrently Active Configuration:", bold=True))
+    click.echo("-" * 60)
+
+    try:
+        router = create_llm_router_from_settings()
+        for name, provider in router.providers.items():
+            click.echo(click.style(f"\n{name.upper()} (enabled):", fg="green", bold=True))
+            for task_type, model_config in provider.config.models.items():
+                tier = TASK_TIER_MAPPING.get(task_type, ModelTier.STANDARD)
+                tier_color = tier_colors.get(tier, "white")
+                tier_label = click.style(f"{tier.value:8s}", fg=tier_color)
+                click.echo(f"  {task_type.value:20s} [{tier_label}] → {model_config.model_id}")
+    except Exception as e:
+        click.echo(click.style(f"  Error loading router: {e}", fg="red"))
+
+    # Environment variable hints
+    click.echo(click.style("\n\nCustomize with Environment Variables:", bold=True))
+    click.echo("-" * 60)
+    click.echo("""
+  # Bedrock tier models
+  export BEDROCK_MODEL_BASIC=us.anthropic.claude-haiku-4-5-20251001-v1:0
+  export BEDROCK_MODEL_STANDARD=us.anthropic.claude-sonnet-4-20250514-v1:0
+  export BEDROCK_MODEL_ADVANCED=us.anthropic.claude-sonnet-4-20250514-v1:0
+
+  # Anthropic tier models
+  export ANTHROPIC_MODEL_BASIC=claude-haiku-3-5-20241022
+  export ANTHROPIC_MODEL_ADVANCED=claude-sonnet-4-20250514
+
+  # OpenAI tier models
+  export OPENAI_MODEL_BASIC=gpt-4o-mini
+  export OPENAI_MODEL_ADVANCED=gpt-4o
+    """)
+
+
 @cli.group()
 def mcp() -> None:
     """Manage MCP server configurations."""
@@ -614,17 +698,34 @@ def mcp_list(no_check: bool) -> None:
     """
     import httpx
 
-    from dova.config.mcp_servers import list_mcp_servers, get_dova_config_path
+    from dova.config.mcp_servers import list_mcp_servers, get_dova_config_path, load_managed_mcp_servers
 
     servers = list_mcp_servers()
+
+    # Also include managed repos (like arxiv-mcp-server)
+    managed = load_managed_mcp_servers()
+    managed_names = set()
+    for name, config in managed.items():
+        if name not in servers:
+            servers[name] = {
+                "type": "stdio",
+                "command": config.command,
+                "managed": True,
+            }
+            managed_names.add(name)
 
     if not servers:
         click.echo(f"No MCP servers configured in {get_dova_config_path()}")
         click.echo("\nAdd servers with: dova mcp add <name> --url <url>")
+        click.echo("Or setup managed repos with: dova mcp setup")
         return
 
     async def check_server_health(name: str, config: dict) -> tuple[str, bool, str]:
         """Check if an MCP server is reachable."""
+        # STDIO servers don't have URLs to check
+        if config.get("type") == "stdio":
+            return (name, True, "STDIO (local)")
+
         url = config.get("url")
         if not url:
             return (name, False, "No URL configured")
@@ -698,8 +799,18 @@ def mcp_list(no_check: bool) -> None:
             status_msg = ""
 
         click.echo(f"\n{status} {click.style(name, bold=True)}{status_msg}")
-        click.echo(f"  Type: {config.get('type', 'http')}")
-        click.echo(f"  URL: {config.get('url', 'N/A')}")
+        server_type = config.get("type", "http")
+        click.echo(f"  Type: {server_type}")
+        if server_type == "stdio":
+            cmd = config.get("command", "N/A")
+            # Truncate long commands
+            if len(cmd) > 60:
+                cmd = cmd[:57] + "..."
+            click.echo(f"  Command: {cmd}")
+            if config.get("managed"):
+                click.echo(f"  Source: Managed repo (dova mcp setup)")
+        else:
+            click.echo(f"  URL: {config.get('url', 'N/A')}")
         if config.get("headers"):
             click.echo(f"  Headers: {len(config['headers'])} configured")
 
@@ -758,15 +869,144 @@ def mcp_test(name: str, tool: Optional[str]) -> None:
         if tool:
             click.echo(f"\nInvoking tool: {tool}")
             try:
-                result = await client.invoke(name, tool, {"query": "test", "limit": 1})
+                # Use appropriate test params for different servers
+                if name == "arxiv":
+                    test_params = {"query": "machine learning", "max_results": 1}
+                elif name == "huggingface":
+                    test_params = {"query": "test", "limit": 1}
+                else:
+                    test_params = {"query": "test", "limit": 1}
+                result = await client.invoke(name, tool, test_params)
                 click.echo(click.style("✓ Success", fg="green"))
-                click.echo(f"Result: {result}")
+                # Truncate long results
+                result_str = str(result)
+                if len(result_str) > 500:
+                    result_str = result_str[:500] + "..."
+                click.echo(f"Result: {result_str}")
             except Exception as e:
                 click.echo(click.style(f"✗ Failed: {e}", fg="red"))
         else:
             click.echo(click.style("✓ Server configured", fg="green"))
 
     asyncio.run(run_test())
+
+
+@mcp.command("setup")
+@click.option("--name", "-n", default=None, help="Specific repo name to setup (default: all)")
+def mcp_setup(name: Optional[str]) -> None:
+    """Clone and setup MCP server repositories.
+
+    This clones MCP server repos (like arxiv-mcp-server) locally
+    and installs their dependencies.
+
+    Example:
+        dova mcp setup              # Setup all repos
+        dova mcp setup --name arxiv # Setup specific repo
+    """
+    from dova.services.mcp_repo_manager import get_mcp_repo_manager
+
+    async def run_setup():
+        manager = get_mcp_repo_manager()
+
+        if name:
+            config = manager.get_repo(name)
+            if not config:
+                click.echo(f"Unknown MCP repo: {name}", err=True)
+                click.echo("\nAvailable repos:")
+                for repo in manager.list_repos():
+                    click.echo(f"  - {repo.name}: {repo.repo_url}")
+                return
+
+            click.echo(f"Setting up MCP repo: {name}")
+            click.echo(f"  URL: {config.repo_url}")
+            click.echo(f"  Path: {config.local_path}")
+
+            result = await manager.setup_repo(name)
+            if result:
+                click.echo(click.style("✓ Setup successful", fg="green"))
+            else:
+                click.echo(click.style("✗ Setup failed", fg="red"))
+        else:
+            click.echo("Setting up all MCP repos...")
+            results = await manager.setup_all()
+            for repo_name, success in results.items():
+                status = click.style("✓", fg="green") if success else click.style("✗", fg="red")
+                click.echo(f"  {status} {repo_name}")
+
+    asyncio.run(run_setup())
+
+
+@mcp.command("update")
+@click.option("--name", "-n", default=None, help="Specific repo name to update (default: all)")
+def mcp_update(name: Optional[str]) -> None:
+    """Git pull updates for MCP server repositories.
+
+    This updates locally cloned MCP server repos to the latest version.
+
+    Example:
+        dova mcp update              # Update all repos
+        dova mcp update --name arxiv # Update specific repo
+    """
+    from dova.services.mcp_repo_manager import get_mcp_repo_manager
+
+    async def run_update():
+        manager = get_mcp_repo_manager()
+
+        if name:
+            config = manager.get_repo(name)
+            if not config:
+                click.echo(f"Unknown MCP repo: {name}", err=True)
+                return
+
+            if not manager.is_repo_installed(name):
+                click.echo(f"Repo not installed: {name}", err=True)
+                click.echo("Run 'dova mcp setup' first.")
+                return
+
+            click.echo(f"Updating MCP repo: {name}")
+            result = await manager.setup_repo(name)
+            if result:
+                click.echo(click.style("✓ Update successful", fg="green"))
+            else:
+                click.echo(click.style("✗ Update failed", fg="red"))
+        else:
+            click.echo("Updating all MCP repos...")
+            results = await manager.update_all()
+            for repo_name, success in results.items():
+                status = click.style("✓", fg="green") if success else click.style("✗", fg="red")
+                click.echo(f"  {status} {repo_name}")
+
+    asyncio.run(run_update())
+
+
+@mcp.command("repos")
+def mcp_repos() -> None:
+    """List managed MCP server repositories.
+
+    Example:
+        dova mcp repos
+    """
+    from dova.services.mcp_repo_manager import get_mcp_repo_manager
+
+    manager = get_mcp_repo_manager()
+    repos = manager.list_repos()
+
+    if not repos:
+        click.echo("No MCP repos configured.")
+        return
+
+    click.echo("Managed MCP server repositories:\n")
+    for repo in repos:
+        installed = manager.is_repo_installed(repo.name)
+        status = click.style("✓ Installed", fg="green") if installed else click.style("✗ Not installed", fg="yellow")
+
+        click.echo(f"  {repo.name}")
+        click.echo(f"    Status: {status}")
+        click.echo(f"    URL: {repo.repo_url}")
+        click.echo(f"    Path: {repo.local_path}")
+        if repo.last_updated:
+            click.echo(f"    Last Updated: {repo.last_updated.isoformat()}")
+        click.echo("")
 
 
 def main() -> None:

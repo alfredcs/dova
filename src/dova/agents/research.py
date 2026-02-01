@@ -5,7 +5,7 @@ Handles research queries across multiple sources:
 - ArXiv papers
 - GitHub repositories and code
 - HuggingFace models and datasets
-- Web search (via Tavily)
+- Web search (multi-provider: Brave, Perplexity, Tavily, DuckDuckGo)
 """
 
 import time
@@ -18,6 +18,7 @@ from dova.agents.base import AgentResult, AgentTask, BaseAgent
 from dova.config.providers import LLMRouter, TaskType
 from dova.services.sources import SourceRegistry, SourceFetcher
 from dova.services.source_types import SourceType
+from dova.services.web_search import WebSearchService, create_web_search_service
 from dova.utils.metrics import MetricsCollector
 
 logger = structlog.get_logger(__name__)
@@ -62,12 +63,16 @@ class ResearchAgent(BaseAgent):
         memory_service: Any | None = None,
         source_registry: SourceRegistry | None = None,
         tavily_api_key: str | None = None,
+        web_search_service: WebSearchService | None = None,
     ):
         super().__init__(llm_router, mcp_client, metrics, memory_service=memory_service)
         self.source_registry = source_registry
         self.source_fetcher = SourceFetcher()
+        # Legacy Tavily support (deprecated - use web_search_service)
         self.tavily_api_key = tavily_api_key
         self._tavily_client = None
+        # New multi-provider web search service
+        self._web_search_service = web_search_service
 
     @property
     def system_prompt(self) -> str:
@@ -160,7 +165,14 @@ When analyzing search results:
         result = await self.search_arxiv(search_query, max_results=20)
 
         if result.success and result.data:
-            papers = result.data if isinstance(result.data, list) else [result.data]
+            data = result.data
+            # Handle dict response with "papers" key (arxiv-mcp-server format)
+            if isinstance(data, dict) and "papers" in data:
+                papers = data["papers"]
+            elif isinstance(data, list):
+                papers = data
+            else:
+                papers = [data]
             for paper in papers:
                 # Skip non-dict items (e.g., error message strings)
                 if not isinstance(paper, dict):
@@ -286,70 +298,65 @@ When analyzing search results:
         query: str,
         entities: dict[str, Any],
     ) -> ResearchFindings:
-        """Search the web using Tavily."""
+        """Search the web using multi-provider service (Brave, Perplexity, Tavily, DuckDuckGo)."""
         findings = ResearchFindings()
 
-        if not self.tavily_api_key:
-            self._logger.warning("tavily_not_configured", message="Tavily API key not set")
-            return findings
+        # Lazy initialization of web search service
+        if self._web_search_service is None:
+            self._web_search_service = create_web_search_service()
+
+        # Build search query using primary_subject for best results
+        primary_subject = entities.get("primary_subject", "")
+        search_aspects = entities.get("search_aspects", [])
+
+        if primary_subject:
+            # Use primary subject as the core, add aspects if specified
+            if search_aspects:
+                search_query = f"{primary_subject} {' '.join(search_aspects[:2])}"
+            else:
+                search_query = primary_subject
+        else:
+            # Fallback to original query
+            search_query = query
+
+        self._logger.debug("web_search", query=search_query, primary_subject=primary_subject)
 
         try:
-            # Lazy initialization of Tavily client
-            if self._tavily_client is None:
-                from tavily import TavilyClient
-                self._tavily_client = TavilyClient(api_key=self.tavily_api_key)
-
-            # Build search query using primary_subject for best results
-            primary_subject = entities.get("primary_subject", "")
-            search_aspects = entities.get("search_aspects", [])
-
-            if primary_subject:
-                # Use primary subject as the core, add aspects if specified
-                if search_aspects:
-                    search_query = f"{primary_subject} {' '.join(search_aspects[:2])}"
-                else:
-                    search_query = primary_subject
-            else:
-                # Fallback to original query
-                search_query = query
-
-            self._logger.debug("tavily_search", query=search_query, primary_subject=primary_subject)
-
-            # Perform web search
-            response = self._tavily_client.search(
+            # Perform web search with multi-provider service
+            response = await self._web_search_service.search(
                 query=search_query,
-                search_depth="advanced",
                 max_results=10,
             )
 
-            results = response.get("results", [])
-            for result in results:
-                if not isinstance(result, dict):
-                    continue
+            if response.error:
+                self._logger.warning("web_search_error", error=response.error)
+                return findings
+
+            for result in response.results:
                 findings.web_results.append(
                     SearchResult(
                         source="web",
-                        title=result.get("title", ""),
-                        url=result.get("url", ""),
-                        description=result.get("content", "")[:500],
+                        title=result.title,
+                        url=result.url,
+                        description=result.snippet[:500] if result.snippet else "",
                         metadata={
-                            "score": result.get("score", 0),
-                            "published_date": result.get("published_date", ""),
+                            "score": result.score,
+                            "published_date": result.published_date or "",
+                            "provider": result.source_provider,
                         },
-                        relevance_score=result.get("score", 0),
+                        relevance_score=result.score,
                     )
                 )
 
             self._logger.info(
-                "tavily_search_complete",
+                "web_search_complete",
                 query=search_query,
+                provider=response.provider,
                 results_count=len(findings.web_results),
             )
 
-        except ImportError:
-            self._logger.error("tavily_not_installed", message="Install tavily-python: pip install tavily-python")
         except Exception as e:
-            self._logger.error("tavily_search_error", error=str(e))
+            self._logger.error("web_search_error", error=str(e))
 
         return findings
 

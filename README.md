@@ -10,7 +10,10 @@ DOVA is an enterprise-grade, multi-agent research automation system built on AWS
 - **Collaborative Intelligence**: Blackboard, ensemble, iterative refinement, and tool-augmented patterns for synergistic multi-agent reasoning (1+1>2)
 - **Proactive Tool Discovery**: Automatic task analysis and tool selection from MCP servers, sandbox, and internal services
 - **MCP Integration**: Unified protocol for ArXiv, GitHub, HuggingFace, and web search
+- **Multi-Provider Web Search**: Brave, Perplexity, Tavily, and DuckDuckGo with auto-selection and fallback
+- **Intelligent Source Selection**: Automatic source filtering based on query type (news vs technical)
 - **Multi-Provider LLM**: AWS Bedrock, Anthropic, OpenAI with automatic fallback
+- **Model Tiering**: Cost-optimized model selection (Basic/Standard/Advanced/Reasoning)
 
 ### Advanced Agent Intelligence (OpenClaw-Inspired)
 - **Multi-Tiered Thinking**: Configurable thinking budgets (OFF→MINIMAL→LOW→MEDIUM→HIGH→XHIGH) with auto-selection based on task complexity
@@ -68,7 +71,11 @@ AWS_BEDROCK_MODEL_ID=anthropic.claude-sonnet-4-20250514-v1:0
 
 # MCP Server Configuration
 MCP_GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-MCP_TAVILY_API_KEY=tvly-xxxxxxxxxxxx
+
+# Web Search Providers (optional - DuckDuckGo is free fallback)
+BRAVE_API_KEY=xxx           # https://brave.com/search/api/
+PERPLEXITY_API_KEY=xxx      # https://perplexity.ai/settings/api
+TAVILY_API_KEY=xxx          # https://tavily.com
 ```
 
 ### Running Locally
@@ -101,6 +108,18 @@ dova search arxiv "transformer attention mechanisms"
 
 # Search GitHub repositories
 dova search github "rag implementation python"
+
+# Research with web search for current events (works out of the box via DuckDuckGo)
+dova research "latest AI developments" -s web -s arxiv
+
+# View model tiering configuration
+dova models
+
+# Setup MCP server repos (clones arxiv-mcp-server etc.)
+dova mcp setup
+
+# Update MCP repos (git pull)
+dova mcp update
 ```
 
 ## Architecture
@@ -293,7 +312,9 @@ make deploy
 | `AWS_REGION` | AWS region for Bedrock | Yes |
 | `AWS_BEDROCK_MODEL_ID` | Bedrock model ID | Yes |
 | `MCP_GITHUB_TOKEN` | GitHub personal access token | No |
-| `MCP_TAVILY_API_KEY` | Tavily API key for web search | No |
+| `BRAVE_API_KEY` | Brave Search API key | No |
+| `PERPLEXITY_API_KEY` | Perplexity API key | No |
+| `TAVILY_API_KEY` | Tavily API key for web search | No |
 | `REDIS_HOST` | Redis host | Yes |
 | `REDIS_PORT` | Redis port | Yes |
 | `JOB_WORKER_CONCURRENCY` | Background worker concurrency | No (default: 5) |
@@ -312,6 +333,10 @@ make deploy
 | `DISCOVERY_AUTO_DISCOVER_ON_STARTUP` | Auto-discover models on startup | No (default: true) |
 | `MEMORY_ENHANCED_SEMANTIC_SEARCH_ENABLED` | Enable semantic memory search | No (default: true) |
 | `MEMORY_ENHANCED_MMR_LAMBDA` | MMR diversity parameter (0-1) | No (default: 0.5) |
+| `LLM_TIER_BASIC_MODEL` | Model for basic tasks (classification, summarization) | No |
+| `LLM_TIER_STANDARD_MODEL` | Model for standard tasks | No |
+| `LLM_TIER_ADVANCED_MODEL` | Model for complex tasks (code generation, reasoning) | No |
+| `LLM_TIER_REASONING_MODEL` | Model for deep reasoning tasks | No |
 
 ## License
 

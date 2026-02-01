@@ -127,6 +127,12 @@ OPENAI_API_KEY=your-openai-key
 # MCP Servers
 MCP_ENABLED_SERVERS=arxiv,github,huggingface
 
+# Web Search Providers (optional - DuckDuckGo is free fallback)
+# Provider priority: Brave > Perplexity > Tavily > DuckDuckGo
+BRAVE_API_KEY=               # https://brave.com/search/api/
+PERPLEXITY_API_KEY=          # https://perplexity.ai/settings/api
+TAVILY_API_KEY=              # https://tavily.com
+
 # API Configuration
 API_HOST=0.0.0.0
 API_PORT=8000
@@ -264,6 +270,62 @@ Beyond built-in MCP servers, users can add custom sources through the API:
 
 Custom sources support authentication (Bearer tokens, API keys) and learn quality scores from user interactions. See [Managing Custom Sources](#managing-custom-sources) for API details.
 
+### Web Search Configuration
+
+DOVA supports multi-provider web search with automatic selection and fallback. **Web search works out of the box** using DuckDuckGo as a free fallback - no API key required.
+
+**Provider Priority (auto mode):**
+1. **Brave Search** - When `BRAVE_API_KEY` is set (structured results, freshness filtering)
+2. **Perplexity Sonar** - When `PERPLEXITY_API_KEY` is set (AI-synthesized answers)
+3. **Tavily** - When `TAVILY_API_KEY` is set (advanced search)
+4. **DuckDuckGo** - Always available (free, no setup needed)
+
+**Configuration (optional - for better results):**
+```bash
+# Configure one or more providers for improved search quality
+export BRAVE_API_KEY=xxx           # https://brave.com/search/api/
+export PERPLEXITY_API_KEY=xxx      # https://perplexity.ai/settings/api
+export TAVILY_API_KEY=tvly-xxx     # https://tavily.com
+
+# Or use the prefixed version for Tavily
+export MCP_TAVILY_API_KEY=tvly-xxxxxxxxxxxx
+```
+
+**Quick Test:**
+```bash
+# Works immediately - no API keys needed
+dova research "latest AI news" -s web
+```
+
+The orchestrator intelligently selects web search for news-related queries (e.g., queries containing "latest", "news", "nominated", etc.).
+
+### Model Tiering Configuration
+
+DOVA uses a tiered model selection system to optimize costs. Simpler tasks use faster/cheaper models, while complex tasks use more capable models.
+
+| Tier | Task Types | Default Bedrock Model |
+|------|------------|----------------------|
+| `basic` | Classification, summarization | claude-haiku-4-5 |
+| `standard` | General queries | claude-sonnet-4 |
+| `advanced` | Code generation, research | claude-sonnet-4 |
+| `reasoning` | Complex reasoning, synthesis | claude-sonnet-4 |
+
+**Override with environment variables:**
+
+```bash
+# Custom models per tier
+export LLM_TIER_BASIC_MODEL=us.anthropic.claude-haiku-4-5-20251001-v1:0
+export LLM_TIER_STANDARD_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+export LLM_TIER_ADVANCED_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+export LLM_TIER_REASONING_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+```
+
+**View current configuration:**
+
+```bash
+dova models
+```
+
 ---
 
 ## Running Locally
@@ -328,6 +390,9 @@ dova research "reinforcement learning" -s arxiv -s github
 # Limit results
 dova research "BERT models" -n 5
 
+# Include web search for current events (works out of the box via DuckDuckGo)
+dova research "latest AI breakthroughs" -s arxiv -s web
+
 # Save to file
 dova research "attention mechanisms" -o results.json -f json
 ```
@@ -360,6 +425,18 @@ dova health --check
 ```bash
 # Show current configuration
 dova config
+```
+
+### Model Configuration
+
+```bash
+# Show model tiering configuration
+dova models
+
+# Output shows:
+# - Current provider and default model
+# - Model tiers (Basic, Standard, Advanced, Reasoning)
+# - Task-to-tier mappings
 ```
 
 ### User Profiles
@@ -399,6 +476,32 @@ dova mcp remove arxiv
 The `-H` flag accepts either:
 - **Token shorthand**: `-H ghp_token` → becomes `Authorization: Bearer ghp_token`
 - **Full header**: `-H "X-Api-Key: mykey"` → becomes `X-Api-Key: mykey`
+
+### MCP Server Repositories
+
+DOVA can automatically clone and manage MCP server repositories (like `arxiv-mcp-server`). These are cloned to `~/.dova/mcp-servers/`.
+
+```bash
+# Setup MCP server repos (clone & install dependencies)
+dova mcp setup
+
+# Setup a specific repo
+dova mcp setup --name arxiv
+
+# Update repos (git pull)
+dova mcp update
+
+# List managed repos
+dova mcp repos
+```
+
+**Automatic Weekly Updates**: When running `dova serve`, a heartbeat task automatically git pulls MCP server repos every Sunday at 4 AM.
+
+**Default Managed Repos:**
+
+| Name | Repository | Description |
+|------|------------|-------------|
+| `arxiv` | [blazickjp/arxiv-mcp-server](https://github.com/blazickjp/arxiv-mcp-server) | ArXiv paper search and download |
 
 ---
 

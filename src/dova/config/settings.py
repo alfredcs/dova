@@ -48,6 +48,33 @@ class LLMSettings(BaseSettings):
     max_tokens: int = Field(default=4096, ge=1, le=200000)
 
 
+class WebSearchSettings(BaseSettings):
+    """Web search provider configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="WEB_SEARCH_")
+
+    provider: Literal["auto", "brave", "perplexity", "tavily", "duckduckgo"] = Field(
+        default="auto", description="Web search provider (auto selects best available)"
+    )
+    brave_api_key: str | None = Field(default=None, description="Brave Search API key")
+    perplexity_api_key: str | None = Field(default=None, description="Perplexity API key")
+    tavily_api_key: str | None = Field(default=None, description="Tavily API key")
+    fallback_enabled: bool = Field(default=True, description="Enable fallback to other providers")
+
+    def __init__(self, **kwargs):
+        import os
+        # Map common env var names to settings
+        env_mappings = [
+            ("BRAVE_API_KEY", "WEB_SEARCH_BRAVE_API_KEY"),
+            ("PERPLEXITY_API_KEY", "WEB_SEARCH_PERPLEXITY_API_KEY"),
+            ("TAVILY_API_KEY", "WEB_SEARCH_TAVILY_API_KEY"),
+        ]
+        for source, target in env_mappings:
+            if os.environ.get(source) and not os.environ.get(target):
+                os.environ[target] = os.environ[source]
+        super().__init__(**kwargs)
+
+
 class MCPSettings(BaseSettings):
     """MCP server configuration."""
 
@@ -233,7 +260,7 @@ class Settings(BaseSettings):
 
     # Application metadata
     app_name: str = Field(default="DOVA", description="Application name")
-    app_version: str = Field(default="0.1.0", description="Application version")
+    app_version: str = Field(default="1.1.0", description="Application version")
     environment: Literal["development", "staging", "production"] = Field(
         default="development", description="Deployment environment"
     )
@@ -245,6 +272,7 @@ class Settings(BaseSettings):
     aws: AWSSettings = Field(default_factory=AWSSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     mcp: MCPSettings = Field(default_factory=MCPSettings)
+    web_search: WebSearchSettings = Field(default_factory=WebSearchSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     api: APISettings = Field(default_factory=APISettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)

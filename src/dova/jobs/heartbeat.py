@@ -72,6 +72,12 @@ DEFAULT_TASKS: list[HeartbeatTask] = [
         handler="cleanup_sessions",
         metadata={"description": "Clean up expired sessions"},
     ),
+    HeartbeatTask(
+        name="mcp_repo_update",
+        cron_schedule="0 4 * * 0",  # Weekly on Sunday at 4 AM
+        handler="update_mcp_repos",
+        metadata={"description": "Git pull updates for MCP server repos"},
+    ),
 ]
 
 
@@ -302,7 +308,22 @@ class HeartbeatProcessor:
             self._logger.debug("cleaning_up_sessions")
             # In production, this would remove expired sessions
 
+        async def update_mcp_repos() -> None:
+            """Git pull updates for MCP server repos."""
+            self._logger.info("updating_mcp_repos")
+            try:
+                from dova.services.mcp_repo_manager import update_mcp_repos as do_update
+
+                results = await do_update()
+                self._logger.info(
+                    "mcp_repos_updated",
+                    results=results,
+                )
+            except Exception as e:
+                self._logger.error("mcp_repo_update_failed", error=str(e))
+
         self._handlers["check_subscriptions"] = check_subscriptions
         self._handlers["refresh_recommendations"] = refresh_recommendations
         self._handlers["check_mcp_health"] = check_mcp_health
         self._handlers["cleanup_sessions"] = cleanup_sessions
+        self._handlers["update_mcp_repos"] = update_mcp_repos

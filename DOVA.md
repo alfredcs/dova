@@ -603,6 +603,139 @@ Intelligent session management with freshness evaluation and state repair:
 
 ---
 
+## 💰 Model Tiering System
+
+DOVA implements an intelligent model tiering system to optimize costs while maintaining quality. Simple tasks use faster/cheaper models, while complex tasks use more capable models.
+
+### Model Tiers
+
+| Tier | Task Types | Default Bedrock Model |
+|------|------------|----------------------|
+| `BASIC` | Classification, summarization, simple lookups | claude-haiku-4-5 |
+| `STANDARD` | General queries, search synthesis | claude-sonnet-4 |
+| `ADVANCED` | Code generation, research, complex analysis | claude-sonnet-4 |
+| `REASONING` | Deep reasoning, synthesis, complex problem solving | claude-sonnet-4 |
+
+### Task-to-Tier Mapping
+
+```python
+TASK_TIER_MAPPING = {
+    TaskType.CLASSIFICATION: ModelTier.BASIC,
+    TaskType.SUMMARIZATION: ModelTier.BASIC,
+    TaskType.SEARCH: ModelTier.STANDARD,
+    TaskType.CODE_GENERATION: ModelTier.ADVANCED,
+    TaskType.RESEARCH: ModelTier.ADVANCED,
+    TaskType.REASONING: ModelTier.ADVANCED,
+    TaskType.INNOVATION: ModelTier.REASONING,
+}
+```
+
+### Configuration
+
+Override default models with environment variables:
+
+```bash
+export LLM_TIER_BASIC_MODEL=us.anthropic.claude-haiku-4-5-20251001-v1:0
+export LLM_TIER_STANDARD_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+export LLM_TIER_ADVANCED_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+export LLM_TIER_REASONING_MODEL=us.anthropic.claude-sonnet-4-20250514-v1:0
+```
+
+### CLI Command
+
+```bash
+dova models  # Display current model tiering configuration
+```
+
+---
+
+## 🌐 Web Search & Intelligent Source Selection
+
+### Multi-Provider Web Search
+
+DOVA supports multiple web search providers with automatic selection and fallback, enabling queries about current events, news, and real-time information without requiring any API keys.
+
+**Providers (in priority order):**
+
+| Provider | API Key Required | Features |
+|----------|------------------|----------|
+| **Brave Search** | Yes (`BRAVE_API_KEY`) | Structured results, freshness filtering |
+| **Perplexity Sonar** | Yes (`PERPLEXITY_API_KEY`) | AI-synthesized answers with citations |
+| **Tavily** | Yes (`TAVILY_API_KEY`) | Advanced search depth, relevance scoring |
+| **DuckDuckGo** | No (free) | Always-available fallback, no setup needed |
+
+**Auto-Selection Logic:**
+- When `provider=auto` (default), DOVA tries providers in priority order
+- Falls back to DuckDuckGo if no API keys are configured
+- Web search works out of the box with zero configuration
+
+**Configuration:**
+```bash
+# Optional - configure better providers for improved results
+export BRAVE_API_KEY=xxx           # https://brave.com/search/api/
+export PERPLEXITY_API_KEY=xxx      # https://perplexity.ai/settings/api
+export TAVILY_API_KEY=xxx          # https://tavily.com
+
+# Or use the MCP prefix
+export MCP_TAVILY_API_KEY=tvly-xxxxxxxxxxxx
+```
+
+**Usage Example:**
+```bash
+# Works immediately with DuckDuckGo (no API key needed)
+dova research "who did Trump nominate to replace Power?" -s web
+
+# With Brave API key configured, uses Brave Search for better results
+BRAVE_API_KEY=xxx dova research "latest AI news" -s web
+```
+
+### Intelligent Source Selection
+
+The orchestrator automatically selects appropriate sources based on query analysis:
+
+| Query Type | Indicators | Selected Sources |
+|------------|------------|------------------|
+| News/Current Events | "latest", "news", "nominated", "announced" | `web` |
+| Technical/Research | "architecture", "implementation", "paper" | `arxiv`, `github` |
+| ML Models | "model", "transformer", "training" | `huggingface`, `arxiv` |
+| Mixed | Combination of indicators | Multiple sources |
+
+**Implementation:**
+```python
+def _select_appropriate_sources(query: str, query_type: str) -> list[str]:
+    """Select sources based on query analysis."""
+    news_indicators = ["news", "latest", "announced", "nominated", ...]
+    is_news_query = any(indicator in query.lower() for indicator in news_indicators)
+
+    if is_news_query:
+        return ["web"]  # Prioritize web for current events
+    elif query_type == "research":
+        return ["arxiv", "github", "huggingface"]
+    else:
+        return ["web", "arxiv", "github", "huggingface"]
+```
+
+### Enhanced Intent Classification
+
+The orchestrator extracts key entities for better search queries:
+
+```python
+@dataclass
+class ParsedIntent:
+    intent: UserIntent
+    confidence: float
+    entities: dict[str, Any]  # topics, primary_subject, search_terms
+    recommended_sources: list[str]  # Intelligent source recommendations
+```
+
+**Entity Fields:**
+- `primary_subject`: The main subject of the query (e.g., model name, person)
+- `search_terms`: Key terms extracted for search queries
+- `topics`: Broader topics for context
+- `recommended_sources`: Sources best suited for this query type
+
+---
+
 ## 🏛️ System Architecture Overview
 
 ```

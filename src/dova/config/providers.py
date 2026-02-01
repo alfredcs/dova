@@ -22,6 +22,52 @@ class TaskType(Enum):
     CODE_GENERATION = "code_generation"
     EMBEDDING = "embedding"
     CLASSIFICATION = "classification"
+    EXTRACTION = "extraction"  # Entity extraction, parsing
+    CHAT = "chat"  # General conversation
+
+
+class ModelTier(Enum):
+    """Model capability tiers for intelligent routing."""
+
+    BASIC = "basic"  # Fast, cheap - for simple tasks
+    STANDARD = "standard"  # Balanced - for moderate tasks
+    ADVANCED = "advanced"  # Powerful - for complex tasks
+    REASONING = "reasoning"  # Extended thinking - for deep reasoning
+
+
+# Map task types to required model tiers
+TASK_TIER_MAPPING: dict[TaskType, ModelTier] = {
+    TaskType.CLASSIFICATION: ModelTier.BASIC,
+    TaskType.EXTRACTION: ModelTier.BASIC,
+    TaskType.SUMMARIZATION: ModelTier.BASIC,
+    TaskType.CHAT: ModelTier.STANDARD,
+    TaskType.CODE_GENERATION: ModelTier.ADVANCED,
+    TaskType.REASONING: ModelTier.ADVANCED,
+    TaskType.EMBEDDING: ModelTier.BASIC,
+}
+
+
+# Default models for each provider and tier
+DEFAULT_BEDROCK_MODELS: dict[ModelTier, str] = {
+    ModelTier.BASIC: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    ModelTier.STANDARD: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+    ModelTier.ADVANCED: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+    ModelTier.REASONING: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+}
+
+DEFAULT_ANTHROPIC_MODELS: dict[ModelTier, str] = {
+    ModelTier.BASIC: "claude-haiku-3-5-20241022",
+    ModelTier.STANDARD: "claude-sonnet-4-20250514",
+    ModelTier.ADVANCED: "claude-sonnet-4-20250514",
+    ModelTier.REASONING: "claude-sonnet-4-20250514",
+}
+
+DEFAULT_OPENAI_MODELS: dict[ModelTier, str] = {
+    ModelTier.BASIC: "gpt-4o-mini",
+    ModelTier.STANDARD: "gpt-4o",
+    ModelTier.ADVANCED: "gpt-4o",
+    ModelTier.REASONING: "o1-preview",
+}
 
 
 class RoutingStrategy(Enum):
@@ -522,39 +568,53 @@ def create_llm_router_from_settings() -> LLMRouter:
 
     # Configure Bedrock provider if AWS credentials are available
     if settings.llm.default_provider == "bedrock" or os.environ.get("AWS_ACCESS_KEY_ID"):
-        # Check both BEDROCK_MODEL_ID and AWS_BEDROCK_MODEL_ID for flexibility
-        bedrock_model_id = (
-            os.environ.get("BEDROCK_MODEL_ID")
-            or os.environ.get("AWS_BEDROCK_MODEL_ID")
-            or settings.aws.bedrock_model_id
+        # Get tiered model configuration from environment or defaults
+        bedrock_models = {
+            ModelTier.BASIC: os.environ.get("BEDROCK_MODEL_BASIC", DEFAULT_BEDROCK_MODELS[ModelTier.BASIC]),
+            ModelTier.STANDARD: os.environ.get("BEDROCK_MODEL_STANDARD", DEFAULT_BEDROCK_MODELS[ModelTier.STANDARD]),
+            ModelTier.ADVANCED: os.environ.get("BEDROCK_MODEL_ADVANCED", DEFAULT_BEDROCK_MODELS[ModelTier.ADVANCED]),
+            ModelTier.REASONING: os.environ.get("BEDROCK_MODEL_REASONING", DEFAULT_BEDROCK_MODELS[ModelTier.REASONING]),
+        }
+
+        # Legacy: Allow single model override for all tiers
+        legacy_model = os.environ.get("BEDROCK_MODEL_ID") or os.environ.get("AWS_BEDROCK_MODEL_ID")
+        if legacy_model:
+            bedrock_models = {tier: legacy_model for tier in ModelTier}
+
+        logger.info(
+            "bedrock_models_configured",
+            basic=bedrock_models[ModelTier.BASIC],
+            standard=bedrock_models[ModelTier.STANDARD],
+            advanced=bedrock_models[ModelTier.ADVANCED],
         )
-        logger.info("bedrock_model_selected", model_id=bedrock_model_id)
+
+        # Build task-to-model mapping using tier system
+        bedrock_task_models = {}
+        for task_type in TaskType:
+            tier = TASK_TIER_MAPPING.get(task_type, ModelTier.STANDARD)
+            model_id = bedrock_models[tier]
+
+            # Configure appropriate parameters based on task type
+            if task_type == TaskType.CLASSIFICATION:
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=1024, temperature=0.0)
+            elif task_type == TaskType.EXTRACTION:
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.0)
+            elif task_type == TaskType.SUMMARIZATION:
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.3)
+            elif task_type == TaskType.CODE_GENERATION:
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=8192, temperature=0.2)
+            elif task_type == TaskType.REASONING:
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+            elif task_type == TaskType.CHAT:
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+            else:
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+
         bedrock_config = ProviderConfig(
             name="bedrock",
             enabled=True,
             priority=1,
-            models={
-                TaskType.REASONING: ModelConfig(
-                    model_id=bedrock_model_id,
-                    max_tokens=4096,
-                    temperature=0.7,
-                ),
-                TaskType.SUMMARIZATION: ModelConfig(
-                    model_id=bedrock_model_id,
-                    max_tokens=2048,
-                    temperature=0.3,
-                ),
-                TaskType.CODE_GENERATION: ModelConfig(
-                    model_id=bedrock_model_id,
-                    max_tokens=8192,
-                    temperature=0.2,
-                ),
-                TaskType.CLASSIFICATION: ModelConfig(
-                    model_id=bedrock_model_id,
-                    max_tokens=10240,
-                    temperature=0.0,
-                ),
-            },
+            models=bedrock_task_models,
         )
         try:
             providers["bedrock"] = BedrockProvider(
@@ -574,32 +634,40 @@ def create_llm_router_from_settings() -> LLMRouter:
         pass
 
     if anthropic_key and not anthropic_key.startswith("${") and anthropic_available:
+        # Get tiered model configuration from environment or defaults
+        anthropic_models = {
+            ModelTier.BASIC: os.environ.get("ANTHROPIC_MODEL_BASIC", DEFAULT_ANTHROPIC_MODELS[ModelTier.BASIC]),
+            ModelTier.STANDARD: os.environ.get("ANTHROPIC_MODEL_STANDARD", DEFAULT_ANTHROPIC_MODELS[ModelTier.STANDARD]),
+            ModelTier.ADVANCED: os.environ.get("ANTHROPIC_MODEL_ADVANCED", DEFAULT_ANTHROPIC_MODELS[ModelTier.ADVANCED]),
+            ModelTier.REASONING: os.environ.get("ANTHROPIC_MODEL_REASONING", DEFAULT_ANTHROPIC_MODELS[ModelTier.REASONING]),
+        }
+
+        # Build task-to-model mapping using tier system
+        anthropic_task_models = {}
+        for task_type in TaskType:
+            if task_type == TaskType.EMBEDDING:
+                continue  # Anthropic doesn't have embeddings
+            tier = TASK_TIER_MAPPING.get(task_type, ModelTier.STANDARD)
+            model_id = anthropic_models[tier]
+
+            if task_type == TaskType.CLASSIFICATION:
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=1024, temperature=0.0)
+            elif task_type == TaskType.EXTRACTION:
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.0)
+            elif task_type == TaskType.SUMMARIZATION:
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.3)
+            elif task_type == TaskType.CODE_GENERATION:
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=8192, temperature=0.2)
+            elif task_type == TaskType.REASONING:
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+            else:
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+
         anthropic_config = ProviderConfig(
             name="anthropic",
             enabled=True,
             priority=2,
-            models={
-                TaskType.REASONING: ModelConfig(
-                    model_id="claude-sonnet-4-20250514",
-                    max_tokens=4096,
-                    temperature=0.7,
-                ),
-                TaskType.SUMMARIZATION: ModelConfig(
-                    model_id="claude-sonnet-4-20250514",
-                    max_tokens=2048,
-                    temperature=0.3,
-                ),
-                TaskType.CODE_GENERATION: ModelConfig(
-                    model_id="claude-sonnet-4-20250514",
-                    max_tokens=8192,
-                    temperature=0.2,
-                ),
-                TaskType.CLASSIFICATION: ModelConfig(
-                    model_id="claude-haiku-3-5-20241022",
-                    max_tokens=10240,
-                    temperature=0.0,
-                ),
-            },
+            models=anthropic_task_models,
         )
         try:
             providers["anthropic"] = AnthropicProvider(anthropic_config, api_key=anthropic_key)
@@ -617,36 +685,40 @@ def create_llm_router_from_settings() -> LLMRouter:
         pass
 
     if openai_key and not openai_key.startswith("${") and openai_available:
+        # Get tiered model configuration from environment or defaults
+        openai_models = {
+            ModelTier.BASIC: os.environ.get("OPENAI_MODEL_BASIC", DEFAULT_OPENAI_MODELS[ModelTier.BASIC]),
+            ModelTier.STANDARD: os.environ.get("OPENAI_MODEL_STANDARD", DEFAULT_OPENAI_MODELS[ModelTier.STANDARD]),
+            ModelTier.ADVANCED: os.environ.get("OPENAI_MODEL_ADVANCED", DEFAULT_OPENAI_MODELS[ModelTier.ADVANCED]),
+            ModelTier.REASONING: os.environ.get("OPENAI_MODEL_REASONING", DEFAULT_OPENAI_MODELS[ModelTier.REASONING]),
+        }
+
+        # Build task-to-model mapping using tier system
+        openai_task_models = {}
+        for task_type in TaskType:
+            tier = TASK_TIER_MAPPING.get(task_type, ModelTier.STANDARD)
+            model_id = openai_models[tier]
+
+            if task_type == TaskType.CLASSIFICATION:
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=1024, temperature=0.0)
+            elif task_type == TaskType.EXTRACTION:
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.0)
+            elif task_type == TaskType.SUMMARIZATION:
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.3)
+            elif task_type == TaskType.CODE_GENERATION:
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=8192, temperature=0.2)
+            elif task_type == TaskType.REASONING:
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+            elif task_type == TaskType.EMBEDDING:
+                openai_task_models[task_type] = ModelConfig(model_id="text-embedding-3-small", max_tokens=8192)
+            else:
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+
         openai_config = ProviderConfig(
             name="openai",
             enabled=True,
             priority=3,
-            models={
-                TaskType.REASONING: ModelConfig(
-                    model_id="gpt-4o",
-                    max_tokens=4096,
-                    temperature=0.7,
-                ),
-                TaskType.SUMMARIZATION: ModelConfig(
-                    model_id="gpt-4o-mini",
-                    max_tokens=2048,
-                    temperature=0.3,
-                ),
-                TaskType.CODE_GENERATION: ModelConfig(
-                    model_id="gpt-4o",
-                    max_tokens=8192,
-                    temperature=0.2,
-                ),
-                TaskType.CLASSIFICATION: ModelConfig(
-                    model_id="gpt-4o-mini",
-                    max_tokens=10240,
-                    temperature=0.0,
-                ),
-                TaskType.EMBEDDING: ModelConfig(
-                    model_id="text-embedding-3-small",
-                    max_tokens=8192,
-                ),
-            },
+            models=openai_task_models,
         )
         try:
             providers["openai"] = OpenAIProvider(openai_config, api_key=openai_key)
@@ -661,3 +733,72 @@ def create_llm_router_from_settings() -> LLMRouter:
         )
 
     return LLMRouter(providers=providers)
+
+
+def get_model_for_task(provider_name: str, task_type: TaskType) -> tuple[str, ModelTier]:
+    """
+    Get the model ID and tier for a specific task type and provider.
+
+    Args:
+        provider_name: Name of the provider (bedrock, anthropic, openai)
+        task_type: Type of task to perform
+
+    Returns:
+        Tuple of (model_id, model_tier)
+    """
+    tier = TASK_TIER_MAPPING.get(task_type, ModelTier.STANDARD)
+
+    model_defaults = {
+        "bedrock": DEFAULT_BEDROCK_MODELS,
+        "anthropic": DEFAULT_ANTHROPIC_MODELS,
+        "openai": DEFAULT_OPENAI_MODELS,
+    }
+
+    if provider_name in model_defaults:
+        model_id = model_defaults[provider_name].get(tier, model_defaults[provider_name][ModelTier.STANDARD])
+        return model_id, tier
+
+    return "unknown", tier
+
+
+def print_model_configuration() -> None:
+    """Print the current model configuration for debugging."""
+    print("\n=== DOVA Model Configuration ===\n")
+
+    print("Task → Tier Mapping:")
+    print("-" * 40)
+    for task_type, tier in TASK_TIER_MAPPING.items():
+        print(f"  {task_type.value:20s} → {tier.value}")
+
+    print("\n\nDefault Models by Provider and Tier:")
+    print("-" * 60)
+
+    providers = [
+        ("Bedrock", DEFAULT_BEDROCK_MODELS),
+        ("Anthropic", DEFAULT_ANTHROPIC_MODELS),
+        ("OpenAI", DEFAULT_OPENAI_MODELS),
+    ]
+
+    for provider_name, models in providers:
+        print(f"\n{provider_name}:")
+        for tier, model_id in models.items():
+            print(f"  {tier.value:12s} → {model_id}")
+
+    print("\n\nEnvironment Variables for Custom Configuration:")
+    print("-" * 60)
+    print("""
+  BEDROCK_MODEL_BASIC=<model-id>      # For classification, extraction, summarization
+  BEDROCK_MODEL_STANDARD=<model-id>   # For chat, general tasks
+  BEDROCK_MODEL_ADVANCED=<model-id>   # For coding, reasoning
+  BEDROCK_MODEL_REASONING=<model-id>  # For deep reasoning with extended thinking
+
+  ANTHROPIC_MODEL_BASIC=<model-id>
+  ANTHROPIC_MODEL_STANDARD=<model-id>
+  ANTHROPIC_MODEL_ADVANCED=<model-id>
+  ANTHROPIC_MODEL_REASONING=<model-id>
+
+  OPENAI_MODEL_BASIC=<model-id>
+  OPENAI_MODEL_STANDARD=<model-id>
+  OPENAI_MODEL_ADVANCED=<model-id>
+  OPENAI_MODEL_REASONING=<model-id>
+    """)
