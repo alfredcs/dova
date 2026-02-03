@@ -35,6 +35,16 @@ class ResearchRequest(BaseModel):
         default=True,
         description="Whether to personalize based on user profile",
     )
+    reasoning_mode: str = Field(
+        default="standard",
+        description="Reasoning mode: 'quick' (no reasoning), 'standard' (iterative refinement), 'react' (full ReAct loop)",
+    )
+    max_reasoning_iterations: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Maximum ReAct loop iterations (only for 'react' mode)",
+    )
 
 
 class SearchResult(BaseModel):
@@ -100,6 +110,14 @@ class ResearchResponse(BaseModel):
     refinement_attempts: int = Field(
         default=0,
         description="Number of query refinements performed",
+    )
+    reasoning_trace: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="ReAct reasoning trace (steps taken during reasoning)",
+    )
+    debate: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Bull vs Bear debate analysis (when collaborative mode or evaluative query)",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

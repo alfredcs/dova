@@ -89,7 +89,7 @@ class ModelConfig:
     """Configuration for a specific model."""
 
     model_id: str
-    max_tokens: int = 4096
+    max_tokens: int = 40960
     temperature: float = 0.7
     top_p: float = 1.0
     stop_sequences: list[str] = field(default_factory=list)
@@ -598,25 +598,25 @@ def create_llm_router_from_settings() -> LLMRouter:
             tier = TASK_TIER_MAPPING.get(task_type, ModelTier.STANDARD)
             model_id = bedrock_models[tier]
 
-            # Configure appropriate parameters based on task type
+            # Configure appropriate parameters based on task type (10x max_tokens)
             if task_type == TaskType.CLASSIFICATION:
-                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=1024, temperature=0.0)
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=10240, temperature=0.0)
             elif task_type == TaskType.EXTRACTION:
-                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.0)
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=20480, temperature=0.0)
             elif task_type == TaskType.SUMMARIZATION:
-                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.3)
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=20480, temperature=0.3)
             elif task_type == TaskType.CODE_GENERATION:
-                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=8192, temperature=0.2)
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=81920, temperature=0.2)
             elif task_type == TaskType.REASONING:
-                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
             elif task_type == TaskType.CHAT:
-                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
             elif task_type == TaskType.EMBEDDING:
                 # Use Amazon Titan for embeddings (Claude doesn't support embeddings)
                 embedding_model = os.environ.get("BEDROCK_EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0")
-                bedrock_task_models[task_type] = ModelConfig(model_id=embedding_model, max_tokens=8192)
+                bedrock_task_models[task_type] = ModelConfig(model_id=embedding_model, max_tokens=81920)
             else:
-                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+                bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
 
         bedrock_config = ProviderConfig(
             name="bedrock",
@@ -659,17 +659,17 @@ def create_llm_router_from_settings() -> LLMRouter:
             model_id = anthropic_models[tier]
 
             if task_type == TaskType.CLASSIFICATION:
-                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=1024, temperature=0.0)
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=10240, temperature=0.0)
             elif task_type == TaskType.EXTRACTION:
-                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.0)
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=20480, temperature=0.0)
             elif task_type == TaskType.SUMMARIZATION:
-                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.3)
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=20480, temperature=0.3)
             elif task_type == TaskType.CODE_GENERATION:
-                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=8192, temperature=0.2)
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=81920, temperature=0.2)
             elif task_type == TaskType.REASONING:
-                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
             else:
-                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+                anthropic_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
 
         anthropic_config = ProviderConfig(
             name="anthropic",
@@ -708,19 +708,19 @@ def create_llm_router_from_settings() -> LLMRouter:
             model_id = openai_models[tier]
 
             if task_type == TaskType.CLASSIFICATION:
-                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=1024, temperature=0.0)
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=10240, temperature=0.0)
             elif task_type == TaskType.EXTRACTION:
-                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.0)
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=20480, temperature=0.0)
             elif task_type == TaskType.SUMMARIZATION:
-                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=2048, temperature=0.3)
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=20480, temperature=0.3)
             elif task_type == TaskType.CODE_GENERATION:
-                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=8192, temperature=0.2)
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=81920, temperature=0.2)
             elif task_type == TaskType.REASONING:
-                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
             elif task_type == TaskType.EMBEDDING:
-                openai_task_models[task_type] = ModelConfig(model_id="text-embedding-3-small", max_tokens=8192)
+                openai_task_models[task_type] = ModelConfig(model_id="text-embedding-3-small", max_tokens=81920)
             else:
-                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+                openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
 
         openai_config = ProviderConfig(
             name="openai",

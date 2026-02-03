@@ -84,6 +84,12 @@ Provide balanced, objective analysis with clear confidence levels."""
 
             if task_type == "synthesize":
                 synthesis = await self._synthesize_results(query, dependency_results)
+                # Two-pass insight generation for deep analysis
+                enable_two_pass = task.params.get("enable_two_pass", False)
+                if enable_two_pass and synthesis.confidence_score > 0.4:
+                    emergent = await self._generate_emergent_insights(query, synthesis)
+                    synthesis.key_findings.extend(emergent)
+                    self._logger.info("emergent_insights_added", count=len(emergent))
             elif task_type == "cross_reference":
                 synthesis = await self._cross_reference(dependency_results)
             elif task_type == "gap_analysis":
@@ -170,7 +176,7 @@ Respond in JSON format with these sections."""
             synthesis_prompt,
             task_type=TaskType.SUMMARIZATION,
             temperature=0.5,
-            max_tokens=4000,
+            max_tokens=40000,
         )
 
         return self._parse_synthesis_response(response)
@@ -351,6 +357,69 @@ Respond in JSON format."""
                 sections.append(data[:500])
 
         return "\n".join(sections) if sections else "No results available"
+
+    async def _generate_emergent_insights(
+        self,
+        query: str,
+        first_pass: ResearchSynthesis,
+    ) -> list[SynthesizedInsight]:
+        """Second pass: Extended thinking to find non-obvious insights."""
+        insight_prompt = f"""Given research on: "{query}"
+
+FIRST PASS SUMMARY:
+{first_pass.executive_summary}
+
+FINDINGS SO FAR:
+{[f.title for f in first_pass.key_findings[:5]]}
+
+TASK: Find 2-3 EMERGENT insights NOT in the first pass.
+Look for:
+1. Non-obvious connections between disparate findings
+2. Contradictions that reveal deeper truths
+3. Patterns suggesting emerging trends
+4. Implications extending beyond the question
+
+Return JSON:
+{{
+    "emergent_insights": [
+        {{
+            "title": "<insight>",
+            "summary": "<2-3 sentences>",
+            "novelty_score": <0.0-1.0>
+        }}
+    ]
+}}"""
+
+        response = await self.think(
+            insight_prompt,
+            task_type=TaskType.REASONING,
+            temperature=0.7,
+            max_tokens=15000,
+        )
+
+        return self._parse_emergent_insights(response)
+
+    def _parse_emergent_insights(self, response: str) -> list[SynthesizedInsight]:
+        """Parse emergent insights from LLM response."""
+        import json
+        try:
+            if "```json" in response:
+                response = response.split("```json")[1].split("```")[0]
+            elif "```" in response:
+                response = response.split("```")[1].split("```")[0]
+            data = json.loads(response.strip())
+            return [
+                SynthesizedInsight(
+                    title=i.get("title", ""),
+                    summary=i.get("summary", ""),
+                    confidence=i.get("novelty_score", 0.5),
+                    sources=["emergent_analysis"],
+                    related_topics=[],
+                )
+                for i in data.get("emergent_insights", [])
+            ]
+        except (json.JSONDecodeError, KeyError):
+            return []
 
     def _parse_synthesis_response(self, response: str) -> ResearchSynthesis:
         """Parse LLM synthesis response."""

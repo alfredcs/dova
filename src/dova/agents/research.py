@@ -15,6 +15,7 @@ from typing import Any
 import structlog
 
 from dova.agents.base import AgentResult, AgentTask, BaseAgent
+from dova.agents.mixins.reasoning import ReasoningTrace, StepType
 from dova.config.providers import LLMRouter, TaskType
 from dova.services.sources import SourceRegistry, SourceFetcher
 from dova.services.source_types import SourceType
@@ -239,6 +240,238 @@ When analyzing search results:
             "search_query": search_query.strip() or query,
         }
 
+    async def _action_step(
+        self,
+        action: str,
+        action_input: dict[str, Any],
+    ) -> Any:
+        """
+        Execute a ReAct action. Override from ReasoningMixin.
+
+        Available actions:
+        - search_arxiv: Search ArXiv papers
+        - search_github: Search GitHub repositories
+        - search_huggingface: Search HuggingFace models/datasets
+        - search_web: Search the web
+        - analyze: Analyze accumulated findings
+        - synthesize: Synthesize findings into an answer
+        - conclude: Finish reasoning with final answer
+        """
+        self._logger.info("react_action", action=action, input=action_input)
+
+        if action == "search_arxiv":
+            query = action_input.get("query", "")
+            findings = await self._search_arxiv(query, {})
+            return {
+                "source": "arxiv",
+                "papers_found": len(findings.papers),
+                "papers": [{"title": p.title, "url": p.url, "description": p.description[:200]} for p in findings.papers[:5]],
+            }
+
+        elif action == "search_github":
+            query = action_input.get("query", "")
+            findings = await self._search_github(query, {})
+            return {
+                "source": "github",
+                "repos_found": len(findings.repositories),
+                "repositories": [
+                    {"title": r.title, "url": r.url, "stars": r.metadata.get("stars", 0), "description": r.description[:150]}
+                    for r in findings.repositories[:5]
+                ],
+            }
+
+        elif action == "search_huggingface":
+            query = action_input.get("query", "")
+            findings = await self._search_huggingface(query, {})
+            return {
+                "source": "huggingface",
+                "models_found": len(findings.models),
+                "datasets_found": len(findings.datasets),
+                "models": [{"title": m.title, "downloads": m.metadata.get("downloads", 0)} for m in findings.models[:3]],
+                "datasets": [{"title": d.title} for d in findings.datasets[:3]],
+            }
+
+        elif action == "search_web":
+            query = action_input.get("query", "")
+            findings = await self._search_web(query, {})
+            return {
+                "source": "web",
+                "results_found": len(findings.web_results),
+                "results": [{"title": w.title, "url": w.url, "description": w.description[:150]} for w in findings.web_results[:5]],
+            }
+
+        elif action == "analyze":
+            topic = action_input.get("topic", "")
+            observations = self._scratchpad.get("observations", [])
+            # Summarize what has been found so far
+            return {
+                "analysis": f"Analyzed {len(observations)} observations for '{topic}'",
+                "observation_count": len(observations),
+            }
+
+        elif action == "synthesize":
+            # Collect all findings from observations
+            observations = self._scratchpad.get("observations", [])
+            all_papers = []
+            all_repos = []
+            all_models = []
+            all_web = []
+
+            for obs in observations:
+                if isinstance(obs, dict):
+                    if "papers" in obs:
+                        all_papers.extend(obs["papers"])
+                    if "repositories" in obs:
+                        all_repos.extend(obs["repositories"])
+                    if "models" in obs:
+                        all_models.extend(obs["models"])
+                    if "results" in obs and obs.get("source") == "web":
+                        all_web.extend(obs["results"])
+
+            return {
+                "synthesis": "Findings synthesized",
+                "total_papers": len(all_papers),
+                "total_repos": len(all_repos),
+                "total_models": len(all_models),
+                "total_web": len(all_web),
+                "papers": all_papers[:5],
+                "repositories": all_repos[:5],
+                "models": all_models[:3],
+                "web_results": all_web[:5],
+            }
+
+        elif action == "conclude":
+            return action_input.get("conclusion", "Research complete")
+
+        else:
+            return f"Unknown action: {action}"
+
+    async def execute_with_react(
+        self,
+        task: AgentTask,
+        max_iterations: int = 5,
+    ) -> tuple[AgentResult, ReasoningTrace]:
+        """
+        Execute research task using ReAct reasoning loop.
+
+        This provides step-by-step reasoning:
+        THOUGHT → ACTION → OBSERVATION → ... → REFLECTION
+
+        Args:
+            task: Research task to execute
+            max_iterations: Maximum reasoning iterations
+
+        Returns:
+            Tuple of (AgentResult, ReasoningTrace)
+        """
+        start_time = time.time()
+        query = task.params.get("query", "")
+        sources = task.params.get("sources", ["arxiv", "github", "huggingface", "web"])
+
+        if not query:
+            return (
+                self._wrap_result(task, False, error="No query provided"),
+                ReasoningTrace(problem=query),
+            )
+
+        # Detect intent to guide reasoning
+        intent = self._detect_query_intent(query)
+        recommended_sources = intent.get("recommended_sources", sources)
+
+        # Build available actions based on sources
+        available_actions = []
+        if "arxiv" in recommended_sources:
+            available_actions.append("search_arxiv")
+        if "github" in recommended_sources:
+            available_actions.append("search_github")
+        if "huggingface" in recommended_sources:
+            available_actions.append("search_huggingface")
+        if "web" in recommended_sources:
+            available_actions.append("search_web")
+        available_actions.extend(["analyze", "synthesize", "conclude"])
+
+        self._logger.info(
+            "react_starting",
+            query=query,
+            intent=intent.get("query_type"),
+            available_actions=available_actions,
+            max_iterations=max_iterations,
+        )
+
+        # Execute ReAct reasoning loop
+        trace = await self.reason(
+            problem=f"Research query: {query}",
+            context={
+                "query": query,
+                "intent": intent,
+                "sources": recommended_sources,
+            },
+            max_iterations=max_iterations,
+            reflect=True,
+            available_actions=available_actions,
+        )
+
+        self._logger.info(
+            "react_complete",
+            iterations=trace.total_iterations,
+            steps=len(trace.steps),
+            confidence=trace.confidence,
+            has_reflection=trace.self_critique is not None,
+        )
+
+        # Build ResearchFindings from the reasoning trace observations
+        findings = ResearchFindings()
+        for step in trace.steps:
+            if step.step_type == StepType.OBSERVATION:
+                obs = step.metadata.get("result", {})
+                if isinstance(obs, dict):
+                    if "papers" in obs:
+                        for p in obs["papers"]:
+                            findings.papers.append(SearchResult(
+                                source="arxiv",
+                                title=p.get("title", ""),
+                                url=p.get("url", ""),
+                                description=p.get("description", ""),
+                            ))
+                    if "repositories" in obs:
+                        for r in obs["repositories"]:
+                            findings.repositories.append(SearchResult(
+                                source="github",
+                                title=r.get("title", ""),
+                                url=r.get("url", ""),
+                                description=r.get("description", ""),
+                                metadata={"stars": r.get("stars", 0)},
+                            ))
+                    if "models" in obs:
+                        for m in obs["models"]:
+                            findings.models.append(SearchResult(
+                                source="huggingface",
+                                title=m.get("title", ""),
+                                url=f"https://huggingface.co/{m.get('title', '')}",
+                                metadata={"downloads": m.get("downloads", 0)},
+                            ))
+                    if "results" in obs and obs.get("source") == "web":
+                        for w in obs["results"]:
+                            findings.web_results.append(SearchResult(
+                                source="web",
+                                title=w.get("title", ""),
+                                url=w.get("url", ""),
+                                description=w.get("description", ""),
+                            ))
+
+        execution_time = (time.time() - start_time) * 1000
+
+        result = self._wrap_result(
+            task,
+            True,
+            data=findings,
+            execution_time_ms=execution_time,
+            source="react",
+            result_count=self._count_results(findings),
+        )
+
+        return result, trace
+
     async def execute(self, task: AgentTask) -> AgentResult:
         """Execute research task."""
         start_time = time.time()
@@ -247,9 +480,26 @@ When analyzing search results:
             source = task.params.get("source", "all")
             query = task.params.get("query", "")
             entities = task.params.get("entities", {})
+            reasoning_mode = task.params.get("reasoning_mode", "standard")
 
             if not query:
                 return self._wrap_result(task, False, error="No query provided")
+
+            # Check if ReAct mode is requested
+            if reasoning_mode == "react":
+                max_iterations = task.params.get("max_reasoning_iterations", 5)
+                self._logger.info(
+                    "using_react_mode",
+                    query=query,
+                    max_iterations=max_iterations,
+                )
+                result, trace = await self.execute_with_react(task, max_iterations=max_iterations)
+                # Store the trace in result metadata for the API to extract
+                if result.success and hasattr(result, "_trace"):
+                    pass  # trace stored separately
+                # Return result with trace attached
+                result._reasoning_trace = trace
+                return result
 
             # Detect user intent to prioritize sources
             intent = self._detect_query_intent(query)

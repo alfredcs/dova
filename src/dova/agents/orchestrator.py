@@ -9,6 +9,7 @@ The orchestrator is responsible for:
 """
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -24,6 +25,17 @@ from dova.services.web_search import WebSearchService, create_web_search_service
 from dova.utils.metrics import MetricsCollector
 
 logger = structlog.get_logger(__name__)
+
+# Patterns indicating evaluative queries that benefit from debate analysis
+EVALUATIVE_PATTERNS = [
+    r"\bevaluate\b", r"\bcompare\b", r"\bvs\.?\b", r"\bversus\b",
+    r"\btradeoffs?\b", r"\btrade-offs?\b", r"\bpros?\s+(?:and\s+)?cons?\b",
+    r"\badvantages?\s+(?:and\s+)?disadvantages?\b",
+    r"\bstrengths?\s+(?:and\s+)?weaknesses?\b",
+    r"\bshould\s+(?:i|we)\s+(?:use|choose|pick|adopt)\b",
+    r"\bwhich\s+(?:is|are)\s+(?:better|best)\b",
+    r"\bdebate\b", r"\barguments?\s+(?:for|against)\b",
+]
 
 
 class UserIntent(Enum):
@@ -180,7 +192,22 @@ Respond in a structured JSON format."""
             # Step 6: Synthesize results (only if we have actual data)
             synthesized = await self._synthesize_results(query, intent, results)
 
-            # Step 7: Validate synthesis quality
+            # Step 7: Check if debate should be invoked
+            reasoning_mode = task.params.get("reasoning_mode", "standard")
+            should_debate = (
+                reasoning_mode == "collaborative" or
+                self._is_evaluative_query(query)
+            )
+
+            if should_debate and "debate" in self.agents:
+                debate_result = await self._invoke_debate(
+                    query=query,
+                    synthesis_context=synthesized,
+                    user_id=task.user_id,
+                )
+                synthesized = self._merge_debate_results(synthesized, debate_result)
+
+            # Step 8: Validate synthesis quality
             if synthesized.get("summary"):
                 evaluation = await self._evaluator.evaluate(
                     response=str(synthesized.get("summary", "")),
@@ -211,14 +238,20 @@ Respond in a structured JSON format."""
 
     async def _classify_intent(self, query: str) -> ParsedIntent:
         """Classify user intent from query."""
+        from datetime import datetime
+        current_date = datetime.now().strftime("%B %Y")  # e.g., "February 2026"
+        current_year = datetime.now().year
+
         classification_prompt = f"""Analyze this research query and extract structured information.
 
 Query: "{query}"
+Current Date: {current_date}
 
 CRITICAL INSTRUCTIONS:
 1. "primary_subject" MUST be the main entity/topic being searched (e.g., a model name like "qwen3", "GPT-4", "llama", or a specific concept)
 2. Extract the EXACT names/terms from the query - do NOT generalize or paraphrase
 3. If the query mentions a specific model, library, or project name, that MUST be in primary_subject AND search_terms
+4. For recent/news queries, if adding years to search_terms, use CURRENT year ({current_year}) and recent past years - NEVER use outdated years
 
 Respond with JSON:
 {{
@@ -842,6 +875,58 @@ Instructions:
         """Register a specialized agent."""
         self.agents[agent_type] = agent
         self._logger.info("agent_registered", agent_type=agent_type, agent_name=agent.name)
+
+    def _is_evaluative_query(self, query: str) -> bool:
+        """Check if query requires evaluative/debate analysis."""
+        query_lower = query.lower()
+        return any(re.search(p, query_lower) for p in EVALUATIVE_PATTERNS)
+
+    async def _invoke_debate(
+        self,
+        query: str,
+        synthesis_context: dict[str, Any],
+        user_id: str | None,
+    ) -> dict[str, Any]:
+        """Invoke debate agent with synthesis context."""
+        debate_agent = self.agents.get("debate")
+        if not debate_agent:
+            return {}
+
+        self._logger.info("debate_starting", query=query)
+
+        context = {
+            "summary": synthesis_context.get("summary", "")[:1000],
+            "key_findings": [f.get("title", "") for f in synthesis_context.get("insights", [])[:5]],
+        }
+
+        task = AgentTask(
+            type="debate",
+            params={"topic": query, "context": context},
+            user_id=user_id,
+        )
+
+        result = await debate_agent.execute(task)
+        return result.data if result.success else {}
+
+    def _merge_debate_results(
+        self,
+        synthesized: dict[str, Any],
+        debate_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Merge debate results into synthesis output."""
+        if not debate_result:
+            return synthesized
+
+        return {
+            **synthesized,
+            "debate": {
+                "summary": debate_result.get("summary", ""),
+                "bull_strengths": debate_result.get("bull_strengths", []),
+                "bear_concerns": debate_result.get("bear_concerns", []),
+                "recommendation": debate_result.get("recommendation", ""),
+                "confidence": debate_result.get("confidence_score", 0.5),
+            },
+        }
 
     async def _execute_collaborative(
         self,

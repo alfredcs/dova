@@ -68,7 +68,7 @@ async def _critique_answer(
         request = LLMRequest(
             task_type=TaskType.CHAT,
             messages=[{"role": "user", "content": critique_prompt}],
-            max_tokens=400,
+            max_tokens=4000,
             temperature=0.2,
         )
         response = await llm_router.complete(request)
@@ -99,6 +99,59 @@ async def _critique_answer(
             "missing_info": [],
             "refined_query": "",
         }
+
+
+async def _retrieve_relevant_memory(
+    memory_service: Any,
+    query: str,
+    user_id: str,
+    top_k: int = 5,
+) -> list[dict[str, Any]]:
+    """
+    Retrieve relevant past research from memory using semantic search.
+
+    Returns:
+        List of relevant memory entries with query, answer_summary, confidence
+    """
+    if not memory_service:
+        return []
+
+    try:
+        from dova.services.memory_enhanced import MemoryType
+
+        # Search for semantically similar past research
+        results = await memory_service.search_semantic(
+            query=query,
+            user_id=user_id,
+            top_k=top_k,
+            use_mmr=True,  # Use MMR for diversity
+            memory_types=[MemoryType.LONG_TERM, MemoryType.SHORT_TERM],
+        )
+
+        relevant = []
+        for result in results:
+            content = result.entry.content
+            if content.get("type") == "research_result":
+                relevant.append({
+                    "query": content.get("query", ""),
+                    "answer_summary": content.get("answer_summary", ""),
+                    "confidence": content.get("confidence", 0),
+                    "similarity_score": result.score,
+                })
+
+        if relevant:
+            logger.info(
+                "memory_retrieved",
+                query=query[:50],
+                matches_found=len(relevant),
+                top_score=relevant[0]["similarity_score"] if relevant else 0,
+            )
+
+        return relevant
+
+    except Exception as e:
+        logger.warning("memory_retrieval_failed", error=str(e))
+        return []
 
 
 async def _store_research_memory(
@@ -154,6 +207,7 @@ async def _synthesize_answer(
     repositories: list[dict],
     models: list[dict],
     web_results: list[dict],
+    memory_context: list[dict] | None = None,
 ) -> str:
     """
     Synthesize a direct answer from research findings using LLM.
@@ -165,12 +219,21 @@ async def _synthesize_answer(
         repositories: Top GitHub repositories found
         models: Top HuggingFace models found
         web_results: Top web search results
+        memory_context: Relevant past research from memory
 
     Returns:
         Synthesized answer addressing the query
     """
     # Build context from findings
     context_parts = []
+
+    # Add relevant past research from memory
+    if memory_context:
+        memory_text = "\n".join([
+            f"- **Previous research** (confidence: {m.get('confidence', 0):.0%}): {m.get('answer_summary', '')[:200]}..."
+            for m in memory_context[:3]
+        ])
+        context_parts.append(f"**Relevant Past Research:**\n{memory_text}")
 
     if papers:
         papers_text = "\n".join([
@@ -225,7 +288,7 @@ async def _synthesize_answer(
         request = LLMRequest(
             task_type=TaskType.CHAT,
             messages=[{"role": "user", "content": synthesis_prompt}],
-            max_tokens=800,
+            max_tokens=8000,
             temperature=0.3,
         )
         response = await llm_router.complete(request)
@@ -281,6 +344,8 @@ async def execute_research(
                 "source": "all" if not body.sources else body.sources[0] if len(body.sources) == 1 else "all",
                 "sources": body.sources,
                 "max_results": body.max_results,
+                "reasoning_mode": body.reasoning_mode,
+                "max_reasoning_iterations": body.max_reasoning_iterations,
             },
             user_id=current_user.id,
         )
@@ -293,6 +358,24 @@ async def execute_research(
 
         if not result.success:
             raise HTTPException(status_code=500, detail=result.error)
+
+        # Extract reasoning trace if ReAct mode was used
+        reasoning_trace = []
+        if hasattr(result, "_reasoning_trace") and result._reasoning_trace:
+            trace = result._reasoning_trace
+            for step in trace.steps:
+                reasoning_trace.append({
+                    "step_type": step.step_type.value,
+                    "content": step.content[:500] if step.content else "",
+                    "confidence": step.confidence,
+                    "timestamp": step.timestamp.isoformat(),
+                })
+            logger.info(
+                "react_trace_extracted",
+                steps=len(reasoning_trace),
+                total_iterations=trace.total_iterations,
+                final_confidence=trace.confidence,
+            )
 
         # Extract data from result (handle ResearchFindings dataclass)
         data = result.data
@@ -345,13 +428,23 @@ async def execute_research(
 
         summary = f"Found {', '.join(found_parts)}" if found_parts else "No results found"
 
+        # === MEMORY RETRIEVAL ===
+        llm_router = getattr(request.app.state, "llm_router", None)
+        enhanced_memory = getattr(request.app.state, "enhanced_memory_service", None)
+
+        # Retrieve relevant past research from memory
+        memory_context = await _retrieve_relevant_memory(
+            enhanced_memory,
+            body.query,
+            current_user.id,
+            top_k=3,
+        )
+
         # === ITERATIVE REFINEMENT LOOP ===
         answer = ""
         confidence = 0.0
         refinement_attempts = 0
         current_query = body.query
-        llm_router = getattr(request.app.state, "llm_router", None)
-        enhanced_memory = getattr(request.app.state, "enhanced_memory_service", None)
         max_refinements = 2  # Maximum refinement attempts
 
         if body.include_synthesis and llm_router and (papers or repositories or models or web_results):
@@ -364,6 +457,7 @@ async def execute_research(
                     repositories[:5],
                     models[:3],
                     web_results[:5],
+                    memory_context=memory_context,
                 )
 
                 if not answer:
@@ -472,6 +566,18 @@ async def execute_research(
         if refinement_attempts > 0:
             summary = f"{summary} (refined {refinement_attempts}x)"
 
+        # Extract debate results if present (from collaborative mode or auto-detected evaluative queries)
+        debate_data = {}
+        if data and hasattr(data, "get") and callable(data.get):
+            debate_data = data.get("debate", {})
+        elif isinstance(data, dict):
+            debate_data = data.get("debate", {})
+
+        # Check if evaluative query was auto-detected
+        evaluative_auto_detected = False
+        if body.reasoning_mode != "collaborative" and debate_data:
+            evaluative_auto_detected = True
+
         return ResearchResponse(
             query=body.query,
             status="completed",
@@ -486,9 +592,15 @@ async def execute_research(
             recommendations=[],
             confidence=confidence,
             refinement_attempts=refinement_attempts,
+            reasoning_trace=reasoning_trace,
+            debate=debate_data,
             metadata={
                 "execution_time_ms": result.execution_time_ms,
                 "sources_searched": body.sources,
+                "reasoning_mode": body.reasoning_mode,
+                "memory_matches": len(memory_context),
+                "memory_used": len(memory_context) > 0,
+                "evaluative_auto_detected": evaluative_auto_detected,
             },
         )
 

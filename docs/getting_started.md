@@ -9,18 +9,20 @@ This guide will walk you through setting up, configuring, and using the DOVA (De
 3. [Configuration](#configuration)
 4. [Automated AWS Setup](#automated-aws-setup-agentcore)
 5. [Running Locally](#running-locally)
-6. [Browser-Based Research UI](#browser-based-research-ui) *(New in v1.3)*
-7. [Using the CLI](#using-the-cli)
-8. [API Usage](#api-usage)
-9. [Deep Research Features](#deep-research-features) *(New in v1.3)*
-10. [Agentic Reasoning](#agentic-reasoning)
-11. [Advanced Agent Intelligence](#advanced-agent-intelligence)
-12. [Managing Custom Sources](#managing-custom-sources)
-13. [Proactive Recommendations](#proactive-recommendations)
-14. [Sandbox Execution](#sandbox-execution)
-15. [Architecture Overview](#architecture-overview)
-16. [Deployment](#deployment)
-17. [Troubleshooting](#troubleshooting)
+6. [Interactive CLI Mode](#interactive-cli-mode) *(New in v1.4)*
+7. [Browser-Based Research UI](#browser-based-research-ui)
+8. [Using the CLI](#using-the-cli)
+9. [API Usage](#api-usage)
+10. [Deep Research Features](#deep-research-features)
+11. [Bull vs Bear Debate](#bull-vs-bear-debate) *(New in v1.4)*
+12. [Agentic Reasoning](#agentic-reasoning)
+13. [Advanced Agent Intelligence](#advanced-agent-intelligence)
+14. [Managing Custom Sources](#managing-custom-sources)
+15. [Proactive Recommendations](#proactive-recommendations)
+16. [Sandbox Execution](#sandbox-execution)
+17. [Architecture Overview](#architecture-overview)
+18. [Deployment](#deployment)
+19. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -457,7 +459,100 @@ docker-compose down
 curl http://localhost:8000/health
 
 # Expected response:
-# {"status": "healthy", "version": "0.1.0", "environment": "development"}
+# {"status": "healthy", "version": "1.4.0", "environment": "development"}
+```
+
+---
+
+## Interactive CLI Mode
+
+*(New in v1.4)*
+
+DOVA v1.4 introduces an interactive CLI mode that provides a Claude Code-like continuous interaction experience with chain-of-thought reasoning and memory integration.
+
+### Starting Interactive Mode
+
+```bash
+# Start interactive session
+dova interact
+
+# Hide chain-of-thought display
+dova interact --no-thinking
+
+# Show verbose output
+dova interact --verbose
+```
+
+### Chain-of-Thought Reasoning
+
+The interactive mode uses a 7-step reasoning process for sophisticated responses:
+
+| Step | Description |
+|------|-------------|
+| **Observe** | Understand the input and classify intent |
+| **Recall** | Search short-term and long-term memory for relevant context |
+| **Reason** | Perform chain-of-thought analysis |
+| **Plan** | Determine the best action (research, debate, synthesize, respond) |
+| **Act** | Execute the selected action if needed |
+| **Reflect** | Evaluate the result and learn |
+| **Respond** | Generate the final response |
+
+### Automatic Tool Selection
+
+Based on your query, the interactive mode automatically selects the appropriate action:
+
+| Action | Use Case | Trigger Keywords |
+|--------|----------|------------------|
+| `research` | Learning queries, technical questions | "what is", "how does", "explain" |
+| `debate` | Evaluation queries, comparisons | "should I", "compare", "pros and cons" |
+| `synthesize` | Combining multiple pieces of information | Follow-up questions with context |
+| `respond` | Simple questions, greetings | Direct factual questions |
+
+### Memory Integration
+
+Interactive mode maintains context across conversations:
+
+- **Short-term memory** (24-hour TTL): Session continuity, recent context
+- **Long-term memory** (persistent): Research findings, important insights
+- **Semantic search**: Find relevant past interactions using embeddings
+
+### Session Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/status` | Display session statistics |
+| `/clear` | Clear conversation history |
+| `/thinking on\|off` | Toggle reasoning display |
+| `/history` | View conversation history |
+| `/memory` | Show memory references |
+| `exit` or `quit` | End the session |
+
+### Example Session
+
+```bash
+$ dova interact
+
+DOVA Interactive Mode (v1.4.0)
+Type 'exit' to quit, '/help' for commands
+
+> What are the latest advances in multi-agent LLM systems?
+[Observation] User asking about recent developments in multi-agent LLM...
+[Reasoning] This is a technical research query requiring current information...
+[Plan] Action: research
+
+DOVA: Based on recent research, multi-agent LLM systems have seen advances in:
+- Orchestration frameworks (AutoGen, CrewAI, LangGraph)
+- Memory architectures for long-term context
+- Tool use and function calling...
+
+> How do they compare to single-agent approaches?
+[Memory] Found 1 relevant memory from previous turn
+[Plan] Action: debate
+
+DOVA: Here's a balanced analysis:
+Bull: Multi-agent enables task decomposition, specialized expertise...
+Bear: Introduces coordination complexity, higher latency...
 ```
 
 ---
@@ -989,6 +1084,106 @@ Research results are stored in memory for future reference:
 - **Short-Term Memory**: All research stored with 24-hour TTL
 - **Long-Term Memory**: High-confidence (≥70%) answers stored persistently
 - **Semantic Search**: Embeddings enable finding similar past research
+
+---
+
+## Bull vs Bear Debate
+
+*(New in v1.4)*
+
+DOVA includes debate agents that provide balanced analysis by arguing both sides of a topic, helping you make informed decisions.
+
+### How It Works
+
+Three specialized agents work together:
+
+| Agent | Role |
+|-------|------|
+| **BullAgent** | Advocates for positive aspects, strengths, and opportunities |
+| **BearAgent** | Provides critical analysis, identifies risks and concerns |
+| **DebateAgent** | Orchestrates multi-round debates and synthesizes balanced conclusions |
+
+### API Endpoint
+
+```bash
+# POST /api/v1/debate
+curl -X POST "http://localhost:8081/api/v1/debate?topic=Should%20organizations%20adopt%20multi-agent%20LLM%20systems"
+```
+
+**With JSON body for additional context:**
+
+```bash
+curl -X POST "http://localhost:8081/api/v1/debate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "topic": "RAG vs Fine-tuning for domain-specific applications",
+    "context": {"use_case": "Legal document analysis"},
+    "num_rounds": 2
+  }'
+```
+
+### Response Format
+
+```json
+{
+  "summary": "Both approaches have valid use cases depending on requirements...",
+  "bull_strengths": [
+    "No training data required",
+    "Real-time knowledge updates",
+    "Lower implementation cost"
+  ],
+  "bear_concerns": [
+    "Retrieval quality dependency",
+    "Latency overhead",
+    "Context window limitations"
+  ],
+  "recommendation": "Use RAG for dynamic knowledge needs, fine-tuning for specialized performance",
+  "confidence_score": 0.82,
+  "debate_history": [
+    {"round": 1, "bull": "...", "bear": "..."},
+    {"round": 2, "bull": "...", "bear": "..."}
+  ]
+}
+```
+
+### Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `summary` | Balanced conclusion synthesized from the debate |
+| `bull_strengths` | Top arguments in favor (from BullAgent) |
+| `bear_concerns` | Top critical concerns (from BearAgent) |
+| `recommendation` | Actionable guidance based on the analysis |
+| `confidence_score` | Assessment confidence (0.0-1.0) |
+| `debate_history` | Full argument transcript from all rounds |
+
+### Using Debate in Interactive Mode
+
+The interactive CLI automatically triggers debate analysis for evaluation queries:
+
+```bash
+$ dova interact
+
+> Should I use RAG or fine-tuning for my chatbot?
+[Plan] Action: debate
+
+DOVA: Here's a balanced analysis:
+
+**Bull (For RAG):**
+- No training data collection needed
+- Knowledge stays current without retraining
+- Lower compute costs...
+
+**Bear (Against RAG / For Fine-tuning):**
+- Retrieval errors can propagate to answers
+- Additional latency from retrieval step
+- May not capture domain nuances as well...
+
+**Recommendation:** Consider a hybrid approach - use RAG for factual recall
+and fine-tune for domain-specific language patterns.
+
+Confidence: 78%
+```
 
 ---
 

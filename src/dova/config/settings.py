@@ -45,7 +45,7 @@ class LLMSettings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, description="Anthropic API key")
     openai_api_key: str | None = Field(default=None, description="OpenAI API key")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=4096, ge=1, le=200000)
+    max_tokens: int = Field(default=40960, ge=1, le=200000)
 
 
 class WebSearchSettings(BaseSettings):

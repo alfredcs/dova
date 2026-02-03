@@ -1,6 +1,7 @@
 """DOVA API Routes."""
 
 from dova.api.routes import (
+    chat,
     credentials,
     health,
     memory,
@@ -13,6 +14,7 @@ from dova.api.routes import (
 )
 
 __all__ = [
+    "chat",
     "credentials",
     "health",
     "memory",

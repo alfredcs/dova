@@ -89,6 +89,38 @@ def serve(ctx: click.Context, host: str, port: int, reload: bool, mode: str) -> 
 
 
 @cli.command()
+@click.option("--no-thinking", is_flag=True, help="Hide chain-of-thought reasoning")
+@click.option("--verbose", "-v", is_flag=True, help="Show verbose output")
+@click.pass_context
+def interact(ctx: click.Context, no_thinking: bool, verbose: bool) -> None:
+    """Start an interactive DOVA session with continuous conversation.
+
+    Provides a Claude Code-like experience with:
+    - Chain-of-thought reasoning for sophisticated responses
+    - Memory integration (recalls past interactions)
+    - Multi-turn conversation with context preservation
+    - Automatic tool selection (research, debate, etc.)
+
+    Example:
+        dova interact
+        dova interact --no-thinking
+        dova interact --verbose
+
+    In interactive mode, you can:
+    - Ask research questions
+    - Request analysis and debates
+    - Build on previous responses
+    - Use commands like /status, /help, /clear
+    """
+    from dova.cli.interact import run_interactive_loop
+
+    asyncio.run(run_interactive_loop(
+        show_thinking=not no_thinking,
+        verbose=verbose,
+    ))
+
+
+@cli.command()
 @click.argument("query")
 @click.option(
     "--sources",
@@ -125,6 +157,7 @@ def research(
         dova research "what is BERT?" --reasoning quick
     """
     from dova.agents.base import AgentTask
+    from dova.agents.debate import DebateAgent
     from dova.agents.orchestrator import DOVAOrchestrator
     from dova.agents.research import ResearchAgent
     from dova.agents.synthesis import SynthesisAgent
@@ -174,6 +207,7 @@ def research(
             tavily_api_key=settings.mcp.tavily_api_key,
         )
         synthesis_agent = SynthesisAgent(llm_router=llm_router)
+        debate_agent = DebateAgent(llm_router=llm_router, mcp_client=mcp_client)
 
         orchestrator = DOVAOrchestrator(
             llm_router=llm_router,
@@ -181,6 +215,7 @@ def research(
             agents={
                 "research": research_agent,
                 "synthesis": synthesis_agent,
+                "debate": debate_agent,
             },
         )
 
@@ -326,6 +361,25 @@ def format_research_results(data: dict | None) -> str:
                     lines.append(f"  {rec.get('details', rec.get('description', ''))}")
             else:
                 lines.append(f"→ {rec}")
+        lines.append("")
+
+    if "debate" in data and data["debate"]:
+        debate = data["debate"]
+        lines.append("=" * 60)
+        lines.append("DEBATE ANALYSIS (Bull vs Bear)")
+        lines.append("=" * 60)
+        if debate.get("summary"):
+            lines.append(f"\n{debate['summary']}\n")
+        if debate.get("bull_strengths"):
+            lines.append("Strengths (Bull):")
+            for s in debate["bull_strengths"][:3]:
+                lines.append(f"  + {s}")
+        if debate.get("bear_concerns"):
+            lines.append("\nConcerns (Bear):")
+            for c in debate["bear_concerns"][:3]:
+                lines.append(f"  - {c}")
+        if debate.get("recommendation"):
+            lines.append(f"\nRecommendation: {debate['recommendation']}")
         lines.append("")
 
     if not has_results and not lines:

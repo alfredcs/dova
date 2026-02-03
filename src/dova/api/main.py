@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from dova.api.middleware.logging import LoggingMiddleware
 from dova.api.middleware.rate_limit import RateLimitMiddleware
 from dova.api.routes import (
+    chat,
     credentials,
     health,
     memory,
@@ -133,6 +134,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         web_search_enabled=bool(settings.mcp.tavily_api_key),
         enhanced_memory_enabled=app.state.enhanced_memory_service is not None,
     )
+
+    # Initialize debate agent (Bull vs Bear analysis)
+    from dova.agents.debate import DebateAgent
+
+    app.state.debate_agent = DebateAgent(
+        llm_router=app.state.llm_router,
+        mcp_client=app.state.mcp_client,
+        num_rounds=2,
+    )
+    logger.info("debate_agent_initialized", num_rounds=2)
 
     # Initialize JWT verifier if Cognito is configured
     if settings.auth.cognito_user_pool_id and settings.auth.cognito_client_id:
@@ -291,6 +302,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Include routers
     app.include_router(health.router, tags=["Health"])
+    app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
     app.include_router(research.router, prefix="/api/v1", tags=["Research"])
     app.include_router(profile.router, prefix="/api/v1", tags=["Profile"])
     app.include_router(validation.router, prefix="/api/v1", tags=["Validation"])

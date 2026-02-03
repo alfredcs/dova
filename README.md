@@ -2,13 +2,14 @@
 
 DOVA is an enterprise-grade, multi-agent research automation system built on AWS Strands Agents SDK and Amazon Bedrock AgentCore. It aggregates knowledge from ArXiv, GitHub, HuggingFace, and the web through the Model Context Protocol (MCP).
 
-**Latest: v1.3** - Now with browser-based UI, answer synthesis, and confidence scoring!
+**Latest: v1.4** - Now with interactive CLI mode (`dova interact`), chain-of-thought reasoning, and Bull vs Bear debate agents!
 
 ## Features
 
 ### Core Capabilities
+- **Interactive CLI Mode**: Claude Code-like experience with `dova interact` - chain-of-thought reasoning, memory integration, and automatic tool selection
 - **Browser-Based Research UI**: Modern dark-theme interface at `http://localhost:8081/`
-- **Multi-Agent Architecture**: Specialized agents for research, profiling, validation, and synthesis
+- **Multi-Agent Architecture**: Specialized agents for research, profiling, validation, synthesis, and debate
 - **Agentic Reasoning**: ReAct-style reasoning loops, self-reflection, and working memory for smarter agents
 - **Collaborative Intelligence**: Blackboard, ensemble, iterative refinement, and tool-augmented patterns for synergistic multi-agent reasoning (1+1>2)
 - **Proactive Tool Discovery**: Automatic task analysis and tool selection from MCP servers, sandbox, and internal services
@@ -121,7 +122,13 @@ The UI provides:
 ### Using the CLI
 
 ```bash
-# Interactive research query
+# Start interactive mode (Claude Code-like experience)
+dova interact
+
+# Interactive mode with hidden thinking steps
+dova interact --no-thinking
+
+# Single research query
 dova research "latest advances in multi-agent LLM systems"
 
 # Research with reasoning mode
@@ -148,6 +155,20 @@ dova mcp setup
 # Update MCP repos (git pull)
 dova mcp update
 ```
+
+### Interactive Mode Commands
+
+In `dova interact` mode, use these commands:
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/status` | Display session statistics |
+| `/clear` | Clear conversation history |
+| `/thinking on\|off` | Toggle chain-of-thought display |
+| `/history` | View conversation history |
+| `/memory` | Show memory references |
+| `exit` | Exit interactive mode |
 
 ### AWS Setup (Automated)
 
@@ -281,6 +302,9 @@ DOVA/
 │   │       ├── scheduler.py # Tier inference from code
 │   │       └── executor.py  # Docker-based execution
 │   ├── tools/           # Custom tools and MCP registry
+│   ├── cli/             # Interactive CLI
+│   │   ├── main.py      # CLI commands
+│   │   └── interact.py  # Interactive session with CoT reasoning
 │   ├── api/             # FastAPI application
 │   ├── config/          # Configuration and settings
 │   └── utils/           # Utilities (logging, caching, metrics)
@@ -309,6 +333,7 @@ DOVA/
 | `/api/v1/subscriptions/recommendations` | GET | Get personalized recommendations |
 | `/api/v1/subscriptions/preferences` | GET/PATCH | Get/update delivery preferences |
 | `/api/v1/webhooks/github` | POST | Receive GitHub webhook events |
+| `/api/v1/debate` | POST | Run Bull vs Bear balanced analysis |
 
 ### Reasoning Modes
 
