@@ -5,11 +5,14 @@ Main entry point for the DOVA REST API.
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, AsyncGenerator
 
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from dova.api.middleware.logging import LoggingMiddleware
 from dova.api.middleware.rate_limit import RateLimitMiddleware
@@ -28,7 +31,9 @@ from dova.config.settings import Settings, get_settings
 from dova.services.api_key_service import APIKeyService
 from dova.services.jwt_verifier import CognitoJWTVerifier, JWTVerifierConfig
 from dova.services.memory import AgentCoreMemoryService
+from dova.services.memory_enhanced import EnhancedMemoryService
 from dova.services.sources import SourceRegistry
+from dova.utils.cache import InMemoryCache, RedisCache
 from dova.utils.logging import configure_logging
 
 logger = structlog.get_logger(__name__)
@@ -54,13 +59,34 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize services
     app.state.settings = settings
 
-    # Initialize memory service if enabled
+    # Initialize enhanced memory service (Redis-backed short/long term memory)
+    # This is always available for local development
+    if settings.is_production:
+        memory_cache = RedisCache(url=settings.redis.url, prefix="dova:memory:")
+    else:
+        memory_cache = InMemoryCache()
+
+    app.state.enhanced_memory_service = EnhancedMemoryService(
+        cache=memory_cache,
+        llm_router=None,  # Set after LLM router initialization
+        mmr_lambda=settings.memory_enhanced.mmr_lambda,
+        embedding_cache_ttl=settings.memory_enhanced.embedding_cache_ttl,
+    )
+    logger.info(
+        "enhanced_memory_initialized",
+        cache_type="redis" if settings.is_production else "in_memory",
+        short_term_ttl="24h",
+        long_term_ttl="persistent",
+    )
+
+    # Initialize AgentCore memory service if AWS is configured
     if settings.aws.agentcore_memory_enabled and settings.aws.agentcore_agent_id:
         app.state.memory_service = AgentCoreMemoryService(
             agent_id=settings.aws.agentcore_agent_id,
             agent_alias_id=settings.aws.agentcore_agent_alias_id or "",
             region=settings.aws.region,
         )
+        logger.info("agentcore_memory_initialized", agent_id=settings.aws.agentcore_agent_id)
     else:
         app.state.memory_service = None
 
@@ -77,6 +103,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.mcp_manager = MCPManager()
     app.state.mcp_client = app.state.mcp_manager.get_client()
     logger.info("llm_router_initialized", default_provider=settings.llm.default_provider)
+
+    # Wire LLM router to enhanced memory for embedding support
+    if app.state.enhanced_memory_service:
+        app.state.enhanced_memory_service.llm_router = app.state.llm_router
 
     # Setup MCP server repos (clone/update arxiv-mcp-server etc.)
     from dova.services.mcp_repo_manager import setup_mcp_repos
@@ -96,10 +126,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         memory_service=app.state.memory_service,
         source_registry=app.state.source_registry,
         tavily_api_key=settings.mcp.tavily_api_key,
+        enhanced_memory_service=app.state.enhanced_memory_service,
     )
     logger.info(
         "research_agent_initialized",
         web_search_enabled=bool(settings.mcp.tavily_api_key),
+        enhanced_memory_enabled=app.state.enhanced_memory_service is not None,
     )
 
     # Initialize JWT verifier if Cognito is configured
@@ -267,6 +299,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(credentials.router, prefix="/api/v1", tags=["Credentials"])
     app.include_router(subscriptions.router, prefix="/api/v1", tags=["Subscriptions"])
     app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])
+
+    # Serve static files for frontend UI
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Root route serves the frontend UI
+    @app.get("/", include_in_schema=False)
+    async def root():
+        """Serve the frontend UI."""
+        index_file = static_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        return {"message": "DOVA API", "docs": "/docs", "version": settings.app_version}
 
     return app
 

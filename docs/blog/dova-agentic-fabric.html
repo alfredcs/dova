@@ -380,6 +380,11 @@ summaries)</td>
 <td>SSO/OAuth authentication and authorization</td>
 <td>AWS Cognito + AgentCore Gateway</td>
 </tr>
+<tr>
+<td><strong>Automated Setup</strong></td>
+<td>One-command AWS resource provisioning</td>
+<td><code>dova aws setup</code> CLI</td>
+</tr>
 </tbody>
 </table>
 <h3 id="agent-specializations">Agent Specializations</h3>
@@ -801,7 +806,35 @@ class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a hr
 <span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> current_answer</span></code></pre></div>
 <hr />
 <h2 id="deployment-with-agentcore">Deployment with AgentCore</h2>
-<h3 id="project-setup">Project Setup</h3>
+<h3 id="automated-aws-setup">Automated AWS Setup</h3>
+<p>DOVA provides automated setup for all required AWS services, eliminating manual configuration:</p>
+<div class="sourceCode" id="cb8-auto"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-auto-1"><a href="#cb8-auto-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install DOVA</span></span>
+<span id="cb8-auto-2"><a href="#cb8-auto-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> <span class="st">&quot;.[dev]&quot;</span></span>
+<span id="cb8-auto-3"><a href="#cb8-auto-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-auto-4"><a href="#cb8-auto-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Run automated AWS setup (creates IAM, Cognito, SSM, Secrets Manager)</span></span>
+<span id="cb8-auto-5"><a href="#cb8-auto-5" aria-hidden="true" tabindex="-1"></a><span class="ex">dova</span> aws setup <span class="at">--stack-name</span> my-dova-stack <span class="at">--region</span> us-east-1</span>
+<span id="cb8-auto-6"><a href="#cb8-auto-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-auto-7"><a href="#cb8-auto-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Source the generated environment file</span></span>
+<span id="cb8-auto-8"><a href="#cb8-auto-8" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> .env.aws</span>
+<span id="cb8-auto-9"><a href="#cb8-auto-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-auto-10"><a href="#cb8-auto-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Start DOVA in AgentCore mode</span></span>
+<span id="cb8-auto-11"><a href="#cb8-auto-11" aria-hidden="true" tabindex="-1"></a><span class="ex">dova</span> serve <span class="at">--mode</span> agentcore</span></code></pre></div>
+<p>The <code>dova aws setup</code> command automatically creates:</p>
+<table>
+<thead>
+<tr><th>Service</th><th>Resources</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>IAM</strong></td><td>Execution role + policies (Bedrock, AgentCore, SSM, Secrets)</td></tr>
+<tr><td><strong>Cognito</strong></td><td>User Pool, Resource Server, App Client, Domain for OAuth2</td></tr>
+<tr><td><strong>SSM</strong></td><td>Configuration parameters (Cognito provider, client ID)</td></tr>
+<tr><td><strong>Secrets Manager</strong></td><td>Client secret for OAuth2 authentication</td></tr>
+</tbody>
+</table>
+<p>To view required IAM permissions before running setup:</p>
+<div class="sourceCode"><pre class="sourceCode bash"><code class="sourceCode bash"><span class="ex">dova</span> aws permissions</code></pre></div>
+<h3 id="alternative-manual-project-setup">Alternative: Manual Project Setup</h3>
 <div class="sourceCode" id="cb8"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Clone the fullstack AgentCore template</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/awslabs/fullstack-solution-template-for-agentcore</span>
@@ -969,6 +1002,19 @@ href="https://docs.aws.amazon.com/bedrock-agentcore">docs.aws.amazon.com/bedrock
 <li><strong>FAST Template</strong>: <a
 href="https://github.com/awslabs/fullstack-solution-template-for-agentcore">github.com/awslabs/fullstack-solution-template-for-agentcore</a></li>
 </ul>
+<hr />
+<h2 id="whats-new-v13">What's New in v1.3</h2>
+<p><em>February 2026</em></p>
+<p>DOVA v1.3 introduces significant enhancements to research capabilities:</p>
+<ul>
+<li><strong>Browser-Based Research UI</strong>: Modern dark-theme interface accessible at <code>http://localhost:8081/</code></li>
+<li><strong>Answer Synthesis</strong>: LLM-synthesized direct answers to research queries (not just links)</li>
+<li><strong>Confidence Scoring</strong>: Answer quality assessment with 0-100% confidence scores</li>
+<li><strong>Smart Source Routing</strong>: Query type classification (technical, biographical, factual) routes to appropriate sources</li>
+<li><strong>Iterative Query Refinement</strong>: Automatic query improvement when confidence is below threshold</li>
+<li><strong>Enhanced Memory</strong>: Short-term (24h) and long-term (persistent) research memory with Amazon Titan embeddings</li>
+</ul>
+<p>See <a href="../release_notes_v1.3.md">Release Notes v1.3</a> for full details.</p>
 <hr />
 </body>
 </html>

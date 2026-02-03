@@ -48,18 +48,22 @@ TASK_TIER_MAPPING: dict[TaskType, ModelTier] = {
 
 
 # Default models for each provider and tier
+# - BASIC: Fast, low-cost tasks (classification, extraction, summarization)
+# - STANDARD: General tasks (chat, research)
+# - ADVANCED: Complex tasks (coding, deep reasoning)
+# - REASONING: Extended thinking with budget tokens
 DEFAULT_BEDROCK_MODELS: dict[ModelTier, str] = {
     ModelTier.BASIC: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     ModelTier.STANDARD: "us.anthropic.claude-sonnet-4-20250514-v1:0",
-    ModelTier.ADVANCED: "us.anthropic.claude-sonnet-4-20250514-v1:0",
-    ModelTier.REASONING: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+    ModelTier.ADVANCED: "us.anthropic.claude-opus-4-5-20251101-v1:0",
+    ModelTier.REASONING: "us.anthropic.claude-opus-4-5-20251101-v1:0",
 }
 
 DEFAULT_ANTHROPIC_MODELS: dict[ModelTier, str] = {
-    ModelTier.BASIC: "claude-haiku-3-5-20241022",
+    ModelTier.BASIC: "claude-haiku-4-5-20251022",
     ModelTier.STANDARD: "claude-sonnet-4-20250514",
-    ModelTier.ADVANCED: "claude-sonnet-4-20250514",
-    ModelTier.REASONING: "claude-sonnet-4-20250514",
+    ModelTier.ADVANCED: "claude-opus-4-5-20251101",
+    ModelTier.REASONING: "claude-opus-4-5-20251101",
 }
 
 DEFAULT_OPENAI_MODELS: dict[ModelTier, str] = {
@@ -607,6 +611,10 @@ def create_llm_router_from_settings() -> LLMRouter:
                 bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
             elif task_type == TaskType.CHAT:
                 bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
+            elif task_type == TaskType.EMBEDDING:
+                # Use Amazon Titan for embeddings (Claude doesn't support embeddings)
+                embedding_model = os.environ.get("BEDROCK_EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0")
+                bedrock_task_models[task_type] = ModelConfig(model_id=embedding_model, max_tokens=8192)
             else:
                 bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=4096, temperature=0.7)
 

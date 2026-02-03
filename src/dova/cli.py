@@ -38,22 +38,54 @@ def cli(ctx: click.Context, debug: bool) -> None:
 @click.option("--host", default="0.0.0.0", help="Host to bind to")
 @click.option("--port", default=8000, help="Port to bind to")
 @click.option("--reload/--no-reload", default=True, help="Enable auto-reload")
+@click.option(
+    "--mode",
+    type=click.Choice(["fastapi", "agentcore"]),
+    default="fastapi",
+    help="Runtime mode: fastapi (local dev) or agentcore (AWS deployment)",
+)
 @click.pass_context
-def serve(ctx: click.Context, host: str, port: int, reload: bool) -> None:
-    """Start the DOVA API server."""
-    import uvicorn
+def serve(ctx: click.Context, host: str, port: int, reload: bool, mode: str) -> None:
+    """Start the DOVA API server.
 
-    from dova.api.main import create_app
+    Dual mode operation:
+    - fastapi: Standard FastAPI server (local development, full flexibility)
+    - agentcore: AWS Bedrock AgentCore Runtime (production AWS deployment)
+    """
+    import os
 
-    click.echo(f"Starting DOVA server on {host}:{port}")
+    if mode == "agentcore":
+        click.echo("Starting DOVA in AgentCore Runtime mode")
+        click.echo("Note: Requires AWS credentials and STACK_NAME environment variable")
 
-    uvicorn.run(
-        "dova.api.main:create_app",
-        host=host,
-        port=port,
-        reload=reload,
-        factory=True,
-    )
+        # Set runtime mode env var for the app
+        os.environ["RUNTIME_MODE"] = "agentcore"
+
+        try:
+            from dova.runtime.agentcore_app import app
+
+            app.run()
+        except ImportError as e:
+            click.echo(
+                click.style(
+                    f"Error: {e}\n"
+                    "Install bedrock-agentcore with: pip install 'bedrock-agentcore[strands-agents]>=1.0.6'",
+                    fg="red",
+                )
+            )
+            sys.exit(1)
+    else:
+        import uvicorn
+
+        click.echo(f"Starting DOVA FastAPI server on {host}:{port}")
+
+        uvicorn.run(
+            "dova.api.main:create_app",
+            host=host,
+            port=port,
+            reload=reload,
+            factory=True,
+        )
 
 
 @cli.command()
@@ -1007,6 +1039,364 @@ def mcp_repos() -> None:
         if repo.last_updated:
             click.echo(f"    Last Updated: {repo.last_updated.isoformat()}")
         click.echo("")
+
+
+# =============================================================================
+# AWS Commands
+# =============================================================================
+
+
+@cli.group()
+def aws() -> None:
+    """AWS setup and management commands.
+
+    Automates setup of AWS services required for DOVA AgentCore:
+    - Cognito (OAuth2 authentication)
+    - IAM (policies and roles)
+    - SSM Parameter Store (configuration)
+    - Secrets Manager (credentials)
+    - Bedrock (model access)
+
+    Example:
+        dova aws setup --stack-name my-dova-stack
+        dova aws validate --stack-name my-dova-stack
+        dova aws teardown --stack-name my-dova-stack
+    """
+    pass
+
+
+@aws.command("setup")
+@click.option(
+    "--stack-name",
+    "-n",
+    default=None,
+    help="Stack name for AWS resources (default: auto-generated)",
+)
+@click.option(
+    "--region",
+    "-r",
+    default="us-east-1",
+    help="AWS region (default: us-east-1)",
+)
+@click.option(
+    "--no-bedrock",
+    is_flag=True,
+    default=False,
+    help="Skip Bedrock policy creation",
+)
+@click.option(
+    "--no-agentcore",
+    is_flag=True,
+    default=False,
+    help="Skip AgentCore policy creation",
+)
+@click.option(
+    "--gateway-url",
+    default=None,
+    help="AgentCore Gateway URL (optional)",
+)
+@click.option(
+    "--memory-id",
+    default=None,
+    help="AgentCore Memory ID (optional)",
+)
+@click.option(
+    "--env-file",
+    default=".env.aws",
+    help="Path to generate environment file (default: .env.aws)",
+)
+@click.option(
+    "--skip-validation",
+    is_flag=True,
+    default=False,
+    help="Skip pre-flight validation (not recommended)",
+)
+def aws_setup(
+    stack_name: Optional[str],
+    region: str,
+    no_bedrock: bool,
+    no_agentcore: bool,
+    gateway_url: Optional[str],
+    memory_id: Optional[str],
+    env_file: str,
+    skip_validation: bool,
+) -> None:
+    """Set up AWS services for DOVA AgentCore.
+
+    This command automates the creation of all AWS resources required
+    for running DOVA with AgentCore Runtime:
+
+    \b
+    1. IAM Role and Policies
+       - Bedrock model invocation
+       - AgentCore Memory/Gateway access
+       - SSM Parameter Store access
+       - Secrets Manager access
+
+    \b
+    2. Cognito User Pool
+       - OAuth2 authentication
+       - Machine-to-machine client credentials
+       - API scopes for gateway access
+
+    \b
+    3. Configuration Storage
+       - SSM parameters for public config
+       - Secrets Manager for client secrets
+
+    \b
+    Prerequisites:
+    - AWS credentials configured (env vars, ~/.aws/credentials, or IAM role)
+    - IAM permissions to create resources (see 'dova aws permissions')
+
+    Example:
+        dova aws setup --stack-name my-app --region us-west-2
+
+    After setup, source the generated .env.aws file:
+        source .env.aws && dova serve --mode agentcore
+    """
+    import secrets as sec
+
+    from dova.aws.setup import AWSSetup, SetupConfig, format_setup_result
+
+    # Generate stack name if not provided
+    if not stack_name:
+        stack_name = f"dova-{sec.token_hex(4)}"
+        click.echo(f"Using auto-generated stack name: {stack_name}")
+
+    click.echo(f"\nSetting up AWS resources for DOVA")
+    click.echo(f"Stack: {stack_name}")
+    click.echo(f"Region: {region}")
+    click.echo("=" * 50)
+
+    config = SetupConfig(
+        stack_name=stack_name,
+        region=region,
+        include_bedrock=not no_bedrock,
+        include_agentcore=not no_agentcore,
+        gateway_url=gateway_url,
+        memory_id=memory_id,
+        env_file_path=env_file,
+    )
+
+    setup = AWSSetup(config)
+
+    # Show progress
+    click.echo("\nPhases:")
+    click.echo("  1. Validating credentials...")
+    result = setup.run(skip_validation=skip_validation)
+
+    # Display result
+    click.echo(format_setup_result(result))
+
+    if result.success:
+        click.echo(click.style("\n✓ AWS setup complete!", fg="green"))
+        sys.exit(0)
+    else:
+        click.echo(click.style("\n✗ AWS setup failed", fg="red"))
+        sys.exit(1)
+
+
+@aws.command("validate")
+@click.option(
+    "--stack-name",
+    "-n",
+    required=True,
+    help="Stack name to validate",
+)
+@click.option(
+    "--region",
+    "-r",
+    default="us-east-1",
+    help="AWS region (default: us-east-1)",
+)
+def aws_validate(stack_name: str, region: str) -> None:
+    """Validate AWS setup for DOVA.
+
+    Checks all AWS components are properly configured:
+    - AWS credentials
+    - Cognito User Pool and App Client
+    - IAM Role and Policies
+    - SSM Parameters
+    - Secrets Manager secrets
+    - Bedrock model access
+
+    Example:
+        dova aws validate --stack-name my-dova-stack
+    """
+    from dova.aws.validators import AWSValidator, format_validation_result
+
+    click.echo(f"\nValidating AWS setup for stack: {stack_name}")
+    click.echo(f"Region: {region}")
+    click.echo("=" * 50)
+
+    validator = AWSValidator(region)
+    result = validator.validate_complete_setup(stack_name)
+
+    click.echo(format_validation_result(result))
+
+    if result.valid:
+        click.echo(click.style("\n✓ All checks passed!", fg="green"))
+        sys.exit(0)
+    else:
+        click.echo(click.style("\n✗ Validation failed", fg="red"))
+        sys.exit(1)
+
+
+@aws.command("teardown")
+@click.option(
+    "--stack-name",
+    "-n",
+    required=True,
+    help="Stack name to teardown",
+)
+@click.option(
+    "--region",
+    "-r",
+    default="us-east-1",
+    help="AWS region (default: us-east-1)",
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    default=False,
+    help="Skip confirmation prompt",
+)
+def aws_teardown(stack_name: str, region: str, force: bool) -> None:
+    """Remove all AWS resources for a DOVA stack.
+
+    WARNING: This will permanently delete:
+    - Cognito User Pool (and all users)
+    - IAM Role and Policies
+    - SSM Parameters
+    - Secrets Manager secrets
+
+    This action cannot be undone!
+
+    Example:
+        dova aws teardown --stack-name my-dova-stack --force
+    """
+    from dova.aws.setup import AWSSetup, SetupConfig
+
+    if not force:
+        click.echo(f"\nThis will permanently delete all AWS resources for stack: {stack_name}")
+        click.echo("This action cannot be undone!\n")
+
+        if not click.confirm("Are you sure you want to continue?"):
+            click.echo("Aborted.")
+            sys.exit(0)
+
+    click.echo(f"\nTearing down AWS resources for stack: {stack_name}")
+    click.echo(f"Region: {region}")
+    click.echo("=" * 50)
+
+    config = SetupConfig(stack_name=stack_name, region=region)
+    setup = AWSSetup(config)
+
+    result = setup.teardown()
+
+    if result.success:
+        click.echo(click.style("\n✓ Teardown complete!", fg="green"))
+        sys.exit(0)
+    else:
+        click.echo(click.style("\n✗ Teardown failed", fg="red"))
+        for error in result.errors:
+            click.echo(f"  - {error}")
+        sys.exit(1)
+
+
+@aws.command("permissions")
+def aws_permissions() -> None:
+    """Show required IAM permissions for AWS setup.
+
+    Lists all IAM actions required to run 'dova aws setup'.
+    You can use this to create a custom IAM policy for setup.
+
+    Example:
+        dova aws permissions
+    """
+    import json
+
+    from dova.aws.iam import get_required_setup_permissions
+
+    permissions = get_required_setup_permissions()
+
+    click.echo("\nRequired IAM permissions for DOVA AWS setup:")
+    click.echo("=" * 50)
+
+    # Group by service
+    services: dict = {}
+    for perm in permissions:
+        service = perm.split(":")[0]
+        if service not in services:
+            services[service] = []
+        services[service].append(perm)
+
+    for service, perms in sorted(services.items()):
+        click.echo(f"\n{service}:")
+        for perm in perms:
+            click.echo(f"  - {perm}")
+
+    # Output as policy
+    click.echo("\n\nIAM Policy JSON (copy this to create a custom policy):")
+    click.echo("-" * 50)
+
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "DOVASetupPermissions",
+                "Effect": "Allow",
+                "Action": permissions,
+                "Resource": "*",
+            }
+        ],
+    }
+    click.echo(json.dumps(policy, indent=2))
+
+
+@aws.command("env")
+@click.option(
+    "--stack-name",
+    "-n",
+    required=True,
+    help="Stack name to generate env for",
+)
+@click.option(
+    "--region",
+    "-r",
+    default="us-east-1",
+    help="AWS region (default: us-east-1)",
+)
+@click.option(
+    "--output",
+    "-o",
+    default=".env.aws",
+    help="Output file path (default: .env.aws)",
+)
+def aws_env(stack_name: str, region: str, output: str) -> None:
+    """Generate environment file from stored AWS configuration.
+
+    Fetches configuration from SSM/Secrets Manager and generates
+    a .env file for local development or deployment.
+
+    Example:
+        dova aws env --stack-name my-stack --output .env.local
+    """
+    from dova.aws.parameters import ParameterManager
+
+    click.echo(f"\nGenerating environment file for stack: {stack_name}")
+
+    params = ParameterManager(region)
+
+    if params.generate_env_file(stack_name, output):
+        click.echo(click.style(f"\n✓ Environment file generated: {output}", fg="green"))
+        click.echo(f"\nUsage: source {output}")
+        sys.exit(0)
+    else:
+        click.echo(click.style("\n✗ Failed to generate environment file", fg="red"))
+        sys.exit(1)
 
 
 def main() -> None:

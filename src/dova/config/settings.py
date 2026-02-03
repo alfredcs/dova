@@ -249,6 +249,44 @@ class SessionSettings(BaseSettings):
     expire_after_seconds: int = Field(default=86400, description="Session expiry timeout (24h)")
 
 
+class AgentCoreSettings(BaseSettings):
+    """AgentCore-specific settings for AWS Bedrock integration."""
+
+    model_config = SettingsConfigDict(env_prefix="AGENTCORE_")
+
+    stack_name: str = Field(default="", description="CloudFormation stack name")
+    memory_id: str = Field(default="", description="AgentCore Memory ID")
+    gateway_url: str = Field(default="", description="AgentCore Gateway URL")
+    runtime_mode: str = Field(
+        default="fastapi",
+        description="Runtime mode: 'fastapi' or 'agentcore'",
+    )
+
+
+class MemorySettings(BaseSettings):
+    """Memory strategy configuration for AgentCore Memory."""
+
+    model_config = SettingsConfigDict(env_prefix="MEMORY_")
+
+    summary_enabled: bool = Field(default=False, description="Enable summary memory retrieval")
+    user_preference_enabled: bool = Field(
+        default=False, description="Enable user preference memory retrieval"
+    )
+    semantic_enabled: bool = Field(default=False, description="Enable semantic memory retrieval")
+
+    # Retrieval configs
+    summary_top_k: int = Field(default=5, ge=1, le=50, description="Number of summaries to retrieve")
+    preference_top_k: int = Field(
+        default=5, ge=1, le=50, description="Number of preferences to retrieve"
+    )
+    semantic_top_k: int = Field(
+        default=10, ge=1, le=100, description="Number of semantic memories to retrieve"
+    )
+    semantic_relevance: float = Field(
+        default=0.7, ge=0.0, le=1.0, description="Minimum relevance score for semantic retrieval"
+    )
+
+
 class Settings(BaseSettings):
     """Main DOVA settings aggregating all sub-configurations."""
 
@@ -284,6 +322,8 @@ class Settings(BaseSettings):
     discovery: DiscoverySettings = Field(default_factory=DiscoverySettings)
     evaluation: EvaluationSettings = Field(default_factory=EvaluationSettings)
     session: SessionSettings = Field(default_factory=SessionSettings)
+    agentcore: AgentCoreSettings = Field(default_factory=AgentCoreSettings)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
 
     @property
     def is_production(self) -> bool:

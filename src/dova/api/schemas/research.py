@@ -61,6 +61,7 @@ class ResearchResponse(BaseModel):
 
     query: str = Field(..., description="Original query")
     status: str = Field(..., description="Query status")
+    answer: str = Field(default="", description="Direct answer synthesized from research findings")
     summary: str = Field(default="", description="Executive summary of findings")
     papers: list[dict[str, Any]] = Field(
         default_factory=list,
@@ -74,6 +75,14 @@ class ResearchResponse(BaseModel):
         default_factory=list,
         description="HuggingFace models found",
     )
+    datasets: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="HuggingFace datasets found",
+    )
+    web_results: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Web search results",
+    )
     insights: list[str] = Field(
         default_factory=list,
         description="Key insights from synthesis",
@@ -81,6 +90,16 @@ class ResearchResponse(BaseModel):
     recommendations: list[str] = Field(
         default_factory=list,
         description="Recommended next steps",
+    )
+    confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the answer (0.0-1.0)",
+    )
+    refinement_attempts: int = Field(
+        default=0,
+        description="Number of query refinements performed",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

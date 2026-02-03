@@ -7,17 +7,20 @@ This guide will walk you through setting up, configuring, and using the DOVA (De
 1. [Prerequisites](#prerequisites)
 2. [Installation](#installation)
 3. [Configuration](#configuration)
-4. [Running Locally](#running-locally)
-5. [Using the CLI](#using-the-cli)
-6. [API Usage](#api-usage)
-7. [Agentic Reasoning](#agentic-reasoning)
-8. [Advanced Agent Intelligence](#advanced-agent-intelligence)
-9. [Managing Custom Sources](#managing-custom-sources)
-10. [Proactive Recommendations](#proactive-recommendations)
-11. [Sandbox Execution](#sandbox-execution)
-12. [Architecture Overview](#architecture-overview)
-13. [Deployment](#deployment)
-14. [Troubleshooting](#troubleshooting)
+4. [Automated AWS Setup](#automated-aws-setup-agentcore)
+5. [Running Locally](#running-locally)
+6. [Browser-Based Research UI](#browser-based-research-ui) *(New in v1.3)*
+7. [Using the CLI](#using-the-cli)
+8. [API Usage](#api-usage)
+9. [Deep Research Features](#deep-research-features) *(New in v1.3)*
+10. [Agentic Reasoning](#agentic-reasoning)
+11. [Advanced Agent Intelligence](#advanced-agent-intelligence)
+12. [Managing Custom Sources](#managing-custom-sources)
+13. [Proactive Recommendations](#proactive-recommendations)
+14. [Sandbox Execution](#sandbox-execution)
+15. [Architecture Overview](#architecture-overview)
+16. [Deployment](#deployment)
+17. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -187,6 +190,74 @@ HEARTBEAT_ENABLED=true
    }
    ```
 
+### Automated AWS Setup (AgentCore)
+
+DOVA provides automated setup for all AWS services required for AgentCore deployment. This creates IAM roles, Cognito resources, SSM parameters, and Secrets Manager secrets.
+
+#### Prerequisites
+
+1. **AWS CLI configured** with credentials that have sufficient permissions
+2. **View required permissions**:
+   ```bash
+   dova aws permissions
+   ```
+
+#### Quick Setup
+
+```bash
+# Run automated setup with a custom stack name
+dova aws setup --stack-name my-dova-stack --region us-east-1
+
+# Or with additional options
+dova aws setup \
+  --stack-name my-dova-stack \
+  --region us-east-1 \
+  --gateway-url https://your-gateway.bedrock.us-east-1.amazonaws.com \
+  --memory-id your-memory-id
+```
+
+#### What Gets Created
+
+| Service | Resources Created |
+|---------|-------------------|
+| **IAM** | Execution role + 4 policies (Bedrock, AgentCore, SSM, Secrets) |
+| **Cognito** | User Pool, Resource Server, App Client, Domain |
+| **SSM Parameter Store** | `/stack-name/cognito_provider`, `/stack-name/machine_client_id` |
+| **Secrets Manager** | `/stack-name/machine_client_secret` |
+
+#### Validation
+
+After setup, validate your configuration:
+
+```bash
+# Validate all AWS resources
+dova aws validate --stack-name my-dova-stack
+
+# Generate environment file
+dova aws env --stack-name my-dova-stack -o .env.aws
+
+# Source the environment file
+source .env.aws
+```
+
+#### Cleanup
+
+To remove all created resources:
+
+```bash
+dova aws teardown --stack-name my-dova-stack
+```
+
+#### AWS CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `dova aws setup` | Create all AWS resources for DOVA |
+| `dova aws validate` | Validate existing AWS setup |
+| `dova aws teardown` | Remove all DOVA AWS resources |
+| `dova aws permissions` | Show required IAM permissions |
+| `dova aws env` | Generate environment file from existing setup |
+
 ### MCP Server Configuration
 
 DOVA integrates with Model Context Protocol (MCP) servers for external data sources. Configuration is stored in `~/.dova.json` (similar to `~/.claude.json`).
@@ -333,7 +404,7 @@ dova models
 ### Start the API Server
 
 ```bash
-# Using the CLI
+# Using the CLI (FastAPI mode - default)
 dova serve
 
 # Or with uvicorn directly
@@ -342,6 +413,23 @@ uvicorn dova.api.main:app --reload --host 0.0.0.0 --port 8000
 # Or using Make
 make run-local
 ```
+
+### AgentCore Runtime Mode
+
+For AWS deployment with AgentCore Runtime:
+
+```bash
+# Set up AWS resources first (if not done)
+dova aws setup --stack-name my-dova-stack
+
+# Start in AgentCore mode
+dova serve --mode agentcore
+```
+
+This mode uses the BedrockAgentCoreApp runtime with:
+- OAuth2 authentication via Cognito
+- AgentCore Memory for persistent context
+- AgentCore Gateway for MCP tools
 
 ### Start with Docker Compose
 
@@ -370,6 +458,61 @@ curl http://localhost:8000/health
 
 # Expected response:
 # {"status": "healthy", "version": "0.1.0", "environment": "development"}
+```
+
+---
+
+## Browser-Based Research UI
+
+*(New in v1.3)*
+
+DOVA now includes a browser-based research interface for interactive queries.
+
+### Starting the UI
+
+```bash
+# Start the server
+dova serve --port 8081
+
+# Open in browser
+open http://localhost:8081
+```
+
+### UI Features
+
+The research UI provides:
+
+1. **Query Input**: Enter natural language research questions
+2. **Source Selection**: Toggle chips for:
+   - ArXiv Papers
+   - GitHub Repositories
+   - HuggingFace Models
+   - Web Search
+
+3. **Research Answer**: Direct synthesized answer with confidence score
+   - High confidence (≥70%): Green badge
+   - Medium confidence (40-70%): Yellow badge
+   - Low confidence (<40%): Red badge
+
+4. **Organized Results**: Results grouped by source type:
+   - Papers with authors and publication date
+   - Repositories with stars and language
+   - Models with downloads and pipeline type
+   - Web results with descriptions
+
+5. **Query Refinement**: Displays "Query refined N times" when DOVA improved the search
+
+### Example Queries
+
+```text
+# Technical query (searches ArXiv, GitHub, HuggingFace, Web)
+"transformer attention mechanism implementation"
+
+# Biographical query (searches Web only - smart routing)
+"explain elon musk's college education background"
+
+# Code-focused query (prioritizes GitHub)
+"most starred repo on github with agentic reasoning"
 ```
 
 ---
@@ -781,6 +924,71 @@ async def research_query():
         )
         return response.json()
 ```
+
+---
+
+## Deep Research Features
+
+*(New in v1.3)*
+
+DOVA v1.3 transforms from a link aggregator into a true deep research assistant with intelligent query understanding, answer synthesis, and iterative refinement.
+
+### Query Type Classification
+
+DOVA automatically classifies queries into types for smart source routing:
+
+| Query Type | Example | Sources Searched |
+|------------|---------|------------------|
+| `technical` | "transformer attention mechanism" | ArXiv, GitHub, HuggingFace, Web |
+| `biographical` | "elon musk's education" | Web only |
+| `factual` | "what is machine learning" | Web primarily |
+| `general` | "AI trends 2026" | All sources |
+
+### Answer Synthesis
+
+Instead of just returning links, DOVA synthesizes a direct answer:
+
+```json
+{
+  "query": "explain transformer architecture",
+  "answer": "The Transformer architecture, introduced in 'Attention Is All You Need'...",
+  "confidence": 0.85,
+  "refinement_attempts": 0,
+  "papers": [...],
+  "repositories": [...]
+}
+```
+
+### Confidence Scoring
+
+Each answer receives a confidence score (0.0-1.0):
+
+- **High (≥0.7)**: Answer is comprehensive and well-supported
+- **Medium (0.4-0.7)**: Answer is partial, may need verification
+- **Low (<0.4)**: Answer is tentative, recommend further research
+
+### Iterative Query Refinement
+
+When confidence is below threshold (70%), DOVA automatically:
+
+1. Analyzes what information is missing
+2. Generates a refined search query
+3. Re-executes research with improved query
+4. Repeats up to 2 times
+
+Example:
+```text
+Original: "latest AI developments"
+Refined:  "recent advances in large language models and generative AI 2026"
+```
+
+### Memory-Assisted Research
+
+Research results are stored in memory for future reference:
+
+- **Short-Term Memory**: All research stored with 24-hour TTL
+- **Long-Term Memory**: High-confidence (≥70%) answers stored persistently
+- **Semantic Search**: Embeddings enable finding similar past research
 
 ---
 
@@ -1847,7 +2055,24 @@ Sandbox containers run with:
 
 ## Deployment
 
-### Deploy to AWS
+### Quick Deployment with Automated AWS Setup
+
+The easiest way to deploy DOVA is using the automated AWS setup:
+
+```bash
+# 1. Set up AWS resources (IAM, Cognito, SSM, Secrets)
+dova aws setup --stack-name my-dova-stack --region us-east-1
+
+# 2. Source the generated environment file
+source .env.aws
+
+# 3. Start DOVA in AgentCore mode
+dova serve --mode agentcore
+```
+
+### Deploy to AWS (Full Infrastructure)
+
+For a complete infrastructure deployment with CDK:
 
 ```bash
 # Set environment
@@ -1937,6 +2162,25 @@ AccessDeniedException: You don't have access to the model
 1. Go to AWS Console → Bedrock → Model access
 2. Request access to Claude models
 3. Wait for approval (usually instant)
+
+#### 3b. AWS Setup Permission Errors
+
+```
+IAM setup failed: Access denied
+```
+
+**Solution:**
+1. Check required permissions:
+   ```bash
+   dova aws permissions
+   ```
+2. Ensure your AWS user/role has the listed IAM permissions
+3. Attach a policy with the required actions to your user/role
+
+Common missing permissions:
+- `iam:CreateRole`, `iam:CreatePolicy`, `iam:AttachRolePolicy`
+- `cognito-idp:CreateUserPool`, `cognito-idp:CreateUserPoolClient`
+- `ssm:PutParameter`, `secretsmanager:CreateSecret`
 
 #### 4. MCP Server Connection Failures
 

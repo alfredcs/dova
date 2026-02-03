@@ -90,12 +90,14 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         metrics: MetricsCollector | None = None,
         retry_config: RetryConfig | None = None,
         memory_service: Any | None = None,
+        session_manager: Any | None = None,
     ):
         self.llm_router = llm_router
         self.mcp_client = mcp_client
         self.metrics = metrics or MetricsCollector()
         self.retry_config = retry_config or RetryConfig(max_retries=3)
         self.memory_service = memory_service
+        self.session_manager = session_manager  # AgentCore memory session manager
         self.name = self.__class__.__name__
         self._logger = logger.bind(agent=self.name)
 
@@ -254,14 +256,21 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         query: str,
         search_type: str = "repositories",
         per_page: int = 30,
+        sort: str | None = None,
     ) -> MCPToolResult:
-        """Convenience method for GitHub search."""
+        """Convenience method for GitHub search.
+
+        Args:
+            query: Search query
+            search_type: Type of search (repositories, code, etc.)
+            per_page: Number of results per page
+            sort: Sort order (e.g., "stars", "forks", "updated")
+        """
         tool = f"search_{search_type}" if search_type != "repositories" else "search_repositories"
-        return await self.call_tool(
-            "github",
-            tool,
-            {"query": query, "per_page": per_page},
-        )
+        params = {"query": query, "perPage": per_page}
+        if sort:
+            params["sort"] = sort
+        return await self.call_tool("github", tool, params)
 
     async def search_huggingface(
         self,

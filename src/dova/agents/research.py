@@ -64,6 +64,7 @@ class ResearchAgent(BaseAgent):
         source_registry: SourceRegistry | None = None,
         tavily_api_key: str | None = None,
         web_search_service: WebSearchService | None = None,
+        enhanced_memory_service: Any | None = None,
     ):
         super().__init__(llm_router, mcp_client, metrics, memory_service=memory_service)
         self.source_registry = source_registry
@@ -73,6 +74,8 @@ class ResearchAgent(BaseAgent):
         self._tavily_client = None
         # New multi-provider web search service
         self._web_search_service = web_search_service
+        # Enhanced memory with short-term/long-term support
+        self.enhanced_memory_service = enhanced_memory_service
 
     @property
     def system_prompt(self) -> str:
@@ -90,6 +93,152 @@ When analyzing search results:
 - Note connections between papers, code, and models
 - Assess quality based on citations, stars, downloads, etc."""
 
+    def _detect_query_intent(self, query: str) -> dict[str, Any]:
+        """
+        Detect user intent from the query to prioritize appropriate sources.
+
+        Returns:
+            dict with:
+            - primary_source: The main source user is asking about (github, arxiv, huggingface, web, or None)
+            - query_type: Type of query (technical, biographical, factual, general)
+            - recommended_sources: List of sources to search based on query type
+            - search_query: Cleaned query for searching
+        """
+        query_lower = query.lower()
+
+        # === STEP 1: Classify Query Type ===
+        # Technical/Research indicators (needs ArXiv, GitHub, HuggingFace)
+        technical_keywords = [
+            "algorithm", "architecture", "model", "neural network", "transformer",
+            "machine learning", "deep learning", "ai", "artificial intelligence",
+            "implementation", "framework", "library", "code", "api", "benchmark",
+            "training", "inference", "llm", "gpt", "bert", "diffusion", "attention",
+            "paper", "research", "method", "technique", "approach", "sota",
+            "state of the art", "latest", "recent advances", "survey"
+        ]
+
+        # Biographical/Person indicators (needs web search primarily)
+        biographical_keywords = [
+            "who is", "who was", "biography", "born", "died", "age", "family",
+            "married", "wife", "husband", "children", "parents", "education",
+            "college", "university", "degree", "school", "background", "history",
+            "career", "life", "early life", "personal", "net worth", "salary"
+        ]
+
+        # Factual/General knowledge indicators (needs web search)
+        factual_keywords = [
+            "what is", "what are", "when did", "where is", "how many", "how much",
+            "explain", "define", "meaning", "history of", "origin of", "why",
+            "difference between", "compare", "vs", "versus"
+        ]
+
+        # Person name detection (common patterns)
+        person_indicators = [
+            "'s ", "elon musk", "bill gates", "jeff bezos", "mark zuckerberg",
+            "sam altman", "sundar pichai", "satya nadella", "jensen huang"
+        ]
+
+        # Count matches
+        technical_score = sum(1 for kw in technical_keywords if kw in query_lower)
+        biographical_score = sum(1 for kw in biographical_keywords if kw in query_lower)
+        factual_score = sum(1 for kw in factual_keywords if kw in query_lower)
+        person_score = sum(1 for kw in person_indicators if kw in query_lower)
+
+        # Boost biographical if person name detected
+        if person_score > 0:
+            biographical_score += person_score * 2
+
+        # Determine query type
+        type_scores = {
+            "technical": technical_score,
+            "biographical": biographical_score,
+            "factual": factual_score,
+        }
+        max_type_score = max(type_scores.values())
+        if max_type_score == 0:
+            query_type = "general"
+        else:
+            query_type = max(type_scores, key=type_scores.get)
+
+        # === STEP 2: Determine Recommended Sources ===
+        if query_type == "technical":
+            recommended_sources = ["arxiv", "github", "huggingface", "web"]
+        elif query_type == "biographical":
+            recommended_sources = ["web"]  # Only web for biographical
+        elif query_type == "factual":
+            recommended_sources = ["web", "arxiv"]  # Web first, then arxiv for academic facts
+        else:
+            recommended_sources = ["web", "github", "arxiv", "huggingface"]
+
+        # === STEP 3: Detect Primary Source (explicit mentions) ===
+        github_keywords = [
+            "github", "repo", "repository", "repositories", "starred", "stars",
+            "fork", "forks", "code implementation", "source code", "open source",
+            "most starred", "top repo", "popular repo"
+        ]
+        arxiv_keywords = [
+            "arxiv", "paper", "papers", "research paper", "publication",
+            "academic", "journal", "conference"
+        ]
+        hf_keywords = [
+            "huggingface", "hugging face", "hf model", "pretrained model",
+            "model hub", "transformers library", "checkpoint"
+        ]
+        web_keywords = [
+            "website", "blog", "tutorial", "guide", "documentation"
+        ]
+
+        github_score = sum(1 for kw in github_keywords if kw in query_lower)
+        arxiv_score = sum(1 for kw in arxiv_keywords if kw in query_lower)
+        hf_score = sum(1 for kw in hf_keywords if kw in query_lower)
+        web_score = sum(1 for kw in web_keywords if kw in query_lower)
+
+        scores = {
+            "github": github_score,
+            "arxiv": arxiv_score,
+            "huggingface": hf_score,
+            "web": web_score,
+        }
+        max_score = max(scores.values())
+        primary_source = None
+        if max_score > 0:
+            primary_source = max(scores, key=scores.get)
+
+        # Override recommended sources if explicit source mentioned
+        if primary_source:
+            if primary_source not in recommended_sources:
+                recommended_sources.insert(0, primary_source)
+
+        # === STEP 4: Clean search query ===
+        source_platform_words = [
+            "github", "arxiv", "huggingface", "hugging face", "hf model",
+            "on github", "from github", "in github",
+            "on arxiv", "from arxiv",
+            "on huggingface", "from huggingface",
+        ]
+        search_query = query_lower
+        for kw in source_platform_words:
+            search_query = search_query.replace(kw, " ")
+        search_query = " ".join(search_query.split())
+
+        self._logger.info(
+            "intent_detected",
+            original_query=query,
+            query_type=query_type,
+            primary_source=primary_source,
+            recommended_sources=recommended_sources,
+            type_scores=type_scores,
+            search_query=search_query,
+        )
+
+        return {
+            "primary_source": primary_source,
+            "query_type": query_type,
+            "recommended_sources": recommended_sources,
+            "scores": scores,
+            "search_query": search_query.strip() or query,
+        }
+
     async def execute(self, task: AgentTask) -> AgentResult:
         """Execute research task."""
         start_time = time.time()
@@ -102,7 +251,16 @@ When analyzing search results:
             if not query:
                 return self._wrap_result(task, False, error="No query provided")
 
-            self._logger.info("research_starting", source=source, query=query)
+            # Detect user intent to prioritize sources
+            intent = self._detect_query_intent(query)
+            entities["intent"] = intent
+
+            self._logger.info(
+                "research_starting",
+                source=source,
+                query=query,
+                detected_intent=intent.get("primary_source"),
+            )
 
             # Route to appropriate search method
             if source == "arxiv":
@@ -118,19 +276,31 @@ When analyzing search results:
             else:
                 return self._wrap_result(task, False, error=f"Unknown source: {source}")
 
-            # Store query to memory
-            if task.user_id and self.memory_service:
-                await self.remember(
-                    content={
-                        "type": "search_query",
-                        "query": query,
-                        "source": source,
-                        "results_count": self._count_results(results),
-                    },
-                    user_id=task.user_id,
-                    session_id=task.id,
-                    short_term=True,
-                )
+            # Store query to memory (enhanced or legacy)
+            if task.user_id:
+                memory_content = {
+                    "type": "search_query",
+                    "query": query,
+                    "source": source,
+                    "results_count": self._count_results(results),
+                }
+                # Prefer enhanced memory service for short-term storage
+                if self.enhanced_memory_service:
+                    from dova.services.memory_enhanced import MemoryType
+                    await self.enhanced_memory_service.store(
+                        memory_type=MemoryType.SHORT_TERM,
+                        content=memory_content,
+                        importance=0.5,
+                        user_id=task.user_id,
+                        tags=["search", source],
+                    )
+                elif self.memory_service:
+                    await self.remember(
+                        content=memory_content,
+                        user_id=task.user_id,
+                        session_id=task.id,
+                        short_term=True,
+                    )
 
             execution_time = (time.time() - start_time) * 1000
             return self._wrap_result(
@@ -202,9 +372,46 @@ When analyzing search results:
         """Search GitHub for repositories and code."""
         findings = ResearchFindings()
 
-        # Search repositories
-        search_query = self._build_github_query(query, entities)
-        result = await self.search_github(search_query, search_type="repositories", per_page=20)
+        # Check if user wants "most starred" repos - use sort=stars
+        intent = entities.get("intent", {})
+        query_lower = query.lower()
+        sort_by_stars = any(kw in query_lower for kw in ["most starred", "top repo", "popular", "trending", "best"])
+
+        # Use optimized query from intent if available (removes platform keywords like "github")
+        optimized_query = intent.get("search_query", query)
+
+        # Build search query - use topic keywords, removing platform noise
+        search_query = self._build_github_query(optimized_query, entities)
+
+        # For noisy queries with filler words, extract the core topic
+        # Filler patterns that indicate the query needs simplification
+        filler_patterns = ["on with", "most starred", "top repo", "popular", "best", "trending"]
+        has_filler = any(fp in search_query.lower() for fp in filler_patterns)
+
+        if has_filler or len(search_query.split()) > 5:
+            # Extract meaningful topic phrases from the original query
+            topic_patterns = [
+                "agentic reasoning", "agentic ai", "llm agent", "ai agent",
+                "multi-agent", "reasoning", "chain of thought", "react agent",
+                "langchain", "autogen", "crewai", "transformer"
+            ]
+            found_topics = [tp for tp in topic_patterns if tp in query_lower]
+            if found_topics:
+                # Use the most specific topic found
+                search_query = found_topics[0]
+                self._logger.info("github_query_simplified", original=optimized_query, simplified=search_query)
+
+        self._logger.info(
+            "github_search",
+            original_query=query,
+            optimized_query=optimized_query,
+            final_query=search_query,
+            sort_by_stars=sort_by_stars,
+        )
+
+        # Add sort parameter for "most starred" queries
+        sort_param = "stars" if sort_by_stars else None
+        result = await self.search_github(search_query, search_type="repositories", per_page=20, sort=sort_param)
 
         if result.success and result.data:
             repos = result.data.get("items", result.data) if isinstance(result.data, dict) else result.data
@@ -394,31 +601,92 @@ When analyzing search results:
         entities: dict[str, Any],
         user_id: str | None = None,
     ) -> ResearchFindings:
-        """Search all sources in parallel."""
+        """Search sources based on query type and intent, with smart routing."""
         import asyncio
 
-        tasks = [
-            self._search_arxiv(query, entities),
-            self._search_github(query, entities),
-            self._search_huggingface(query, entities),
-            self._search_web(query, entities),
-        ]
+        # Get intent to determine source selection
+        intent = entities.get("intent", {})
+        primary_source = intent.get("primary_source")
+        query_type = intent.get("query_type", "general")
+        recommended_sources = intent.get("recommended_sources", ["web", "arxiv", "github", "huggingface"])
+        optimized_query = intent.get("search_query", query)
+
+        self._logger.info(
+            "search_all_with_intent",
+            query_type=query_type,
+            primary_source=primary_source,
+            recommended_sources=recommended_sources,
+            optimized_query=optimized_query,
+        )
+
+        # Build search tasks based on recommended sources (smart routing)
+        source_methods = {
+            "arxiv": lambda: self._search_arxiv(optimized_query, entities),
+            "github": lambda: self._search_github(optimized_query, entities),
+            "huggingface": lambda: self._search_huggingface(optimized_query, entities),
+            "web": lambda: self._search_web(optimized_query, entities),
+        }
+
+        # Only search recommended sources (e.g., biographical queries only search web)
+        tasks = []
+        source_names = []
+        for source in recommended_sources:
+            if source in source_methods:
+                tasks.append(source_methods[source]())
+                source_names.append(source)
+
+        self._logger.info(
+            "smart_source_routing",
+            query_type=query_type,
+            sources_to_search=source_names,
+            skipped_sources=[s for s in source_methods if s not in source_names],
+        )
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Merge findings
-        findings = ResearchFindings()
-
-        for result in results:
+        # Map results to sources
+        source_findings = {}
+        for name, result in zip(source_names, results):
             if isinstance(result, Exception):
-                self._logger.warning("search_partial_failure", error=str(result))
-                continue
-            if isinstance(result, ResearchFindings):
-                findings.papers.extend(result.papers)
-                findings.repositories.extend(result.repositories)
-                findings.models.extend(result.models)
-                findings.datasets.extend(result.datasets)
-                findings.web_results.extend(result.web_results)
+                self._logger.warning("search_partial_failure", source=name, error=str(result))
+                source_findings[name] = ResearchFindings()
+            elif isinstance(result, ResearchFindings):
+                source_findings[name] = result
+            else:
+                source_findings[name] = ResearchFindings()
+
+        # Merge findings with priority ordering based on recommended sources order
+        findings = ResearchFindings()
+        priority_order = recommended_sources  # Use recommended order as priority
+
+        self._logger.info("result_priority_order", order=priority_order)
+
+        # Merge in priority order
+        for source_name in priority_order:
+            sf = source_findings.get(source_name, ResearchFindings())
+            findings.papers.extend(sf.papers)
+            findings.repositories.extend(sf.repositories)
+            findings.models.extend(sf.models)
+            findings.datasets.extend(sf.datasets)
+            findings.web_results.extend(sf.web_results)
+
+        # If primary source was specified but returned few results, log a warning
+        if primary_source:
+            primary_findings = source_findings.get(primary_source, ResearchFindings())
+            primary_count = (
+                len(primary_findings.papers) +
+                len(primary_findings.repositories) +
+                len(primary_findings.models) +
+                len(primary_findings.datasets) +
+                len(primary_findings.web_results)
+            )
+            if primary_count == 0:
+                self._logger.warning(
+                    "primary_source_no_results",
+                    source=primary_source,
+                    query=optimized_query,
+                    hint="User specifically asked for this source but no results found",
+                )
 
         # Add custom sources if user_id provided
         if user_id and self.source_registry:
@@ -477,6 +745,9 @@ When analyzing search results:
 
     def _build_github_query(self, query: str, entities: dict[str, Any]) -> str:
         """Build optimized GitHub query from entities."""
+        intent = entities.get("intent", {})
+        optimized_query = intent.get("search_query", query)
+
         # PRIORITY 1: Use primary_subject (the main entity being searched)
         primary_subject = entities.get("primary_subject", "")
         search_terms = entities.get("search_terms", [])
@@ -497,6 +768,9 @@ When analyzing search results:
         elif technologies:
             # Use technologies as search terms (often contains model/library names)
             search_query = " ".join(technologies[:3])
+        elif optimized_query and optimized_query != query:
+            # Use the intent-optimized query (stripped of source keywords)
+            search_query = optimized_query
         else:
             # Fallback to cleaned query
             search_query = self._extract_search_keywords(query)
@@ -516,8 +790,10 @@ When analyzing search results:
         if time_range:
             parts.append(f"pushed:>{time_range}")
 
-        # Add minimum stars for quality
-        parts.append("stars:>5")
+        # Only add minimum stars if not already sorting by stars (avoid over-filtering)
+        query_lower = query.lower()
+        if not any(kw in query_lower for kw in ["most starred", "top repo", "popular", "trending"]):
+            parts.append("stars:>5")
 
         return " ".join(parts)
 

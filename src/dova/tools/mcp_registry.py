@@ -24,6 +24,56 @@ from dova.utils.retry import CircuitBreaker, RetryConfig, retry_async
 logger = structlog.get_logger(__name__)
 
 
+def create_gateway_mcp_client(access_token: str | None = None) -> MCPServerConfig | None:
+    """Create MCP server config for AgentCore Gateway.
+
+    Returns None if gateway is not configured (local development).
+    Falls back to existing MCP servers when gateway unavailable.
+
+    Args:
+        access_token: Optional pre-fetched access token
+
+    Returns:
+        MCPServerConfig for gateway or None if not configured
+    """
+    import os
+
+    stack_name = os.environ.get("STACK_NAME")
+
+    if not stack_name:
+        logger.warning(
+            "gateway_not_configured",
+            reason="STACK_NAME not set",
+            fallback="Using existing MCP servers (STDIO/HTTP)",
+        )
+        return None
+
+    try:
+        from dova.services.gateway_auth import get_gateway_access_token, get_gateway_url
+
+        if access_token is None:
+            access_token = get_gateway_access_token()
+
+        gateway_url = get_gateway_url()
+
+        return MCPServerConfig(
+            name="gateway",
+            description="AgentCore Gateway MCP Server",
+            transport=MCPTransport.STREAMABLE_HTTP,
+            url=gateway_url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            enabled=True,
+            priority=0,  # Highest priority
+        )
+    except Exception as e:
+        logger.warning(
+            "gateway_client_creation_failed",
+            error=str(e),
+            fallback="Using existing MCP servers",
+        )
+        return None
+
+
 @dataclass
 class MCPInvocationResult:
     """Result from an MCP tool invocation."""
@@ -148,6 +198,8 @@ class MCPClient:
                 result = await self._invoke_http(server_config, tool, params)
             elif server_config.transport == MCPTransport.SSE:
                 result = await self._invoke_sse(server_config, tool, params)
+            elif server_config.transport == MCPTransport.STREAMABLE_HTTP:
+                result = await self._invoke_streamable_http(server_config, tool, params)
             else:
                 raise ValueError(f"Unsupported transport: {server_config.transport}")
 
@@ -516,6 +568,76 @@ class MCPClient:
         raise NotImplementedError(
             f"SSE transport for {server_config.name} not yet implemented"
         )
+
+    async def _invoke_streamable_http(
+        self,
+        server_config: MCPServerConfig,
+        tool: str,
+        params: dict[str, Any],
+    ) -> Any:
+        """Invoke MCP tool via Streamable HTTP transport (AgentCore Gateway).
+
+        Uses the MCP Streamable HTTP transport for communication with
+        AgentCore Gateway endpoints.
+        """
+        try:
+            from mcp.client.streamable_http import streamablehttp_client
+        except ImportError:
+            raise ImportError(
+                "mcp package with streamable_http support is required. "
+                "Install with: pip install 'mcp>=1.21.0'"
+            )
+
+        if not server_config.url:
+            raise ValueError(
+                f"No URL configured for Streamable HTTP server: {server_config.name}"
+            )
+
+        self._logger.debug(
+            "streamable_http_invoke",
+            server=server_config.name,
+            tool=tool,
+            url=server_config.url,
+        )
+
+        async with streamablehttp_client(
+            url=server_config.url,
+            headers=server_config.headers,
+        ) as (read_stream, write_stream, _):
+            # Import MCP client session
+            from mcp import ClientSession
+
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+
+                # Call the tool
+                result = await session.call_tool(tool, params)
+
+                return self._parse_streamable_result(result)
+
+    def _parse_streamable_result(self, result: Any) -> Any:
+        """Parse result from streamable HTTP client."""
+        import json
+
+        # Handle MCP CallToolResult
+        if hasattr(result, "content"):
+            content = result.content
+            if content and isinstance(content, list):
+                texts = []
+                for item in content:
+                    if hasattr(item, "text"):
+                        texts.append(item.text)
+                    elif isinstance(item, dict) and item.get("type") == "text":
+                        texts.append(item.get("text", ""))
+                if texts:
+                    combined = "\n".join(texts)
+                    try:
+                        return json.loads(combined)
+                    except json.JSONDecodeError:
+                        return combined
+            return content
+
+        return result
 
     def _cache_key(self, server: str, tool: str, params: dict[str, Any]) -> str:
         """Generate cache key for MCP invocation."""

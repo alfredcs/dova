@@ -1,0 +1,55 @@
+# Dockerfile for DOVA AgentCore Runtime
+#
+# Multi-stage build optimized for AWS Bedrock AgentCore deployment
+# Based on AWS FAST (Fullstack Agent Solution Template) pattern
+
+# Stage 1: Build dependencies
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency files
+COPY pyproject.toml ./
+
+# Create virtual environment and install dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir .
+
+# Stage 2: Runtime
+FROM python:3.11-slim as runtime
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+COPY src/dova ./dova
+
+# Set environment variables for AgentCore runtime
+ENV RUNTIME_MODE=agentcore
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Health check endpoint (for container orchestration)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD python -c "import dova; print('healthy')" || exit 1
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash dova
+USER dova
+
+# Default command runs the AgentCore runtime
+# The actual entrypoint is managed by AgentCore BedrockAgentCoreApp
+CMD ["python", "-m", "dova.runtime.agentcore_app"]

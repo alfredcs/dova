@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOVA Research</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --bg: #0f172a;
+            --bg-card: #1e293b;
+            --bg-input: #334155;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: #475569;
+            --success: #22c55e;
+            --warning: #f59e0b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .search-box {
+            background: var(--bg-card);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border);
+        }
+
+        .search-input-wrapper {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 1rem 1.25rem;
+            font-size: 1rem;
+            border: 2px solid var(--border);
+            border-radius: 0.5rem;
+            background: var(--bg-input);
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: var(--primary);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .search-btn {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 0.5rem;
+            background: var(--primary);
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .search-btn:hover {
+            background: var(--primary-dark);
+        }
+
+        .search-btn:active {
+            transform: scale(0.98);
+        }
+
+        .search-btn:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+        }
+
+        .sources {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .source-chip {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .source-chip:hover {
+            border-color: var(--primary);
+        }
+
+        .source-chip.active {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .source-chip input {
+            display: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+        }
+
+        .results.show {
+            display: block;
+        }
+
+        .answer-card {
+            background: linear-gradient(135deg, #1a1a2e, var(--bg-card));
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 2px solid var(--primary);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+        }
+
+        .answer-card h3 {
+            color: var(--primary);
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .answer-card h3::before {
+            content: "✨";
+        }
+
+        .confidence-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-left: auto;
+        }
+
+        .confidence-high {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+        }
+
+        .confidence-medium {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .confidence-low {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .refinement-note {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            font-style: italic;
+        }
+
+        .answer-content {
+            color: var(--text);
+            line-height: 1.8;
+            font-size: 1rem;
+        }
+
+        .answer-content p {
+            margin-bottom: 1rem;
+        }
+
+        .answer-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .answer-content strong {
+            color: var(--primary);
+        }
+
+        .summary-card {
+            background: var(--bg-card);
+            border-radius: 1rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border);
+        }
+
+        .summary-card h3 {
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .results-grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .result-section {
+            background: var(--bg-card);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+        }
+
+        .result-section h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .result-section .count {
+            background: var(--primary);
+            color: white;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 1rem;
+        }
+
+        .result-item {
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            background: var(--bg);
+            border-radius: 0.5rem;
+            border-left: 3px solid var(--primary);
+        }
+
+        .result-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .result-item h4 {
+            margin-bottom: 0.5rem;
+        }
+
+        .result-item h4 a {
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .result-item h4 a:hover {
+            color: var(--primary);
+        }
+
+        .result-item p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .result-meta {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .result-meta span {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .error-message {
+            display: none;
+            background: #7f1d1d;
+            border: 1px solid #991b1b;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DOVA Research</h1>
+            <p class="subtitle">Deep Orchestrated Versatile Agent - AI Research Assistant</p>
+        </header>
+
+        <div class="search-box">
+            <div class="search-input-wrapper">
+                <input
+                    type="text"
+                    class="search-input"
+                    id="query"
+                    placeholder="Enter your research query... (e.g., 'transformer architecture for NLP')"
+                    autofocus
+                >
+                <button class="search-btn" id="searchBtn" onclick="search()">
+                    Search
+                </button>
+            </div>
+            <div class="sources">
+                <label class="source-chip active">
+                    <input type="checkbox" value="arxiv" checked>
+                    <span>ArXiv Papers</span>
+                </label>
+                <label class="source-chip active">
+                    <input type="checkbox" value="github" checked>
+                    <span>GitHub Repos</span>
+                </label>
+                <label class="source-chip active">
+                    <input type="checkbox" value="huggingface" checked>
+                    <span>HuggingFace Models</span>
+                </label>
+                <label class="source-chip">
+                    <input type="checkbox" value="web">
+                    <span>Web Search</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="error-message" id="error"></div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p id="loadingText">Searching across sources...</p>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">Gathering results and synthesizing answer</p>
+        </div>
+
+        <div class="results" id="results"></div>
+
+        <footer>
+            <p>Powered by <a href="/docs">DOVA API</a> | <a href="/docs">API Documentation</a></p>
+        </footer>
+    </div>
+
+    <script>
+        // Toggle source chips
+        document.querySelectorAll('.source-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                chip.classList.toggle('active');
+                chip.querySelector('input').checked = chip.classList.contains('active');
+            });
+        });
+
+        // Enter key to search
+        document.getElementById('query').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') search();
+        });
+
+        async function search() {
+            const query = document.getElementById('query').value.trim();
+            if (!query) return;
+
+            const sources = Array.from(document.querySelectorAll('.source-chip.active input'))
+                .map(input => input.value);
+
+            if (sources.length === 0) {
+                showError('Please select at least one source');
+                return;
+            }
+
+            const btn = document.getElementById('searchBtn');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const error = document.getElementById('error');
+
+            // Reset UI
+            btn.disabled = true;
+            btn.textContent = 'Searching...';
+            loading.classList.add('show');
+            results.classList.remove('show');
+            error.classList.remove('show');
+
+            try {
+                const response = await fetch('/api/v1/research', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        sources: sources,
+                        max_results: 10
+                    })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.detail || `HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (err) {
+                showError(`Search failed: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Search';
+                loading.classList.remove('show');
+            }
+        }
+
+        function showError(message) {
+            const error = document.getElementById('error');
+            error.textContent = message;
+            error.classList.add('show');
+        }
+
+        function displayResults(data) {
+            const results = document.getElementById('results');
+            let html = '';
+
+            // Direct Answer (most prominent)
+            if (data.answer) {
+                // Convert markdown-style formatting to HTML
+                let answerHtml = escapeHtml(data.answer)
+                    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\n\n/g, '</p><p>')
+                    .replace(/\n- /g, '</p><p>• ')
+                    .replace(/\n/g, '<br>');
+                answerHtml = '<p>' + answerHtml + '</p>';
+
+                // Confidence badge
+                const confidence = data.confidence || 0;
+                let confidenceClass = 'confidence-low';
+                let confidenceLabel = 'Low confidence';
+                if (confidence >= 0.7) {
+                    confidenceClass = 'confidence-high';
+                    confidenceLabel = 'High confidence';
+                } else if (confidence >= 0.4) {
+                    confidenceClass = 'confidence-medium';
+                    confidenceLabel = 'Medium confidence';
+                }
+                const confidencePct = Math.round(confidence * 100);
+                const confidenceBadge = confidence > 0
+                    ? `<span class="confidence-badge ${confidenceClass}">${confidenceLabel} (${confidencePct}%)</span>`
+                    : '';
+
+                // Refinement note
+                const refinements = data.refinement_attempts || 0;
+                const refinementNote = refinements > 0
+                    ? `<p class="refinement-note">Query refined ${refinements} time${refinements > 1 ? 's' : ''} for better accuracy</p>`
+                    : '';
+
+                html += `
+                    <div class="answer-card">
+                        <h3>Research Answer ${confidenceBadge}</h3>
+                        <div class="answer-content">
+                            ${answerHtml}
+                        </div>
+                        ${refinementNote}
+                    </div>
+                `;
+            }
+
+            // Summary (sources found)
+            if (data.summary) {
+                html += `
+                    <div class="summary-card">
+                        <h3>Sources</h3>
+                        <p>${escapeHtml(data.summary)}</p>
+                    </div>
+                `;
+            }
+
+            html += '<div class="results-grid">';
+
+            // Papers
+            if (data.papers && data.papers.length > 0) {
+                html += `
+                    <div class="result-section">
+                        <h3>
+                            <span>ArXiv Papers</span>
+                            <span class="count">${data.papers.length}</span>
+                        </h3>
+                        ${data.papers.map(p => `
+                            <div class="result-item">
+                                <h4><a href="${escapeHtml(p.url || p.metadata?.arxiv_id || '#')}" target="_blank">${escapeHtml(p.title)}</a></h4>
+                                <p>${escapeHtml(p.description || '')}</p>
+                                <div class="result-meta">
+                                    ${p.metadata?.authors ? `<span>${escapeHtml(p.metadata.authors.slice(0, 3).join(', '))}</span>` : ''}
+                                    ${p.metadata?.published ? `<span>${escapeHtml(p.metadata.published)}</span>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // Repositories
+            if (data.repositories && data.repositories.length > 0) {
+                html += `
+                    <div class="result-section">
+                        <h3>
+                            <span>GitHub Repositories</span>
+                            <span class="count">${data.repositories.length}</span>
+                        </h3>
+                        ${data.repositories.map(r => `
+                            <div class="result-item">
+                                <h4><a href="${escapeHtml(r.url || '#')}" target="_blank">${escapeHtml(r.title || r.name)}</a></h4>
+                                <p>${escapeHtml(r.description || '')}</p>
+                                <div class="result-meta">
+                                    ${r.metadata?.stars ? `<span>&#9733; ${r.metadata.stars.toLocaleString()}</span>` : ''}
+                                    ${r.metadata?.language ? `<span>${escapeHtml(r.metadata.language)}</span>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // Models
+            if (data.models && data.models.length > 0) {
+                html += `
+                    <div class="result-section">
+                        <h3>
+                            <span>HuggingFace Models</span>
+                            <span class="count">${data.models.length}</span>
+                        </h3>
+                        ${data.models.map(m => `
+                            <div class="result-item">
+                                <h4><a href="${escapeHtml(m.url || '#')}" target="_blank">${escapeHtml(m.title || m.id)}</a></h4>
+                                <p>${escapeHtml(m.description || '')}</p>
+                                <div class="result-meta">
+                                    ${m.metadata?.downloads ? `<span>&#8595; ${m.metadata.downloads.toLocaleString()}</span>` : ''}
+                                    ${m.metadata?.pipeline_tag ? `<span>${escapeHtml(m.metadata.pipeline_tag)}</span>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // Datasets
+            if (data.datasets && data.datasets.length > 0) {
+                html += `
+                    <div class="result-section">
+                        <h3>
+                            <span>Datasets</span>
+                            <span class="count">${data.datasets.length}</span>
+                        </h3>
+                        ${data.datasets.map(d => `
+                            <div class="result-item">
+                                <h4><a href="${escapeHtml(d.url || '#')}" target="_blank">${escapeHtml(d.title || d.id)}</a></h4>
+                                <p>${escapeHtml(d.description || '')}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // Web results
+            if (data.web_results && data.web_results.length > 0) {
+                html += `
+                    <div class="result-section">
+                        <h3>
+                            <span>Web Results</span>
+                            <span class="count">${data.web_results.length}</span>
+                        </h3>
+                        ${data.web_results.map(w => `
+                            <div class="result-item">
+                                <h4><a href="${escapeHtml(w.url || '#')}" target="_blank">${escapeHtml(w.title)}</a></h4>
+                                <p>${escapeHtml(w.description || '')}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // Insights
+            if (data.insights && data.insights.length > 0) {
+                html += `
+                    <div class="result-section">
+                        <h3><span>Key Insights</span></h3>
+                        ${data.insights.map(i => `
+                            <div class="result-item">
+                                <p>${escapeHtml(typeof i === 'string' ? i : i.summary || i.title || JSON.stringify(i))}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+
+            // Check if empty
+            const hasResults = (data.papers?.length || data.repositories?.length ||
+                               data.models?.length || data.datasets?.length ||
+                               data.web_results?.length || data.insights?.length);
+
+            if (!hasResults) {
+                html = `
+                    <div class="empty-state">
+                        <p>No results found for your query.</p>
+                        <p>Try different keywords or select more sources.</p>
+                    </div>
+                `;
+            }
+
+            results.innerHTML = html;
+            results.classList.add('show');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

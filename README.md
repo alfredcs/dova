@@ -2,9 +2,12 @@
 
 DOVA is an enterprise-grade, multi-agent research automation system built on AWS Strands Agents SDK and Amazon Bedrock AgentCore. It aggregates knowledge from ArXiv, GitHub, HuggingFace, and the web through the Model Context Protocol (MCP).
 
+**Latest: v1.3** - Now with browser-based UI, answer synthesis, and confidence scoring!
+
 ## Features
 
 ### Core Capabilities
+- **Browser-Based Research UI**: Modern dark-theme interface at `http://localhost:8081/`
 - **Multi-Agent Architecture**: Specialized agents for research, profiling, validation, and synthesis
 - **Agentic Reasoning**: ReAct-style reasoning loops, self-reflection, and working memory for smarter agents
 - **Collaborative Intelligence**: Blackboard, ensemble, iterative refinement, and tool-augmented patterns for synergistic multi-agent reasoning (1+1>2)
@@ -14,6 +17,14 @@ DOVA is an enterprise-grade, multi-agent research automation system built on AWS
 - **Intelligent Source Selection**: Automatic source filtering based on query type (news vs technical)
 - **Multi-Provider LLM**: AWS Bedrock, Anthropic, OpenAI with automatic fallback
 - **Model Tiering**: Cost-optimized model selection (Basic/Standard/Advanced/Reasoning)
+
+### Deep Research Intelligence (v1.3)
+- **Answer Synthesis**: Direct LLM-synthesized answers to research queries (not just links)
+- **Query Type Classification**: Automatic detection (technical, biographical, factual, general)
+- **Smart Source Routing**: Biographical queries → web only; Technical queries → all sources
+- **Confidence Scoring**: Answer quality assessment with 0-100% confidence scores
+- **Iterative Query Refinement**: Automatic query improvement when confidence is low
+- **Memory-Assisted Research**: Short-term (24h) and long-term (persistent) research memory
 
 ### Advanced Agent Intelligence (OpenClaw-Inspired)
 - **Multi-Tiered Thinking**: Configurable thinking budgets (OFF→MINIMAL→LOW→MEDIUM→HIGH→XHIGH) with auto-selection based on task complexity
@@ -91,6 +102,22 @@ make run-local
 docker-compose up -d
 ```
 
+### Browser-Based Research UI
+
+```bash
+# Start the server with UI
+dova serve --port 8081
+
+# Open in browser
+open http://localhost:8081
+```
+
+The UI provides:
+- Query input with source selection (ArXiv, GitHub, HuggingFace, Web)
+- Direct synthesized answers with confidence scores
+- Organized results by source type
+- Real-time search progress indicators
+
 ### Using the CLI
 
 ```bash
@@ -121,6 +148,34 @@ dova mcp setup
 # Update MCP repos (git pull)
 dova mcp update
 ```
+
+### AWS Setup (Automated)
+
+DOVA can automatically set up all required AWS services for AgentCore deployment:
+
+```bash
+# Run automated AWS setup (creates IAM, Cognito, SSM, Secrets Manager resources)
+dova aws setup --stack-name my-dova-stack --region us-east-1
+
+# Validate existing AWS setup
+dova aws validate --stack-name my-dova-stack
+
+# Show required IAM permissions
+dova aws permissions
+
+# Generate environment file from existing setup
+dova aws env --stack-name my-dova-stack
+
+# Remove all AWS resources (cleanup)
+dova aws teardown --stack-name my-dova-stack
+```
+
+The setup command automatically creates:
+- **IAM**: Execution role with Bedrock, AgentCore, SSM, and Secrets Manager policies
+- **Cognito**: User Pool, Resource Server, App Client, and Domain for OAuth2
+- **SSM Parameter Store**: Configuration parameters (Cognito provider, client ID)
+- **Secrets Manager**: Client secret for OAuth2 authentication
+- **Bedrock**: Validates model access (Claude 3 Sonnet/Haiku)
 
 ## Architecture
 
@@ -311,6 +366,9 @@ make deploy
 |----------|-------------|----------|
 | `AWS_REGION` | AWS region for Bedrock | Yes |
 | `AWS_BEDROCK_MODEL_ID` | Bedrock model ID | Yes |
+| `STACK_NAME` | AWS stack name for AgentCore resources | For AgentCore |
+| `MEMORY_ID` | AgentCore Memory ID | For AgentCore |
+| `GATEWAY_URL` | AgentCore Gateway URL | For AgentCore |
 | `MCP_GITHUB_TOKEN` | GitHub personal access token | No |
 | `BRAVE_API_KEY` | Brave Search API key | No |
 | `PERPLEXITY_API_KEY` | Perplexity API key | No |

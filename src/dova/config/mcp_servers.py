@@ -15,6 +15,7 @@ class MCPTransport(Enum):
     STDIO = "stdio"
     SSE = "sse"
     HTTP = "http"
+    STREAMABLE_HTTP = "streamable_http"  # AgentCore Gateway
 
 
 class MCPCapability(Enum):

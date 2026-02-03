@@ -69,6 +69,7 @@ DOVA addresses these challenges through an **Agentic Fabric**—a dynamic multi-
 | **Code Sandbox** | Secure execution environment for validation | AgentCore Code Interpreter |
 | **Observability** | Metrics, traces, logs, and alarms | CloudWatch + X-Ray + OpenTelemetry |
 | **Identity & Security** | SSO/OAuth authentication and authorization | AWS Cognito + AgentCore Gateway |
+| **Automated Setup** | One-command AWS resource provisioning | `dova aws setup` CLI |
 
 ### Advanced Intelligence Components
 
@@ -571,7 +572,39 @@ await heartbeat.start()
 
 ## Deployment with AgentCore
 
-### Project Setup
+### Automated AWS Setup
+
+DOVA provides automated setup for all required AWS services, eliminating manual configuration:
+
+```bash
+# Install DOVA
+pip install -e ".[dev]"
+
+# Run automated AWS setup (creates IAM, Cognito, SSM, Secrets Manager)
+dova aws setup --stack-name my-dova-stack --region us-east-1
+
+# Source the generated environment file
+source .env.aws
+
+# Start DOVA in AgentCore mode
+dova serve --mode agentcore
+```
+
+The `dova aws setup` command automatically creates:
+
+| Service | Resources |
+|---------|-----------|
+| **IAM** | Execution role + policies (Bedrock, AgentCore, SSM, Secrets) |
+| **Cognito** | User Pool, Resource Server, App Client, Domain for OAuth2 |
+| **SSM** | Configuration parameters (Cognito provider, client ID) |
+| **Secrets Manager** | Client secret for OAuth2 authentication |
+
+To view required IAM permissions before running setup:
+```bash
+dova aws permissions
+```
+
+### Alternative: Manual Project Setup
 
 ```bash
 # Clone the fullstack AgentCore template
@@ -677,6 +710,8 @@ agent = Agent(system_prompt="Research agent with tracing enabled")
 
 \textbf{8. Session management prevents context drift.} Automatic staleness detection and recovery actions maintain conversation quality over extended sessions.
 
+\textbf{9. Automated AWS setup removes deployment friction.} The \texttt{dova aws setup} command provisions IAM, Cognito, SSM, and Secrets Manager in one step, reducing setup time from hours to minutes.
+
 \end{tcolorbox}
 
 ---
@@ -710,6 +745,23 @@ Enhanced with **OpenClaw-inspired intelligence features**:
 - **Strands GitHub**: [github.com/strands-agents/sdk-python](https://github.com/strands-agents/sdk-python)
 - **Amazon Bedrock AgentCore**: [docs.aws.amazon.com/bedrock-agentcore](https://docs.aws.amazon.com/bedrock-agentcore)
 - **FAST Template**: [github.com/awslabs/fullstack-solution-template-for-agentcore](https://github.com/awslabs/fullstack-solution-template-for-agentcore)
+
+---
+
+## What's New in v1.3
+
+*February 2026*
+
+DOVA v1.3 introduces significant enhancements to research capabilities:
+
+- **Browser-Based Research UI**: Modern dark-theme interface accessible at `http://localhost:8081/`
+- **Answer Synthesis**: LLM-synthesized direct answers to research queries (not just links)
+- **Confidence Scoring**: Answer quality assessment with 0-100% confidence scores
+- **Smart Source Routing**: Query type classification (technical, biographical, factual) routes to appropriate sources
+- **Iterative Query Refinement**: Automatic query improvement when confidence is below threshold
+- **Enhanced Memory**: Short-term (24h) and long-term (persistent) research memory with Amazon Titan embeddings
+
+See [Release Notes v1.3](../release_notes_v1.3.md) for full details.
 
 ---
 
