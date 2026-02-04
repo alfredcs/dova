@@ -19,7 +19,13 @@ from dova.agents.mixins.reasoning import ReasoningTrace, StepType
 from dova.config.providers import LLMRouter, TaskType
 from dova.services.sources import SourceRegistry, SourceFetcher
 from dova.services.source_types import SourceType
-from dova.services.web_search import WebSearchService, create_web_search_service
+from dova.services.web_search import (
+    WebSearchService,
+    create_web_search_service,
+    ParallelWebSearchService,
+    ParallelSearchConfig,
+    create_parallel_search_service,
+)
 from dova.utils.metrics import MetricsCollector
 
 logger = structlog.get_logger(__name__)
@@ -66,6 +72,8 @@ class ResearchAgent(BaseAgent):
         tavily_api_key: str | None = None,
         web_search_service: WebSearchService | None = None,
         enhanced_memory_service: Any | None = None,
+        parallel_search_enabled: bool = True,
+        parallel_search_config: ParallelSearchConfig | None = None,
     ):
         super().__init__(llm_router, mcp_client, metrics, memory_service=memory_service)
         self.source_registry = source_registry
@@ -77,6 +85,10 @@ class ResearchAgent(BaseAgent):
         self._web_search_service = web_search_service
         # Enhanced memory with short-term/long-term support
         self.enhanced_memory_service = enhanced_memory_service
+        # Parallel search across multiple providers
+        self.parallel_search_enabled = parallel_search_enabled
+        self._parallel_search_config = parallel_search_config
+        self._parallel_search_service: ParallelWebSearchService | None = None
 
     @property
     def system_prompt(self) -> str:
@@ -775,66 +787,148 @@ When analyzing search results:
         self,
         query: str,
         entities: dict[str, Any],
+        use_parallel: bool | None = None,
     ) -> ResearchFindings:
-        """Search the web using multi-provider service (Brave, Perplexity, Tavily, DuckDuckGo)."""
-        findings = ResearchFindings()
+        """
+        Search the web using multi-provider service.
 
-        # Lazy initialization of web search service
-        if self._web_search_service is None:
-            self._web_search_service = create_web_search_service()
+        When parallel search is enabled, searches all available providers
+        concurrently and aggregates/deduplicates results.
+
+        Args:
+            query: Search query
+            entities: Entity dict with intent info
+            use_parallel: Override parallel setting (None = use class default)
+        """
+        findings = ResearchFindings()
 
         # Build search query using primary_subject for best results
         primary_subject = entities.get("primary_subject", "")
         search_aspects = entities.get("search_aspects", [])
 
         if primary_subject:
-            # Use primary subject as the core, add aspects if specified
             if search_aspects:
                 search_query = f"{primary_subject} {' '.join(search_aspects[:2])}"
             else:
                 search_query = primary_subject
         else:
-            # Fallback to original query
             search_query = query
 
         self._logger.debug("web_search", query=search_query, primary_subject=primary_subject)
 
+        # Determine if parallel search should be used
+        should_use_parallel = use_parallel if use_parallel is not None else self.parallel_search_enabled
+
         try:
-            # Perform web search with multi-provider service
-            response = await self._web_search_service.search(
-                query=search_query,
-                max_results=10,
-            )
-
-            if response.error:
-                self._logger.warning("web_search_error", error=response.error)
-                return findings
-
-            for result in response.results:
-                findings.web_results.append(
-                    SearchResult(
-                        source="web",
-                        title=result.title,
-                        url=result.url,
-                        description=result.snippet[:500] if result.snippet else "",
-                        metadata={
-                            "score": result.score,
-                            "published_date": result.published_date or "",
-                            "provider": result.source_provider,
-                        },
-                        relevance_score=result.score,
-                    )
-                )
-
-            self._logger.info(
-                "web_search_complete",
-                query=search_query,
-                provider=response.provider,
-                results_count=len(findings.web_results),
-            )
+            if should_use_parallel:
+                # Use parallel search across all providers
+                findings = await self._search_web_parallel(search_query)
+            else:
+                # Use single-provider search with fallback
+                findings = await self._search_web_single(search_query)
 
         except Exception as e:
             self._logger.error("web_search_error", error=str(e))
+
+        return findings
+
+    async def _search_web_single(self, search_query: str) -> ResearchFindings:
+        """Search web using single provider with fallback."""
+        findings = ResearchFindings()
+
+        # Lazy initialization of web search service
+        if self._web_search_service is None:
+            self._web_search_service = create_web_search_service()
+
+        response = await self._web_search_service.search(
+            query=search_query,
+            max_results=10,
+        )
+
+        if response.error:
+            self._logger.warning("web_search_error", error=response.error)
+            return findings
+
+        for result in response.results:
+            findings.web_results.append(
+                SearchResult(
+                    source="web",
+                    title=result.title,
+                    url=result.url,
+                    description=result.snippet[:500] if result.snippet else "",
+                    metadata={
+                        "score": result.score,
+                        "published_date": result.published_date or "",
+                        "provider": result.source_provider,
+                    },
+                    relevance_score=result.score,
+                )
+            )
+
+        self._logger.info(
+            "web_search_complete",
+            query=search_query,
+            provider=response.provider,
+            results_count=len(findings.web_results),
+        )
+
+        return findings
+
+    async def _search_web_parallel(self, search_query: str) -> ResearchFindings:
+        """Search web using parallel providers with aggregation."""
+        findings = ResearchFindings()
+
+        # Lazy initialization of parallel search service
+        if self._parallel_search_service is None:
+            self._parallel_search_service = create_parallel_search_service(
+                config=self._parallel_search_config
+            )
+
+        self._logger.info(
+            "parallel_web_search_starting",
+            query=search_query,
+            providers=self._parallel_search_service.get_available_providers(),
+        )
+
+        response = await self._parallel_search_service.search_parallel(
+            query=search_query,
+            max_results=15,  # Get more results for better aggregation
+        )
+
+        if response.error:
+            self._logger.warning(
+                "parallel_web_search_error",
+                error=response.error,
+                providers_tried=response.providers_searched,
+            )
+            # Fall back to single provider search
+            return await self._search_web_single(search_query)
+
+        for result in response.results:
+            findings.web_results.append(
+                SearchResult(
+                    source="web",
+                    title=result.title,
+                    url=result.url,
+                    description=result.snippet[:500] if result.snippet else "",
+                    metadata={
+                        "score": result.score,
+                        "published_date": result.published_date or "",
+                        "provider": result.source_provider,
+                    },
+                    relevance_score=result.score,
+                )
+            )
+
+        self._logger.info(
+            "parallel_web_search_complete",
+            query=search_query,
+            providers_succeeded=response.providers_succeeded,
+            providers_failed=list(response.providers_failed.keys()),
+            total_results=len(findings.web_results),
+            deduplicated=response.deduplicated_count,
+            time_ms=response.total_time_ms,
+        )
 
         return findings
 
