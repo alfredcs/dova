@@ -334,8 +334,25 @@ class MCPRegistry:
         pass
 
     def get_server(self, name: str) -> MCPServerConfig | None:
-        """Get server configuration by name."""
-        return self.servers.get(name)
+        """Get server configuration by name.
+
+        Handles common aliases (e.g., 'hugging-face' and 'huggingface').
+        """
+        # Try exact match first
+        if name in self.servers:
+            return self.servers[name]
+
+        # Handle common aliases (normalize hyphenated names)
+        aliases = {
+            "hugging-face": "huggingface",
+            "huggingface": "hugging-face",
+        }
+        if name in aliases:
+            alt_name = aliases[name]
+            if alt_name in self.servers:
+                return self.servers[alt_name]
+
+        return None
 
     def get_enabled_servers(self) -> list[MCPServerConfig]:
         """Get all enabled servers."""

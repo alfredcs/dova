@@ -1206,6 +1206,11 @@ When analyzing search results:
             r'\bhow to\b', r'\bpublish\b', r'\bpublished\b', r'\brepo\b',
             r'\brepository\b', r'\brepositories\b', r'\bsince\b', r'\bfrom\b',
             r'\bon\b', r'\babout\b', r'\brelated to\b', r'\bme\b',
+            # Meta-search terms (about finding info, not the topic itself)
+            r'\bpaper\b', r'\bpapers\b', r'\barticle\b', r'\barticles\b',
+            r'\bauthor\b', r'\bauthors\b', r'\baffiliation\b', r'\baffiliations\b',
+            r'\binstitution\b', r'\binstitutions\b', r'\bcredibility\b',
+            r'\bexplain\b', r'\bconclusion\b', r'\breach\b', r'\breached\b',
         ]
 
         cleaned = query.lower()
