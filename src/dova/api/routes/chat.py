@@ -34,6 +34,7 @@ def _get_or_create_session(
     llm_router: Any,
     mcp_client: Any,
     memory_service: Any,
+    orchestrator_type: str = "standard",
 ) -> tuple[InteractiveSession, str, bool]:
     """Get existing session or create new one."""
     is_new = False
@@ -50,6 +51,7 @@ def _get_or_create_session(
         user_id=user_id,
         show_thinking=True,  # Always track thinking internally
         verbose=False,
+        orchestrator_type=orchestrator_type,
     )
 
     # Inject dependencies
@@ -63,7 +65,7 @@ def _get_or_create_session(
     _sessions[new_session_id] = session
     is_new = True
 
-    logger.info("chat_session_created", session_id=new_session_id, user_id=user_id)
+    logger.info("chat_session_created", session_id=new_session_id, user_id=user_id, orchestrator=orchestrator_type)
     return session, new_session_id, is_new
 
 
@@ -116,6 +118,7 @@ async def send_message(
             llm_router=llm_router,
             mcp_client=mcp_client,
             memory_service=memory_service,
+            orchestrator_type=body.orchestrator,
         )
 
         # Configure session settings for this request

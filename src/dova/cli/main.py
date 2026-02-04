@@ -55,7 +55,7 @@ def serve(ctx: click.Context, host: str, port: int, reload: bool, mode: str) -> 
     import os
 
     if mode == "agentcore":
-        click.echo("Starting DOVA in AgentCore Runtime mode")
+        click.echo(f"Starting DOVA in AgentCore Runtime mode on {host}:{port}")
         click.echo("Note: Requires AWS credentials and STACK_NAME environment variable")
 
         # Set runtime mode env var for the app
@@ -64,7 +64,7 @@ def serve(ctx: click.Context, host: str, port: int, reload: bool, mode: str) -> 
         try:
             from dova.runtime.agentcore_app import app
 
-            app.run()
+            app.run(port=port, host=host)
         except ImportError as e:
             click.echo(
                 click.style(
@@ -91,8 +91,15 @@ def serve(ctx: click.Context, host: str, port: int, reload: bool, mode: str) -> 
 @cli.command()
 @click.option("--no-thinking", is_flag=True, help="Hide chain-of-thought reasoning")
 @click.option("--verbose", "-v", is_flag=True, help="Show verbose output")
+@click.option(
+    "--orchestrator",
+    "-o",
+    type=click.Choice(["standard", "thinking"]),
+    default="standard",
+    help="Orchestrator type: standard (task-graph) or thinking (deliberation-first)",
+)
 @click.pass_context
-def interact(ctx: click.Context, no_thinking: bool, verbose: bool) -> None:
+def interact(ctx: click.Context, no_thinking: bool, verbose: bool, orchestrator: str) -> None:
     """Start an interactive DOVA session with continuous conversation.
 
     Provides a Claude Code-like experience with:
@@ -105,18 +112,20 @@ def interact(ctx: click.Context, no_thinking: bool, verbose: bool) -> None:
         dova interact
         dova interact --no-thinking
         dova interact --verbose
+        dova interact --orchestrator thinking
 
     In interactive mode, you can:
     - Ask research questions
     - Request analysis and debates
     - Build on previous responses
-    - Use commands like /status, /help, /clear
+    - Use commands like /status, /help, /clear, /orchestrator
     """
     from dova.cli.interact import run_interactive_loop
 
     asyncio.run(run_interactive_loop(
         show_thinking=not no_thinking,
         verbose=verbose,
+        orchestrator_type=orchestrator,
     ))
 
 
@@ -139,6 +148,12 @@ def interact(ctx: click.Context, no_thinking: bool, verbose: bool) -> None:
     default="standard",
     help="Reasoning mode: quick (no reflection), standard (ReAct+reflection), deep (ensemble), collaborative (full), tool_augmented (auto tool discovery)",
 )
+@click.option(
+    "--orchestrator",
+    type=click.Choice(["standard", "thinking"]),
+    default="standard",
+    help="Orchestrator type: standard (task-graph) or thinking (deliberation-first)",
+)
 @click.pass_context
 def research(
     ctx: click.Context,
@@ -148,6 +163,7 @@ def research(
     output: Optional[str],
     format: str,
     reasoning: str,
+    orchestrator: str,
 ) -> None:
     """Run a research query through DOVA.
 
@@ -155,6 +171,7 @@ def research(
         dova research "transformer architecture for NLP"
         dova research "reinforcement learning" -s arxiv -s github -n 5
         dova research "what is BERT?" --reasoning quick
+        dova research "explain attention" --orchestrator thinking
     """
     from dova.agents.base import AgentTask
     from dova.agents.debate import DebateAgent
@@ -198,6 +215,7 @@ def research(
 
         click.echo(f"Sources: {', '.join(available_sources)}")
         click.echo(f"Reasoning: {reasoning}")
+        click.echo(f"Orchestrator: {orchestrator}")
         click.echo("")
 
         # Create specialized agents with MCP client
@@ -209,28 +227,48 @@ def research(
         synthesis_agent = SynthesisAgent(llm_router=llm_router)
         debate_agent = DebateAgent(llm_router=llm_router, mcp_client=mcp_client)
 
-        orchestrator = DOVAOrchestrator(
-            llm_router=llm_router,
-            mcp_client=mcp_client,
-            agents={
-                "research": research_agent,
-                "synthesis": synthesis_agent,
-                "debate": debate_agent,
-            },
-        )
+        agents_dict = {
+            "research": research_agent,
+            "synthesis": synthesis_agent,
+            "debate": debate_agent,
+        }
 
-        task = AgentTask(
-            type="research",
-            params={
-                "query": query,
-                "sources": available_sources,
-                "max_results": max_results,
-                "reasoning_mode": reasoning,
-            },
-            user_id="cli-user",
-        )
+        # Select orchestrator based on option
+        if orchestrator == "thinking":
+            from dova.agents.thinking_orchestrator import ThinkingOrchestrator
 
-        result = await orchestrator.execute(task)
+            orch = ThinkingOrchestrator(
+                llm_router=llm_router,
+                mcp_client=mcp_client,
+                agents=agents_dict,
+            )
+            # ThinkingOrchestrator uses "query" task type
+            task = AgentTask(
+                type="query",
+                params={
+                    "query": query,
+                    "sources": available_sources,
+                },
+                user_id="cli-user",
+            )
+        else:
+            orch = DOVAOrchestrator(
+                llm_router=llm_router,
+                mcp_client=mcp_client,
+                agents=agents_dict,
+            )
+            task = AgentTask(
+                type="research",
+                params={
+                    "query": query,
+                    "sources": available_sources,
+                    "max_results": max_results,
+                    "reasoning_mode": reasoning,
+                },
+                user_id="cli-user",
+            )
+
+        result = await orch.execute(task)
 
         if result.success:
             if format == "json":
@@ -1450,6 +1488,166 @@ def aws_env(stack_name: str, region: str, output: str) -> None:
         sys.exit(0)
     else:
         click.echo(click.style("\n✗ Failed to generate environment file", fg="red"))
+        sys.exit(1)
+
+
+@aws.command("deploy")
+@click.option(
+    "--stack-name",
+    "-n",
+    required=True,
+    help="Stack name for deployment (must match existing setup)",
+)
+@click.option(
+    "--region",
+    "-r",
+    default="us-east-1",
+    help="AWS region (default: us-east-1)",
+)
+@click.option(
+    "--memory",
+    "-m",
+    default=1024,
+    type=int,
+    help="Lambda memory in MB (default: 1024)",
+)
+@click.option(
+    "--timeout",
+    "-t",
+    default=300,
+    type=int,
+    help="Lambda timeout in seconds (default: 300)",
+)
+@click.option(
+    "--enable-cognito",
+    is_flag=True,
+    default=False,
+    help="Enable Cognito authentication for API Gateway",
+)
+@click.option(
+    "--no-cors",
+    is_flag=True,
+    default=False,
+    help="Disable CORS on API Gateway",
+)
+def aws_deploy(
+    stack_name: str,
+    region: str,
+    memory: int,
+    timeout: int,
+    enable_cognito: bool,
+    no_cors: bool,
+) -> None:
+    """Deploy DOVA as a Lambda function with API Gateway.
+
+    This command deploys DOVA to AWS Lambda behind API Gateway,
+    allowing you to run DOVA as a serverless application.
+
+    \b
+    Prerequisites:
+    - Run 'dova aws setup' first to create IAM roles and other resources
+    - AWS credentials with deployment permissions
+
+    \b
+    What this creates:
+    - Lambda function with DOVA code
+    - API Gateway REST API with /invocations endpoint
+    - S3 bucket for deployment artifacts
+
+    Example:
+        dova aws deploy --stack-name my-dova-stack --region us-west-2
+        dova aws deploy --stack-name my-app --memory 2048 --timeout 600
+
+    After deployment:
+        curl -X POST https://<api-id>.execute-api.<region>.amazonaws.com/prod/invocations \\
+          -H "Content-Type: application/json" \\
+          -d '{"prompt": "What is BERT?"}'
+    """
+    from dova.aws.deploy import DeployConfig, DeployManager, format_deploy_result
+
+    click.echo("\nDeploying DOVA to Lambda")
+    click.echo(f"Stack: {stack_name}")
+    click.echo(f"Region: {region}")
+    click.echo(f"Memory: {memory} MB")
+    click.echo(f"Timeout: {timeout}s")
+    click.echo("=" * 50)
+
+    config = DeployConfig(
+        stack_name=stack_name,
+        region=region,
+        lambda_memory=memory,
+        lambda_timeout=timeout,
+        enable_cognito=enable_cognito,
+        enable_cors=not no_cors,
+    )
+
+    deploy_manager = DeployManager(config)
+
+    # Show progress
+    click.echo("\nPhases:")
+    click.echo("  1. Packaging Lambda code...")
+    result = deploy_manager.deploy()
+
+    # Display result
+    click.echo(format_deploy_result(result))
+
+    if result.success:
+        click.echo(click.style("\n✓ Deployment complete!", fg="green"))
+        sys.exit(0)
+    else:
+        click.echo(click.style("\n✗ Deployment failed", fg="red"))
+        sys.exit(1)
+
+
+@aws.command("status")
+@click.option(
+    "--stack-name",
+    "-n",
+    required=True,
+    help="Stack name to check status for",
+)
+@click.option(
+    "--region",
+    "-r",
+    default="us-east-1",
+    help="AWS region (default: us-east-1)",
+)
+def aws_status(stack_name: str, region: str) -> None:
+    """Check deployment status for a DOVA stack.
+
+    Shows the current state of a DOVA Lambda deployment including:
+    - CloudFormation stack status
+    - Lambda function ARN
+    - API Gateway endpoint URL
+
+    Example:
+        dova aws status --stack-name my-dova-stack
+    """
+    from dova.aws.deploy import DeployConfig, DeployManager, format_deploy_status
+
+    click.echo(f"\nChecking deployment status for stack: {stack_name}")
+    click.echo(f"Region: {region}")
+    click.echo("=" * 50)
+
+    config = DeployConfig(stack_name=stack_name, region=region)
+    deploy_manager = DeployManager(config)
+
+    status = deploy_manager.get_status()
+    click.echo(format_deploy_status(status))
+
+    if status:
+        if status.status in ("CREATE_COMPLETE", "UPDATE_COMPLETE"):
+            click.echo(click.style("\n✓ Deployment is active", fg="green"))
+            sys.exit(0)
+        elif "_IN_PROGRESS" in status.status:
+            click.echo(click.style("\n⏳ Deployment in progress", fg="yellow"))
+            sys.exit(0)
+        else:
+            click.echo(click.style(f"\n✗ Deployment status: {status.status}", fg="red"))
+            sys.exit(1)
+    else:
+        click.echo(click.style("\n✗ No deployment found", fg="yellow"))
+        click.echo("Run 'dova aws deploy' to create a deployment.")
         sys.exit(1)
 
 

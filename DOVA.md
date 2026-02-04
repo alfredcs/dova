@@ -601,6 +601,94 @@ Intelligent session management with freshness evaluation and state repair:
 | `src/dova/services/evaluation.py` | Self-evaluation and error diagnosis |
 | `src/dova/services/session.py` | Session freshness and state management |
 
+### Implementation Files (AWS Deployment)
+
+| File | Purpose |
+|------|---------|
+| `src/dova/aws/setup.py` | AWSSetup orchestrator for IAM, Cognito, SSM setup |
+| `src/dova/aws/deploy.py` | DeployManager for Lambda + API Gateway deployment |
+| `src/dova/aws/cloudformation.py` | CloudFormation template generation for serverless stack |
+| `src/dova/aws/lambda_packager.py` | Lambda ZIP packaging with dependencies |
+| `src/dova/aws/s3_manager.py` | S3 bucket management for deployment artifacts |
+| `src/dova/aws/iam.py` | IAM role and policy management |
+| `src/dova/aws/cognito.py` | Cognito User Pool setup for authentication |
+| `src/dova/aws/parameters.py` | SSM Parameter Store for configuration |
+| `src/dova/runtime/lambda_handler.py` | Lambda entry point wrapping AgentCore |
+
+---
+
+## 🚀 Serverless Deployment Architecture
+
+DOVA supports serverless deployment to AWS Lambda with API Gateway, providing a cost-effective alternative to full Kubernetes deployment.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    DOVA SERVERLESS ARCHITECTURE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Client Request                                                              │
+│       │                                                                      │
+│       ▼                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                      API Gateway (REST)                              │    │
+│  │  • POST /invocations endpoint                                        │    │
+│  │  • Optional Cognito Authorizer                                       │    │
+│  │  • CORS support                                                      │    │
+│  └───────────────────────────────┬─────────────────────────────────────┘    │
+│                                  │                                           │
+│                                  ▼                                           │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                     Lambda Function                                  │    │
+│  │  • Python 3.11 runtime                                              │    │
+│  │  • DOVA code + dependencies                                          │    │
+│  │  • Configurable memory (1024-10240 MB)                              │    │
+│  │  • Configurable timeout (up to 900s)                                │    │
+│  └───────────────────────────────┬─────────────────────────────────────┘    │
+│                                  │                                           │
+│                                  ▼                                           │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐                 │
+│  │ Amazon Bedrock │  │  MCP Servers   │  │  SSM/Secrets   │                 │
+│  │ (Claude, etc.) │  │ (ArXiv, HF)    │  │  (Config)      │                 │
+│  └────────────────┘  └────────────────┘  └────────────────┘                 │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Deployment Commands
+
+| Command | Purpose |
+|---------|---------|
+| `dova aws setup` | Create IAM roles, Cognito, SSM parameters |
+| `dova aws deploy` | Package and deploy Lambda + API Gateway |
+| `dova aws status` | Check deployment status |
+| `dova aws teardown` | Remove all resources |
+
+### CloudFormation Resources
+
+The deployment creates:
+
+| Resource | Description |
+|----------|-------------|
+| `AWS::Lambda::Function` | DOVA agent handler |
+| `AWS::ApiGateway::RestApi` | REST API endpoint |
+| `AWS::ApiGateway::Resource` | /invocations path |
+| `AWS::ApiGateway::Method` | POST method with Lambda integration |
+| `AWS::ApiGateway::Authorizer` | Optional Cognito authorizer |
+| `AWS::Lambda::Permission` | API Gateway invoke permission |
+
+### Serverless vs Full Deployment
+
+| Aspect | Serverless (Lambda) | Full (Kubernetes) |
+|--------|---------------------|-------------------|
+| **Cost** | Pay per request | Fixed infrastructure |
+| **Scaling** | Automatic | Manual/HPA |
+| **Cold Start** | 5-15 seconds | None |
+| **Max Duration** | 15 minutes | Unlimited |
+| **Complexity** | Low | High |
+| **Best For** | Variable load, dev/staging | High volume, production |
+
 ---
 
 ## 💰 Model Tiering System
@@ -4372,6 +4460,103 @@ if __name__ == "__main__":
     ))
 
     print(result["response"])
+```
+
+### 4.5 ThinkingOrchestrator (Deliberation-First) *(New in v1.5)*
+
+The ThinkingOrchestrator provides a deliberation-first approach that reasons about user needs before deciding which tools to use:
+
+```python
+# dova/agents/thinking_orchestrator.py
+from dova.agents.base import BaseAgent
+from dova.agents.user_model import UserModel, ExpertiseLevel, ResponseDepth
+from dova.agents.conversation_context import ConversationContext
+
+class ThinkingOrchestrator(BaseAgent):
+    """Deliberation-first orchestrator that thinks before acting."""
+
+    async def execute(self, task: AgentTask) -> AgentResult:
+        # 1. Load user model and conversation context
+        user_model = await self._load_user_model(task.user_id)
+        context = await self._load_conversation_context(task.session_id)
+
+        # 2. DELIBERATE - the key innovation
+        deliberation = await self._deliberate(query, user_model, context)
+
+        # 3. Execute based on deliberation decision
+        if deliberation.action == ActionDecision.RESPOND_DIRECTLY:
+            response = await self._respond_from_context(query, deliberation, user_model)
+        elif deliberation.action == ActionDecision.USE_TOOLS:
+            tool_results = await self._execute_selected_tools(deliberation)
+            response = await self._synthesize_with_results(query, tool_results, user_model)
+        else:  # CLARIFY
+            response = deliberation.clarification_needed
+
+        # 4. Update context and return
+        await self._update_context(context, query, response)
+        return self._wrap_result(task, True, data={"response": response})
+```
+
+**Deliberation Prompt:**
+```python
+DELIBERATION_PROMPT = """You are deciding how to help a user. Think carefully before acting.
+
+USER QUERY: {query}
+
+ABOUT THIS USER:
+- Expertise: {expertise_areas}
+- Preferred depth: {preferred_depth}
+- Session goals: {session_goals}
+
+CONVERSATION CONTEXT:
+- Topic: {current_topic}
+- Already discussed: {entities_discussed}
+
+AVAILABLE TOOLS (use ONLY if needed):
+- arxiv: Academic papers
+- github: Code repositories
+- huggingface: ML models/datasets
+- web: Web search
+
+THINK THROUGH:
+1. What does the user ACTUALLY need?
+2. Can I answer from existing context/knowledge?
+3. If tools needed, which specific ones and why?
+
+Respond with JSON:
+{{
+  "understanding": "what user actually needs",
+  "can_answer_from_context": true/false,
+  "tools_to_use": [{{"tool": "arxiv|github|huggingface|web", "rationale": "why"}}],
+  "action": "respond_directly|use_tools|clarify"
+}}"""
+```
+
+**User Model:**
+```python
+@dataclass
+class UserModel:
+    user_id: str
+    expertise_areas: dict[str, ExpertiseLevel]  # {"transformers": EXPERT}
+    preferred_depth: ResponseDepth  # BRIEF, STANDARD, DETAILED
+    prefers_code_examples: bool
+    formality: str  # "technical", "casual"
+    current_goals: list[str]
+
+class ExpertiseLevel(Enum):
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    EXPERT = "expert"
+```
+
+**Usage:**
+```python
+# CLI
+dova interact --orchestrator thinking
+dova research "explain attention" --orchestrator thinking
+
+# In interactive mode
+/orchestrator thinking
 ```
 
 ### 5. Code Validation with AgentCore Code Interpreter

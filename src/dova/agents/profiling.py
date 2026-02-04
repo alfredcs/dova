@@ -7,10 +7,15 @@ Manages user profiles with:
 - Temporal preferences (short/medium/long-term interests)
 """
 
+from __future__ import annotations
+
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from dova.agents.user_model import UserModel
 
 import structlog
 
@@ -74,6 +79,52 @@ class ProfilingAgent(BaseAgent):
         super().__init__(llm_router, mcp_client, metrics, memory_service=memory_service)
         self.cache = cache
         self._profiles: dict[str, UserProfile] = {}
+
+    async def to_user_model(self, user_id: str) -> "UserModel":
+        """
+        Convert UserProfile to UserModel for ThinkingOrchestrator.
+
+        Maps existing profile data to the richer UserModel format
+        used by the deliberation-first orchestrator.
+        """
+        from dova.agents.user_model import ExpertiseLevel, ResponseDepth, UserModel
+
+        profile = await self._load_profile(user_id)
+
+        # Infer expertise from topic affinities
+        expertise_areas: dict[str, ExpertiseLevel] = {}
+        for topic, affinity in profile.topic_affinities.items():
+            if affinity >= 0.8:
+                expertise_areas[topic] = ExpertiseLevel.EXPERT
+            elif affinity >= 0.5:
+                expertise_areas[topic] = ExpertiseLevel.INTERMEDIATE
+            elif affinity > 0:
+                expertise_areas[topic] = ExpertiseLevel.BEGINNER
+
+        # Map output format to response depth
+        format_to_depth = {
+            "detailed": ResponseDepth.DETAILED,
+            "brief": ResponseDepth.BRIEF,
+            "standard": ResponseDepth.STANDARD,
+        }
+        preferred_depth = format_to_depth.get(
+            profile.preferences.output_format, ResponseDepth.STANDARD
+        )
+
+        # Infer formality from expertise level
+        formality = "technical" if profile.preferences.expertise_level == "expert" else "standard"
+
+        return UserModel(
+            user_id=user_id,
+            expertise_areas=expertise_areas,
+            preferred_depth=preferred_depth,
+            prefers_code_examples=True,
+            prefers_citations=True,
+            formality=formality,
+            current_goals=profile.temporal_interests.short_term[:3],
+            entities_of_interest={},
+            created_at=profile.created_at,
+        )
 
     @property
     def system_prompt(self) -> str:

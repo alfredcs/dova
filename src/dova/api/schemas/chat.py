@@ -49,6 +49,10 @@ class ChatRequest(BaseModel):
         default=True,
         description="Enable two-pass emergent insight generation (deep mode)",
     )
+    orchestrator: str = Field(
+        default="standard",
+        description="Orchestrator type: standard (task-graph) or thinking (deliberation-first)",
+    )
 
 
 class ThinkingStep(BaseModel):

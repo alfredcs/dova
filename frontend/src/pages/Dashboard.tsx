@@ -13,6 +13,7 @@ export default function Dashboard() {
     'github',
     'huggingface',
   ])
+  const [orchestrator, setOrchestrator] = useState<'standard' | 'thinking'>('standard')
 
   const { mutate: search, data: results, isPending: isSearching } = useResearch()
   const { data: recommendationsData } = useRecommendations()
@@ -22,6 +23,7 @@ export default function Dashboard() {
       query,
       sources: selectedSources,
       max_results: 10,
+      orchestrator,
     })
   }
 
@@ -38,6 +40,7 @@ export default function Dashboard() {
       query: rec.topic,
       sources: [rec.source_type],
       max_results: 10,
+      orchestrator,
     })
   }
 
@@ -49,6 +52,8 @@ export default function Dashboard() {
         <SearchFilters
           selectedSources={selectedSources}
           onToggle={handleSourceToggle}
+          orchestrator={orchestrator}
+          onOrchestratorChange={setOrchestrator}
         />
       </div>
 

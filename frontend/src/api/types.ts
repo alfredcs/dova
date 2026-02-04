@@ -3,6 +3,7 @@ export interface ResearchQuery {
   query: string;
   sources?: string[];
   max_results?: number;
+  orchestrator?: 'standard' | 'thinking';
 }
 
 export interface ArxivPaper {

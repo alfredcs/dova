@@ -10,7 +10,8 @@ This guide will walk you through setting up, configuring, and using the DOVA (De
 4. [Automated AWS Setup](#automated-aws-setup-agentcore)
 5. [Running Locally](#running-locally)
 6. [Interactive CLI Mode](#interactive-cli-mode) *(New in v1.4)*
-7. [Browser-Based Research UI](#browser-based-research-ui)
+7. [ThinkingOrchestrator](#thinkingorchestrator) *(New in v1.5)*
+8. [Browser-Based Research UI](#browser-based-research-ui)
 8. [Using the CLI](#using-the-cli)
 9. [API Usage](#api-usage)
 10. [Deep Research Features](#deep-research-features)
@@ -22,6 +23,7 @@ This guide will walk you through setting up, configuring, and using the DOVA (De
 16. [Sandbox Execution](#sandbox-execution)
 17. [Architecture Overview](#architecture-overview)
 18. [Deployment](#deployment)
+    - [Serverless Lambda Deployment](#serverless-lambda-deployment) *(New in v1.4)*
 19. [Troubleshooting](#troubleshooting)
 
 ---
@@ -254,7 +256,9 @@ dova aws teardown --stack-name my-dova-stack
 
 | Command | Description |
 |---------|-------------|
-| `dova aws setup` | Create all AWS resources for DOVA |
+| `dova aws setup` | Create all AWS resources for DOVA (IAM, Cognito, SSM) |
+| `dova aws deploy` | Deploy DOVA as Lambda + API Gateway |
+| `dova aws status` | Check deployment status |
 | `dova aws validate` | Validate existing AWS setup |
 | `dova aws teardown` | Remove all DOVA AWS resources |
 | `dova aws permissions` | Show required IAM permissions |
@@ -476,6 +480,9 @@ DOVA v1.4 introduces an interactive CLI mode that provides a Claude Code-like co
 # Start interactive session
 dova interact
 
+# Start with ThinkingOrchestrator (deliberation-first)
+dova interact --orchestrator thinking
+
 # Hide chain-of-thought display
 dova interact --no-thinking
 
@@ -524,6 +531,7 @@ Interactive mode maintains context across conversations:
 | `/status` | Display session statistics |
 | `/clear` | Clear conversation history |
 | `/thinking on\|off` | Toggle reasoning display |
+| `/orchestrator [type]` | Switch orchestrator (standard/thinking) |
 | `/history` | View conversation history |
 | `/memory` | Show memory references |
 | `exit` or `quit` | End the session |
@@ -554,6 +562,86 @@ DOVA: Here's a balanced analysis:
 Bull: Multi-agent enables task decomposition, specialized expertise...
 Bear: Introduces coordination complexity, higher latency...
 ```
+
+---
+
+## ThinkingOrchestrator
+
+*(New in v1.5)*
+
+DOVA v1.5 introduces a **deliberation-first** orchestration approach that reasons about user needs before deciding which tools to use.
+
+### Starting with ThinkingOrchestrator
+
+```bash
+# Interactive mode with deliberation-first orchestration
+dova interact --orchestrator thinking
+
+# Research command with ThinkingOrchestrator
+dova research "explain attention mechanisms" --orchestrator thinking
+```
+
+### How It Differs from Standard Orchestration
+
+| Aspect | Standard (DOVAOrchestrator) | Thinking (ThinkingOrchestrator) |
+|--------|----------------------------|--------------------------------|
+| Tool Selection | Predetermined by query type | Deliberated per query |
+| User Awareness | Basic profiling | Rich user model |
+| Follow-ups | Re-search sources | Use existing context |
+| Response Style | Generic | Personalized to expertise |
+
+### Deliberation Process
+
+The ThinkingOrchestrator explicitly reasons about each query:
+
+1. **Understanding**: What does the user actually need?
+2. **Context Check**: Can I answer from existing conversation context?
+3. **Tool Selection**: Which tools (if any) would help?
+4. **Action Decision**: Respond directly, use tools, or ask for clarification
+
+### Example Behavior
+
+**Query: "What's the latest on EU AI regulation?"**
+
+- **Standard**: Searches ArXiv, GitHub, HuggingFace, Web in parallel
+- **Thinking**: Reasons that this is a news query → Uses web search only
+
+**Query: "Who are the authors?" (follow-up)**
+
+- **Standard**: Re-searches all sources
+- **Thinking**: Recognizes follow-up → Answers from conversation context (no tools)
+
+### Switching Orchestrators
+
+In interactive mode, switch with the `/orchestrator` command:
+
+```bash
+> /orchestrator thinking
+Switched to thinking orchestrator (deliberation-first)
+
+> /orchestrator standard
+Switched to standard orchestrator (task-graph)
+
+> /orchestrator
+Current orchestrator: thinking
+```
+
+### User Model
+
+The ThinkingOrchestrator maintains a rich user model:
+
+- **Expertise Areas**: Track user knowledge by topic (beginner/intermediate/expert)
+- **Preferred Depth**: Brief, standard, or detailed responses
+- **Communication Style**: Technical vs casual formality
+- **Session Goals**: Current objectives and entities of interest
+
+### Conversation Context
+
+Rich session memory enables intelligent follow-ups:
+
+- Papers, repos, and models discussed are tracked
+- References like "the first paper" or "that repo" are resolved
+- Topic continuity is maintained across turns
 
 ---
 
@@ -2265,6 +2353,66 @@ source .env.aws
 dova serve --mode agentcore
 ```
 
+### Serverless Lambda Deployment
+
+*(New in v1.4)*
+
+Deploy DOVA as a serverless Lambda function with API Gateway for cost-effective, auto-scaling deployment:
+
+```bash
+# 1. Set up AWS resources first (if not done)
+dova aws setup --stack-name my-dova-stack --region us-east-1
+
+# 2. Deploy to Lambda + API Gateway
+dova aws deploy --stack-name my-dova-stack --region us-east-1
+
+# 3. Check deployment status
+dova aws status --stack-name my-dova-stack
+```
+
+#### Deploy Command Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--stack-name, -n` | Required | Stack name (must match setup) |
+| `--region, -r` | us-east-1 | AWS region |
+| `--memory, -m` | 1024 | Lambda memory in MB (1024-10240) |
+| `--timeout, -t` | 300 | Lambda timeout in seconds (max 900) |
+| `--enable-cognito` | false | Enable Cognito authentication on API |
+| `--no-cors` | false | Disable CORS headers |
+
+#### What Gets Created
+
+| Resource | Description |
+|----------|-------------|
+| **S3 Bucket** | Deployment artifacts storage |
+| **Lambda Function** | DOVA handler with all dependencies |
+| **API Gateway** | REST API with /invocations endpoint |
+| **CloudFormation Stack** | Manages all resources lifecycle |
+
+#### Testing the Deployment
+
+After deployment, test your API endpoint:
+
+```bash
+# Get the API URL from status
+dova aws status --stack-name my-dova-stack
+
+# Test the endpoint
+curl -X POST https://<api-id>.execute-api.<region>.amazonaws.com/prod/invocations \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "What is BERT?"}'
+```
+
+#### Cleanup
+
+To remove all deployment resources:
+
+```bash
+# Remove Lambda, API Gateway, and S3 artifacts
+dova aws teardown --stack-name my-dova-stack
+```
+
 ### Deploy to AWS (Full Infrastructure)
 
 For a complete infrastructure deployment with CDK:
@@ -2376,6 +2524,35 @@ Common missing permissions:
 - `iam:CreateRole`, `iam:CreatePolicy`, `iam:AttachRolePolicy`
 - `cognito-idp:CreateUserPool`, `cognito-idp:CreateUserPoolClient`
 - `ssm:PutParameter`, `secretsmanager:CreateSecret`
+
+#### 3c. Lambda Deployment Failures
+
+```
+Deployment failed: Failed to create/update CloudFormation stack
+```
+
+**Solution:**
+
+1. Ensure setup has been run first:
+   ```bash
+   dova aws setup --stack-name my-stack --region us-east-1
+   ```
+
+2. Check IAM role exists:
+   ```bash
+   aws iam get-role --role-name my-stack-dova-execution-role
+   ```
+
+3. For package size errors (>250MB unzipped), the packager may need to exclude large dependencies
+
+4. Check CloudFormation events for details:
+   ```bash
+   aws cloudformation describe-stack-events \
+     --stack-name my-stack-dova-deploy \
+     --query 'StackEvents[?ResourceStatus==`CREATE_FAILED`]'
+   ```
+
+5. For permission errors, ensure your AWS user has CloudFormation, Lambda, API Gateway, and S3 permissions
 
 #### 4. MCP Server Connection Failures
 

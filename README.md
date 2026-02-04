@@ -2,11 +2,12 @@
 
 DOVA is an enterprise-grade, multi-agent research automation system built on AWS Strands Agents SDK and Amazon Bedrock AgentCore. It aggregates knowledge from ArXiv, GitHub, HuggingFace, and the web through the Model Context Protocol (MCP).
 
-**Latest: v1.4** - Now with interactive CLI mode (`dova interact`), chain-of-thought reasoning, and Bull vs Bear debate agents!
+**Latest: v1.5** - Introducing ThinkingOrchestrator with deliberation-first orchestration that reasons before acting!
 
 ## Features
 
 ### Core Capabilities
+- **ThinkingOrchestrator** *(New in v1.5)*: Deliberation-first orchestration that reasons about user needs before deciding which tools to use
 - **Interactive CLI Mode**: Claude Code-like experience with `dova interact` - chain-of-thought reasoning, memory integration, and automatic tool selection
 - **Browser-Based Research UI**: Modern dark-theme interface at `http://localhost:8081/`
 - **Multi-Agent Architecture**: Specialized agents for research, profiling, validation, synthesis, and debate
@@ -125,11 +126,17 @@ The UI provides:
 # Start interactive mode (Claude Code-like experience)
 dova interact
 
+# Interactive mode with ThinkingOrchestrator (deliberation-first)
+dova interact --orchestrator thinking
+
 # Interactive mode with hidden thinking steps
 dova interact --no-thinking
 
 # Single research query
 dova research "latest advances in multi-agent LLM systems"
+
+# Research with ThinkingOrchestrator
+dova research "explain attention mechanisms" --orchestrator thinking
 
 # Research with reasoning mode
 dova research "compare transformer architectures" --reasoning deep
@@ -166,6 +173,7 @@ In `dova interact` mode, use these commands:
 | `/status` | Display session statistics |
 | `/clear` | Clear conversation history |
 | `/thinking on\|off` | Toggle chain-of-thought display |
+| `/orchestrator [type]` | Switch orchestrator (standard/thinking) |
 | `/history` | View conversation history |
 | `/memory` | Show memory references |
 | `exit` | Exit interactive mode |

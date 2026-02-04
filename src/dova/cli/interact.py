@@ -81,6 +81,10 @@ class InteractiveSession:
     - Memory-augmented responses
     - Transparent reasoning process
     - Action execution and feedback
+
+    Supports two orchestration modes:
+    - "standard": Task-graph based orchestration (default)
+    - "thinking": Deliberation-first orchestration
     """
 
     def __init__(
@@ -88,10 +92,12 @@ class InteractiveSession:
         user_id: str = "interactive-user",
         show_thinking: bool = True,
         verbose: bool = False,
+        orchestrator_type: str = "standard",
     ):
         self.user_id = user_id
         self.show_thinking = show_thinking
         self.verbose = verbose
+        self.orchestrator_type = orchestrator_type
 
         # Session state
         self.state: SessionState | None = None
@@ -102,6 +108,7 @@ class InteractiveSession:
         self._memory_service = None
         self._research_agent = None
         self._debate_agent = None
+        self._thinking_orchestrator = None
         self._settings = None
 
     @property
@@ -167,6 +174,21 @@ class InteractiveSession:
             )
         return self._debate_agent
 
+    @property
+    def thinking_orchestrator(self):
+        """Lazy-load thinking orchestrator."""
+        if self._thinking_orchestrator is None:
+            from dova.agents.thinking_orchestrator import ThinkingOrchestrator
+            self._thinking_orchestrator = ThinkingOrchestrator(
+                llm_router=self.llm_router,
+                mcp_client=self.mcp_client,
+                memory_service=self.memory_service,
+            )
+            # Register available agents
+            self._thinking_orchestrator.register_agent("research", self.research_agent)
+            self._thinking_orchestrator.register_agent("debate", self.debate_agent)
+        return self._thinking_orchestrator
+
     def _is_evaluative_query(self, query: str) -> bool:
         """Check if query requires evaluative/debate analysis."""
         # Check if auto-debate is disabled
@@ -203,9 +225,16 @@ class InteractiveSession:
         5. Act: Execute action if needed
         6. Reflect: Evaluate result and learn
         7. Respond: Generate final response
+
+        When orchestrator_type is "thinking", delegates to ThinkingOrchestrator
+        for deliberation-first processing.
         """
         if not self.state:
             self.start_session()
+
+        # Use ThinkingOrchestrator if configured
+        if self.orchestrator_type == "thinking":
+            return await self._process_with_thinking_orchestrator(user_input)
 
         start_time = time.time()
         thought_chain: list[ThoughtStep] = []
@@ -306,6 +335,93 @@ class InteractiveSession:
 
         except Exception as e:
             logger.exception("interactive_process_error", error=str(e))
+            return f"I encountered an error: {str(e)}. Please try rephrasing your request."
+
+    async def _process_with_thinking_orchestrator(self, user_input: str) -> str:
+        """
+        Process input using the ThinkingOrchestrator (deliberation-first).
+
+        The ThinkingOrchestrator reasons about user needs before deciding
+        whether to use tools, providing more intelligent source selection.
+        """
+        from dova.agents.base import AgentTask
+
+        start_time = time.time()
+
+        # Store original for conversation tracking
+        original_input = user_input
+
+        # Add user turn to conversation
+        user_turn = ConversationTurn(role="user", content=original_input)
+        self.state.conversation.append(user_turn)
+
+        try:
+            # Build task for orchestrator
+            task = AgentTask(
+                type="query",
+                params={
+                    "query": user_input,
+                    "session_id": self.state.session_id,
+                    "sources": getattr(self, "_research_sources", ["arxiv", "github", "huggingface", "web"]),
+                },
+                user_id=self.user_id,
+            )
+
+            # Execute with ThinkingOrchestrator
+            result = await self.thinking_orchestrator.execute(task)
+
+            if not result.success:
+                return f"I encountered an error: {result.error}"
+
+            data = result.data
+            response = data.get("response", "")
+            deliberation = data.get("deliberation", {})
+            action_result = data.get("action_result")
+
+            # Show deliberation reasoning if thinking is enabled
+            if self.show_thinking:
+                self._print_thought("Understanding", deliberation.get("reasoning", ""))
+                tools_used = deliberation.get("tools_used", [])
+                if tools_used:
+                    self._print_thought("Tools", f"Used: {', '.join(tools_used)}")
+                else:
+                    self._print_thought("Tools", "Answered from context (no tools needed)")
+
+            # Update conversation with assistant response
+            thought_chain = [
+                ThoughtStep("deliberation", deliberation.get("reasoning", "")),
+            ]
+            if deliberation.get("tools_used"):
+                thought_chain.append(ThoughtStep("action", f"Tools: {deliberation['tools_used']}"))
+
+            assistant_turn = ConversationTurn(
+                role="assistant",
+                content=response,
+                thought_chain=thought_chain,
+                action_taken=deliberation.get("action"),
+                action_result=action_result,
+            )
+            self.state.conversation.append(assistant_turn)
+
+            # Update context tracking
+            self.state.context["last_query"] = user_input
+            self.state.context["last_action"] = deliberation.get("action")
+            self.state.context["turn_count"] = len(self.state.conversation) // 2
+
+            # Track topic and entities
+            self._update_topic_tracking(user_input, action_result, response)
+            if action_result:
+                self._extract_entities(action_result)
+            self._track_pending_suggestions(response)
+
+            execution_time = time.time() - start_time
+            if self.verbose:
+                self._print_thought("Time", f"{execution_time:.2f}s")
+
+            return response
+
+        except Exception as e:
+            logger.exception("thinking_orchestrator_error", error=str(e))
             return f"I encountered an error: {str(e)}. Please try rephrasing your request."
 
     async def _llm_complete(
@@ -1088,7 +1204,10 @@ Response:"""
     def _print_thought(self, label: str, content: str) -> None:
         """Print a thought step with formatting."""
         # Use dim color for thinking
-        print(f"\033[2m[{label}] {content[:150]}\033[0m")
+        # Show more content in verbose mode
+        max_len = 500 if self.verbose else 200
+        display = content[:max_len] + "..." if len(content) > max_len else content
+        print(f"\033[2m[{label}] {display}\033[0m")
 
     def get_session_summary(self) -> dict[str, Any]:
         """Get summary of current session."""
@@ -1108,18 +1227,28 @@ Response:"""
 async def run_interactive_loop(
     show_thinking: bool = True,
     verbose: bool = False,
+    orchestrator_type: str = "standard",
 ) -> None:
-    """Run the interactive CLI loop."""
+    """Run the interactive CLI loop.
+
+    Args:
+        show_thinking: Show reasoning steps
+        verbose: Show timing and debug info
+        orchestrator_type: "standard" (task-graph) or "thinking" (deliberation-first)
+    """
     session = InteractiveSession(
         show_thinking=show_thinking,
         verbose=verbose,
+        orchestrator_type=orchestrator_type,
     )
 
     # Print welcome message
+    mode_desc = "Thinking (deliberation-first)" if orchestrator_type == "thinking" else "Standard (task-graph)"
     print("\n" + "=" * 60)
     print("  DOVA Interactive Mode")
+    print(f"  Orchestrator: {mode_desc}")
     print("  Type your questions or commands. Type 'exit' to quit.")
-    print("  Commands: /status, /clear, /thinking on|off, /help")
+    print("  Commands: /status, /clear, /thinking on|off, /orchestrator, /help")
     print("=" * 60 + "\n")
 
     session.start_session()
@@ -1164,10 +1293,15 @@ Commands:
   /status     - Show session status
   /clear      - Clear conversation history
   /thinking on|off - Toggle thinking display
+  /orchestrator standard|thinking - Switch orchestrator mode
   /history    - Show conversation history
   /memory     - Show memory references
   /help       - Show this help
   exit        - Exit interactive mode
+
+Orchestrator modes:
+  standard - Task-graph based (searches all relevant sources)
+  thinking - Deliberation-first (reasons before deciding on tools)
 """)
 
     elif cmd == "/status":
@@ -1210,6 +1344,22 @@ Commands:
             print()
         else:
             print("No memory references.\n")
+
+    elif cmd.startswith("/orchestrator"):
+        parts = cmd.split()
+        if len(parts) > 1:
+            new_type = parts[1]
+            if new_type in ("standard", "thinking"):
+                session.orchestrator_type = new_type
+                # Reset the thinking orchestrator to pick up new type
+                session._thinking_orchestrator = None
+                mode_desc = "Thinking (deliberation-first)" if new_type == "thinking" else "Standard (task-graph)"
+                print(f"Orchestrator switched to: {mode_desc}\n")
+            else:
+                print(f"Unknown orchestrator type: {new_type}. Use 'standard' or 'thinking'.\n")
+        else:
+            mode_desc = "Thinking (deliberation-first)" if session.orchestrator_type == "thinking" else "Standard (task-graph)"
+            print(f"Current orchestrator: {mode_desc}\n")
 
     else:
         print(f"Unknown command: {command}\nType /help for available commands.\n")
