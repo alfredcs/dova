@@ -270,7 +270,19 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         params = {"query": query, "perPage": per_page}
         if sort:
             params["sort"] = sort
-        return await self.call_tool("github", tool, params)
+        self._logger.info(
+            "github_search_starting",
+            query=query,
+            search_type=search_type,
+            tool=tool,
+        )
+        result = await self.call_tool("github", tool, params)
+        self._logger.info(
+            "github_search_complete",
+            success=result.success,
+            error=result.error if not result.success else None,
+        )
+        return result
 
     async def search_huggingface(
         self,
@@ -278,13 +290,31 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         search_type: str = "models",
         limit: int = 20,
     ) -> MCPToolResult:
-        """Convenience method for HuggingFace search."""
+        """Convenience method for HuggingFace search.
+
+        Args:
+            query: Search query
+            search_type: Type of search (models, datasets, papers, spaces)
+            limit: Maximum results to return
+        """
         tool = f"{search_type[:-1]}_search" if search_type.endswith("s") else f"{search_type}_search"
-        return await self.call_tool(
-            "huggingface",
+        self._logger.info(
+            "huggingface_search_starting",
+            query=query,
+            search_type=search_type,
+            tool=tool,
+        )
+        result = await self.call_tool(
+            "hugging-face",  # Fixed: MCP server name uses hyphen
             tool,
             {"query": query, "limit": limit},
         )
+        self._logger.info(
+            "huggingface_search_complete",
+            success=result.success,
+            error=result.error if not result.success else None,
+        )
+        return result
 
     def _wrap_result(
         self,

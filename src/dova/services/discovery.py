@@ -360,17 +360,17 @@ class AutoDiscovery:
         return [
             MCPServerInfo(
                 name="arxiv",
-                tools=["search_papers", "download_paper", "read_paper", "list_papers"],
+                tools=["search_arxiv", "search_by_author", "search_by_category"],
                 metadata={"category": "research"},
             ),
             MCPServerInfo(
                 name="github",
-                tools=["search_repos", "get_repo", "list_issues"],
+                tools=["search_repositories", "search_code", "get_file_contents", "list_issues"],
                 metadata={"category": "code"},
             ),
             MCPServerInfo(
-                name="huggingface",
-                tools=["search_models", "get_model", "search_datasets"],
+                name="hugging-face",  # MCP server name uses hyphen
+                tools=["model_search", "dataset_search", "paper_search", "space_search"],
                 metadata={"category": "ml"},
             ),
         ]

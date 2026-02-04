@@ -653,8 +653,8 @@ Instructions:
                 try:
                     if server_name == "arxiv":
                         result = await self.mcp_client.invoke(
-                            server_name, "search_papers",
-                            {"query": query, "max_results": 3}
+                            "arxiv", "search_arxiv",  # Fixed: correct tool name
+                            {"request": {"query": query, "max_results": 3}}  # Fixed: correct param format
                         )
                         if result:
                             result_str = str(result)[:2000]
@@ -662,8 +662,8 @@ Instructions:
 
                     elif server_name == "github":
                         result = await self.mcp_client.invoke(
-                            server_name, "search_repositories",
-                            {"query": query, "per_page": 3}
+                            "github", "search_repositories",
+                            {"query": query, "perPage": 3}  # Fixed: perPage not per_page
                         )
                         if result:
                             result_str = str(result)[:2000]
@@ -671,7 +671,7 @@ Instructions:
 
                     elif server_name == "huggingface":
                         result = await self.mcp_client.invoke(
-                            server_name, "model_search",
+                            "hugging-face", "model_search",  # Fixed: MCP server name uses hyphen
                             {"query": query, "limit": 3}
                         )
                         if result:

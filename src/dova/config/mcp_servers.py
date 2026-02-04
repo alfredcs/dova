@@ -66,7 +66,7 @@ ARXIV_MCP = MCPServerConfig(
     priority=1,
     tools=[
         MCPTool(
-            name="search_papers",
+            name="search_arxiv",  # Note: actual MCP tool name
             description="Search ArXiv papers by query string",
             input_schema={
                 "type": "object",
@@ -195,8 +195,9 @@ GITHUB_MCP = MCPServerConfig(
 
 
 # HuggingFace MCP Server
+# Note: The actual MCP server name is "hugging-face" (with hyphen)
 HUGGINGFACE_MCP = MCPServerConfig(
-    name="huggingface",
+    name="hugging-face",  # MCP server uses hyphen
     description="HuggingFace Hub search for models, datasets, papers, and spaces",
     transport=MCPTransport.STDIO,
     command="uvx --from huggingface-mcp-server hf-mcp-server",

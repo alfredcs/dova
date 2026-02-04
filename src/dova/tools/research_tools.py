@@ -158,7 +158,7 @@ def search_huggingface_tool(
 
     return {
         "tool_name": tool_name,
-        "mcp_server": "huggingface",
+        "mcp_server": "hugging-face",  # MCP server name uses hyphen
         "params": params,
     }
 
@@ -271,7 +271,7 @@ def get_huggingface_model_tool(
 
     return {
         "tool_name": "hub_repo_details",
-        "mcp_server": "huggingface",
+        "mcp_server": "hugging-face",  # MCP server name uses hyphen
         "params": {
             "repo_ids": [model_id],
             "repo_type": "model",
