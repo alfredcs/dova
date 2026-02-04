@@ -46,9 +46,15 @@ class LazyApp:
     def __getattr__(self, name: str) -> Any:
         return getattr(get_app(), name)
 
-    def run(self) -> None:
-        """Run the AgentCore app."""
-        get_app().run()
+    def run(self, port: int = 8080, host: str | None = None, **kwargs) -> None:
+        """Run the AgentCore app.
+
+        Args:
+            port: Port to serve on, defaults to 8080
+            host: Host to bind to, auto-detected if None
+            **kwargs: Additional arguments passed to uvicorn.run()
+        """
+        get_app().run(port=port, host=host, **kwargs)
 
     def entrypoint(self, func: Any) -> Any:
         """Decorator for entrypoint functions."""

@@ -28,8 +28,12 @@ class IAMSetupResult:
     missing_permissions: list[str] | None = None
 
 
-def get_bedrock_policy(region: str, account_id: str) -> dict:
-    """Get Bedrock model invocation policy."""
+def get_bedrock_policy(region: str, account_id: str) -> dict:  # noqa: ARG001
+    """Get Bedrock model invocation policy.
+
+    Uses wildcard region (*) to allow cross-region model access,
+    since not all models are available in all regions.
+    """
     return {
         "Version": "2012-10-17",
         "Statement": [
@@ -41,9 +45,9 @@ def get_bedrock_policy(region: str, account_id: str) -> dict:
                     "bedrock:InvokeModelWithResponseStream",
                 ],
                 "Resource": [
-                    f"arn:aws:bedrock:{region}::foundation-model/anthropic.*",
-                    f"arn:aws:bedrock:{region}::foundation-model/amazon.*",
-                    f"arn:aws:bedrock:{region}:{account_id}:inference-profile/*",
+                    "arn:aws:bedrock:*::foundation-model/anthropic.*",
+                    "arn:aws:bedrock:*::foundation-model/amazon.*",
+                    f"arn:aws:bedrock:*:{account_id}:inference-profile/*",
                 ],
             },
             {
@@ -54,7 +58,7 @@ def get_bedrock_policy(region: str, account_id: str) -> dict:
                     "bedrock:GetAgentMemory",
                     "bedrock:DeleteAgentMemory",
                 ],
-                "Resource": f"arn:aws:bedrock:{region}:{account_id}:agent/*",
+                "Resource": f"arn:aws:bedrock:*:{account_id}:agent/*",
             },
         ],
     }
@@ -432,6 +436,7 @@ def get_required_setup_permissions() -> list[str]:
         "iam:CreatePolicyVersion",
         "iam:DeletePolicyVersion",
         "iam:ListPolicyVersions",
+        "iam:PassRole",
         # Cognito
         "cognito-idp:CreateUserPool",
         "cognito-idp:DeleteUserPool",
@@ -445,11 +450,61 @@ def get_required_setup_permissions() -> list[str]:
         # SSM
         "ssm:PutParameter",
         "ssm:GetParameter",
+        "ssm:GetParametersByPath",
         "ssm:DeleteParameter",
         # Secrets Manager
         "secretsmanager:CreateSecret",
         "secretsmanager:GetSecretValue",
         "secretsmanager:DeleteSecret",
+        # STS
+        "sts:GetCallerIdentity",
+    ]
+
+
+def get_required_deploy_permissions() -> list[str]:
+    """Get list of IAM permissions required to run deploy."""
+    return [
+        # S3 (deployment artifacts)
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:PutBucketVersioning",
+        "s3:PutBucketTagging",
+        "s3:HeadBucket",
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:DeleteObjectVersion",
+        # Lambda
+        "lambda:CreateFunction",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:AddPermission",
+        "lambda:RemovePermission",
+        # API Gateway
+        "apigateway:POST",
+        "apigateway:GET",
+        "apigateway:PUT",
+        "apigateway:DELETE",
+        "apigateway:PATCH",
+        # CloudFormation
+        "cloudformation:CreateStack",
+        "cloudformation:UpdateStack",
+        "cloudformation:DeleteStack",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:GetTemplate",
+        # IAM (for passing role to Lambda)
+        "iam:PassRole",
+        "iam:GetRole",
+        # SSM (for storing deployment info)
+        "ssm:PutParameter",
+        "ssm:GetParameter",
+        "ssm:GetParametersByPath",
+        "ssm:DeleteParameter",
         # STS
         "sts:GetCallerIdentity",
     ]

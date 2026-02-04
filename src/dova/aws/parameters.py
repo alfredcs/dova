@@ -104,17 +104,17 @@ class ParameterManager:
         param_type = "SecureString" if secure else "String"
 
         try:
+            # First try to create new parameter with tags
             self.ssm.put_parameter(
                 Name=name,
                 Value=value,
                 Type=param_type,
-                Overwrite=True,
                 Tags=[{"Key": "ManagedBy", "Value": "dova"}],
             )
-            self._logger.debug("parameter_stored", name=name)
+            self._logger.debug("parameter_created", name=name)
         except ClientError as e:
             if e.response["Error"]["Code"] == "ParameterAlreadyExists":
-                # Update existing parameter
+                # Parameter exists - update without tags (can't use Tags with Overwrite)
                 self.ssm.put_parameter(
                     Name=name,
                     Value=value,
@@ -172,6 +172,8 @@ class ParameterManager:
                 f"/{stack_name}/machine_client_id",
                 f"/{stack_name}/gateway_url",
                 f"/{stack_name}/memory_id",
+                f"/{stack_name}/role_arn",
+                f"/{stack_name}/cognito_user_pool_id",
             ]
 
             for param_name in param_names:
@@ -181,6 +183,9 @@ class ParameterManager:
                 except ClientError as e:
                     if e.response["Error"]["Code"] != "ParameterNotFound":
                         raise
+
+            # Delete deployment parameters
+            self._delete_parameters_by_path(f"/{stack_name}/deploy/")
 
             # Delete secret
             secret_name = f"/{stack_name}/machine_client_secret"
@@ -199,6 +204,67 @@ class ParameterManager:
         except Exception as e:
             self._logger.error("configuration_cleanup_failed", error=str(e))
             return False
+
+    def _delete_parameters_by_path(self, path: str) -> None:
+        """Delete all parameters under a given path."""
+        try:
+            response = self.ssm.get_parameters_by_path(Path=path, Recursive=True)
+            for param in response.get("Parameters", []):
+                try:
+                    self.ssm.delete_parameter(Name=param["Name"])
+                    self._logger.debug("parameter_deleted", name=param["Name"])
+                except ClientError:
+                    pass
+        except ClientError:
+            pass
+
+    def store_deployment_info(
+        self,
+        stack_name: str,
+        lambda_arn: str | None = None,
+        api_url: str | None = None,
+        stack_id: str | None = None,
+    ) -> bool:
+        """Store deployment information in SSM.
+
+        Args:
+            stack_name: Stack name
+            lambda_arn: Lambda function ARN
+            api_url: API Gateway URL
+            stack_id: CloudFormation stack ID
+
+        Returns:
+            True if successful
+        """
+        self._logger.info("storing_deployment_info", stack_name=stack_name)
+
+        try:
+            if lambda_arn:
+                self._put_parameter(f"/{stack_name}/deploy/lambda_arn", lambda_arn)
+            if api_url:
+                self._put_parameter(f"/{stack_name}/deploy/api_url", api_url)
+            if stack_id:
+                self._put_parameter(f"/{stack_name}/deploy/stack_id", stack_id)
+
+            return True
+        except Exception as e:
+            self._logger.error("deployment_info_storage_failed", error=str(e))
+            return False
+
+    def get_deployment_info(self, stack_name: str) -> dict:
+        """Get deployment information from SSM.
+
+        Args:
+            stack_name: Stack name
+
+        Returns:
+            Dict with deployment info (lambda_arn, api_url, stack_id)
+        """
+        return {
+            "lambda_arn": self.get_parameter(f"/{stack_name}/deploy/lambda_arn"),
+            "api_url": self.get_parameter(f"/{stack_name}/deploy/api_url"),
+            "stack_id": self.get_parameter(f"/{stack_name}/deploy/stack_id"),
+        }
 
     def validate_configuration(self, stack_name: str) -> dict:
         """Validate stored configuration for a stack."""

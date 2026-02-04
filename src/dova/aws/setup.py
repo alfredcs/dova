@@ -214,7 +214,8 @@ class AWSSetup:
     def teardown(self) -> SetupResult:
         """Remove all AWS resources created by setup.
 
-        WARNING: This will delete all DOVA resources for the stack.
+        WARNING: This will delete all DOVA resources for the stack,
+        including any Lambda deployments.
 
         Returns:
             SetupResult with teardown status
@@ -225,6 +226,20 @@ class AWSSetup:
 
         try:
             # Delete in reverse order of creation
+
+            # 0. Delete deployment resources first (if any)
+            try:
+                from dova.aws.deploy import DeployConfig, DeployManager
+
+                deploy_config = DeployConfig(
+                    stack_name=self.config.stack_name,
+                    region=self.config.region,
+                )
+                deploy_manager = DeployManager(deploy_config)
+                deploy_manager.delete_deployment()
+                self._logger.info("deployment_deleted")
+            except Exception as e:
+                self._logger.warning("deployment_deletion_skipped", error=str(e))
 
             # 1. Delete parameters
             self.parameter_manager.delete_configuration(self.config.stack_name)
