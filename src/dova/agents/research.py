@@ -110,12 +110,26 @@ When analyzing search results:
         # === STEP 1: Classify Query Type ===
         # Technical/Research indicators (needs ArXiv, GitHub, HuggingFace)
         technical_keywords = [
-            "algorithm", "architecture", "model", "neural network", "transformer",
-            "machine learning", "deep learning", "ai", "artificial intelligence",
+            "algorithm", "architecture", "neural network", "transformer",
+            "machine learning", "deep learning", "artificial intelligence",
             "implementation", "framework", "library", "code", "api", "benchmark",
             "training", "inference", "llm", "gpt", "bert", "diffusion", "attention",
-            "paper", "research", "method", "technique", "approach", "sota",
-            "state of the art", "latest", "recent advances", "survey"
+            "research paper", "method", "technique", "approach", "sota",
+            "state of the art", "recent advances", "survey"
+        ]
+        # Keywords that need word boundary checking (to avoid "xAI" matching "ai")
+        import re
+        ai_pattern = re.compile(r'\bai\b', re.IGNORECASE)  # Match "AI" as whole word only
+
+        # News/Current Events indicators (needs web search only)
+        news_keywords = [
+            "acquisition", "merger", "acquire", "acquired", "acquiring",
+            "legal", "lawsuit", "sue", "sued", "investigation", "investigate",
+            "regulation", "regulatory", "fcc", "ftc", "sec", "antitrust",
+            "ipo", "stock", "shares", "valuation", "funding", "investment",
+            "announce", "announced", "announcement", "breaking", "news",
+            "latest news", "today", "yesterday", "this week", "this month",
+            "company", "corporation", "business", "deal", "partnership"
         ]
 
         # Biographical/Person indicators (needs web search primarily)
@@ -141,6 +155,10 @@ When analyzing search results:
 
         # Count matches
         technical_score = sum(1 for kw in technical_keywords if kw in query_lower)
+        # Add "AI" only if it's a whole word (not part of "xAI", "LAIR", etc.)
+        if ai_pattern.search(query_lower):
+            technical_score += 1
+        news_score = sum(1 for kw in news_keywords if kw in query_lower)
         biographical_score = sum(1 for kw in biographical_keywords if kw in query_lower)
         factual_score = sum(1 for kw in factual_keywords if kw in query_lower)
         person_score = sum(1 for kw in person_indicators if kw in query_lower)
@@ -152,6 +170,7 @@ When analyzing search results:
         # Determine query type
         type_scores = {
             "technical": technical_score,
+            "news": news_score,
             "biographical": biographical_score,
             "factual": factual_score,
         }
@@ -164,6 +183,8 @@ When analyzing search results:
         # === STEP 2: Determine Recommended Sources ===
         if query_type == "technical":
             recommended_sources = ["arxiv", "github", "huggingface", "web"]
+        elif query_type == "news":
+            recommended_sources = ["web"]  # Only web for news/current events
         elif query_type == "biographical":
             recommended_sources = ["web"]  # Only web for biographical
         elif query_type == "factual":
