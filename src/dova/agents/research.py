@@ -615,7 +615,20 @@ When analyzing search results:
         # Build optimized query using entities
         search_query = self._build_arxiv_query(query, entities)
 
+        self._logger.info(
+            "arxiv_search_starting",
+            query=search_query,
+            original_query=query,
+        )
+
         result = await self.search_arxiv(search_query, max_results=20)
+
+        self._logger.info(
+            "arxiv_search_complete",
+            success=result.success,
+            error=result.error if not result.success else None,
+            result_count=len(result.data.get("papers", [])) if result.success and isinstance(result.data, dict) else 0,
+        )
 
         if result.success and result.data:
             data = result.data
