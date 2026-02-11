@@ -4,7 +4,9 @@ import SynthesisSummary from './SynthesisSummary'
 import PaperCard from './PaperCard'
 import RepoCard from './RepoCard'
 import ModelCard from './ModelCard'
-import type { ResearchResponse, ArxivPaper, GitHubRepo, HuggingFaceModel } from '@/api/types'
+import WebResultCard from './WebResultCard'
+import ImageGallery from './ImageGallery'
+import type { ResearchResponse, ImageResult } from '@/api/types'
 
 interface ResultsPanelProps {
   data?: ResearchResponse
@@ -37,84 +39,116 @@ export default function ResultsPanel({ data, isLoading }: ResultsPanelProps) {
     )
   }
 
-  // Extract results by type
-  const papers: ArxivPaper[] = []
-  const repos: GitHubRepo[] = []
-  const models: HuggingFaceModel[] = []
+  // Backend returns flat arrays directly on the response
+  const papers = data.papers || []
+  const repos = data.repositories || []
+  const models = data.models || []
+  const datasets = data.datasets || []
+  const webResults = data.web_results || []
+  const images: ImageResult[] = data.images || []
 
-  data.results.forEach((result) => {
-    if (result.papers) papers.push(...result.papers)
-    if (result.repositories) repos.push(...result.repositories)
-    if (result.models) models.push(...result.models)
-  })
+  const totalCount = papers.length + repos.length + models.length + datasets.length + webResults.length
 
-  const totalCount = papers.length + repos.length + models.length
+  // Build visible tabs — only show tabs that have results
+  const tabs: { value: string; label: string; count: number }[] = []
+  if (papers.length > 0) tabs.push({ value: 'papers', label: 'Papers', count: papers.length })
+  if (repos.length > 0) tabs.push({ value: 'repos', label: 'Repos', count: repos.length })
+  if (models.length > 0) tabs.push({ value: 'models', label: 'Models', count: models.length })
+  if (datasets.length > 0) tabs.push({ value: 'datasets', label: 'Datasets', count: datasets.length })
+  if (webResults.length > 0) tabs.push({ value: 'web', label: 'Web', count: webResults.length })
 
   return (
     <div className="space-y-6">
-      {data.synthesis && <SynthesisSummary synthesis={data.synthesis} />}
+      {images.length > 0 && <ImageGallery images={images} />}
 
-      <Tabs defaultValue="all">
-        <TabsList>
-          <TabsTrigger value="all">All ({totalCount})</TabsTrigger>
-          <TabsTrigger value="papers">Papers ({papers.length})</TabsTrigger>
-          <TabsTrigger value="repos">Repos ({repos.length})</TabsTrigger>
-          <TabsTrigger value="models">Models ({models.length})</TabsTrigger>
-        </TabsList>
+      {(data.answer || data.summary) && (
+        <SynthesisSummary
+          answer={data.answer}
+          summary={data.summary}
+          insights={data.insights}
+          recommendations={data.recommendations}
+          confidence={data.confidence}
+        />
+      )}
 
-        <TabsContent value="all" className="mt-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {papers.map((paper) => (
-              <PaperCard key={paper.id} paper={paper} />
+      {totalCount > 0 && (
+        <Tabs defaultValue="all">
+          <TabsList>
+            <TabsTrigger value="all">All ({totalCount})</TabsTrigger>
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label} ({tab.count})
+              </TabsTrigger>
             ))}
-            {repos.map((repo) => (
-              <RepoCard key={repo.id} repo={repo} />
-            ))}
-            {models.map((model) => (
-              <ModelCard key={model.id} model={model} />
-            ))}
-          </div>
-        </TabsContent>
+          </TabsList>
 
-        <TabsContent value="papers" className="mt-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {papers.map((paper) => (
-              <PaperCard key={paper.id} paper={paper} />
-            ))}
-          </div>
-          {papers.length === 0 && (
-            <p className="py-8 text-center text-muted-foreground">
-              No papers found
-            </p>
-          )}
-        </TabsContent>
+          <TabsContent value="all" className="mt-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {papers.map((paper, i) => (
+                <PaperCard key={`paper-${(paper as Record<string, unknown>).id || (paper as Record<string, unknown>).arxiv_id || i}`} paper={paper as any} />
+              ))}
+              {repos.map((repo, i) => (
+                <RepoCard key={`repo-${(repo as Record<string, unknown>).id || (repo as Record<string, unknown>).full_name || (repo as Record<string, unknown>).name || i}`} repo={repo as any} />
+              ))}
+              {models.map((model, i) => (
+                <ModelCard key={`model-${(model as Record<string, unknown>).id || (model as Record<string, unknown>).modelId || i}`} model={model as any} />
+              ))}
+              {datasets.map((ds, i) => (
+                <ModelCard key={`dataset-${(ds as Record<string, unknown>).id || i}`} model={ds as any} />
+              ))}
+              {webResults.map((wr, i) => (
+                <WebResultCard key={`web-${(wr as Record<string, unknown>).url || i}`} result={wr as any} />
+              ))}
+            </div>
+          </TabsContent>
 
-        <TabsContent value="repos" className="mt-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {repos.map((repo) => (
-              <RepoCard key={repo.id} repo={repo} />
-            ))}
-          </div>
-          {repos.length === 0 && (
-            <p className="py-8 text-center text-muted-foreground">
-              No repositories found
-            </p>
-          )}
-        </TabsContent>
+          <TabsContent value="papers" className="mt-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {papers.map((paper, i) => (
+                <PaperCard key={`paper-${(paper as Record<string, unknown>).id || (paper as Record<string, unknown>).arxiv_id || i}`} paper={paper as any} />
+              ))}
+            </div>
+          </TabsContent>
 
-        <TabsContent value="models" className="mt-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {models.map((model) => (
-              <ModelCard key={model.id} model={model} />
-            ))}
-          </div>
-          {models.length === 0 && (
-            <p className="py-8 text-center text-muted-foreground">
-              No models found
-            </p>
-          )}
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="repos" className="mt-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {repos.map((repo, i) => (
+                <RepoCard key={`repo-${(repo as Record<string, unknown>).id || (repo as Record<string, unknown>).full_name || (repo as Record<string, unknown>).name || i}`} repo={repo as any} />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="models" className="mt-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {models.map((model, i) => (
+                <ModelCard key={`model-${(model as Record<string, unknown>).id || (model as Record<string, unknown>).modelId || i}`} model={model as any} />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="datasets" className="mt-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {datasets.map((ds, i) => (
+                <ModelCard key={`dataset-${(ds as Record<string, unknown>).id || i}`} model={ds as any} />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="web" className="mt-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {webResults.map((wr, i) => (
+                <WebResultCard key={`web-${(wr as Record<string, unknown>).url || i}`} result={wr as any} />
+              ))}
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {totalCount === 0 && !data.answer && !data.summary && (
+        <div className="flex h-32 items-center justify-center text-muted-foreground">
+          No results found. Try adjusting your query or enabling more sources.
+        </div>
+      )}
     </div>
   )
 }

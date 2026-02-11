@@ -58,6 +58,8 @@ class MCPServerConfig:
 
 
 # ArXiv MCP Server
+# Note: When blazickjp/arxiv-mcp-server is installed at ~/.dova/mcp-servers/arxiv-mcp-server,
+# it takes precedence and uses "search_papers" tool name instead of "search_arxiv".
 ARXIV_MCP = MCPServerConfig(
     name="arxiv",
     description="ArXiv paper search and metadata retrieval",
@@ -66,7 +68,7 @@ ARXIV_MCP = MCPServerConfig(
     priority=1,
     tools=[
         MCPTool(
-            name="search_arxiv",  # Note: actual MCP tool name
+            name="search_papers",  # blazickjp/arxiv-mcp-server uses this name
             description="Search ArXiv papers by query string",
             input_schema={
                 "type": "object",
@@ -75,42 +77,46 @@ ARXIV_MCP = MCPServerConfig(
                     "max_results": {
                         "type": "integer",
                         "default": 10,
-                        "maximum": 100,
+                        "maximum": 50,
                     },
-                    "start": {"type": "integer", "default": 0},
+                    "date_from": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
+                    "date_to": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+                    "categories": {"type": "array", "items": {"type": "string"}},
+                    "sort_by": {"type": "string", "enum": ["relevance", "date"]},
                 },
                 "required": ["query"],
             },
             capabilities=[MCPCapability.SEARCH],
         ),
         MCPTool(
-            name="search_by_author",
-            description="Search ArXiv papers by author name",
+            name="download_paper",
+            description="Download a paper by arXiv ID",
             input_schema={
                 "type": "object",
                 "properties": {
-                    "author": {"type": "string", "description": "Author name"},
-                    "max_results": {"type": "integer", "default": 10},
+                    "paper_id": {"type": "string", "description": "ArXiv paper ID"},
                 },
-                "required": ["author"],
+                "required": ["paper_id"],
             },
-            capabilities=[MCPCapability.SEARCH],
+            capabilities=[MCPCapability.FETCH],
         ),
         MCPTool(
-            name="search_by_category",
-            description="Search ArXiv papers by category",
+            name="read_paper",
+            description="Read the content of a downloaded paper",
             input_schema={
                 "type": "object",
                 "properties": {
-                    "category": {
-                        "type": "string",
-                        "description": "ArXiv category (e.g., cs.AI, cs.LG)",
-                    },
-                    "max_results": {"type": "integer", "default": 10},
+                    "paper_id": {"type": "string", "description": "ArXiv paper ID"},
                 },
-                "required": ["category"],
+                "required": ["paper_id"],
             },
-            capabilities=[MCPCapability.SEARCH],
+            capabilities=[MCPCapability.FETCH],
+        ),
+        MCPTool(
+            name="list_papers",
+            description="List all downloaded papers",
+            input_schema={"type": "object", "properties": {}},
+            capabilities=[MCPCapability.LIST],
         ),
     ],
     rate_limit_rpm=30,
@@ -515,7 +521,22 @@ def load_user_mcp_config() -> dict[str, MCPServerConfig]:
     mcp_servers = config.get("mcpServers", {})
 
     for name, server_config in mcp_servers.items():
-        transport_type = server_config.get("type", "http")
+        # Detect transport type from config
+        # Priority: explicit type > infer from fields
+        transport_type = server_config.get("type")
+
+        if transport_type is None:
+            # Infer transport from fields present
+            has_command = bool(server_config.get("command") or server_config.get("args"))
+            has_url = bool(server_config.get("url"))
+
+            if has_command and not has_url:
+                transport_type = "stdio"
+            elif has_url:
+                transport_type = "http"
+            else:
+                transport_type = "stdio"  # Default to stdio for unknown
+
         if transport_type == "http":
             transport = MCPTransport.HTTP
         elif transport_type == "sse":
@@ -523,13 +544,19 @@ def load_user_mcp_config() -> dict[str, MCPServerConfig]:
         else:
             transport = MCPTransport.STDIO
 
+        # Build command string from command + args if separate
+        command = server_config.get("command")
+        args = server_config.get("args", [])
+        if command and args:
+            command = f"{command} {' '.join(args)}"
+
         servers[name] = MCPServerConfig(
             name=name,
             description=f"User-configured MCP server: {name}",
             transport=transport,
             url=server_config.get("url"),
             headers=server_config.get("headers", {}),
-            command=server_config.get("command"),
+            command=command,
             enabled=server_config.get("enabled", True),
             priority=server_config.get("priority", 1),
             timeout_seconds=server_config.get("timeout", 30),

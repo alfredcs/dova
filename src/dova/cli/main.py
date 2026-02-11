@@ -95,7 +95,7 @@ def serve(ctx: click.Context, host: str, port: int, reload: bool, mode: str) -> 
     "--orchestrator",
     "-o",
     type=click.Choice(["standard", "thinking"]),
-    default="standard",
+    default="thinking",
     help="Orchestrator type: standard (task-graph) or thinking (deliberation-first)",
 )
 @click.pass_context
@@ -135,7 +135,7 @@ def interact(ctx: click.Context, no_thinking: bool, verbose: bool, orchestrator:
     "--sources",
     "-s",
     multiple=True,
-    default=["github", "huggingface", "web"],
+    default=["arxiv", "github", "huggingface", "web"],
     help="Sources to search (arxiv, github, huggingface, web)",
 )
 @click.option("--max-results", "-n", default=10, help="Maximum results per source")
@@ -151,7 +151,7 @@ def interact(ctx: click.Context, no_thinking: bool, verbose: bool, orchestrator:
 @click.option(
     "--orchestrator",
     type=click.Choice(["standard", "thinking"]),
-    default="standard",
+    default="thinking",
     help="Orchestrator type: standard (task-graph) or thinking (deliberation-first)",
 )
 @click.pass_context
@@ -271,10 +271,21 @@ def research(
         result = await orch.execute(task)
 
         if result.success:
+            data = result.data
+
+            # ThinkingOrchestrator nests results under "action_result";
+            # flatten so format_research_results can find them.
+            if orchestrator == "thinking" and data and "action_result" in data:
+                from dova.agents.thinking_orchestrator import ThinkingOrchestrator as TO
+                data = TO.extract_research_data(data)
+                # Map 'response' → 'summary' for the CLI formatter
+                if "response" in data and not data.get("summary"):
+                    data["summary"] = data["response"]
+
             if format == "json":
-                output_data = json.dumps(result.data, indent=2, default=str)
+                output_data = json.dumps(data, indent=2, default=str)
             else:
-                output_data = format_research_results(result.data)
+                output_data = format_research_results(data)
 
             if output:
                 with open(output, "w") as f:
@@ -303,6 +314,7 @@ def format_research_results(data: dict | None) -> str:
         data.get("repositories"),
         data.get("models"),
         data.get("datasets"),
+        data.get("web_results"),
     ])
 
     if "summary" in data and data["summary"]:
@@ -371,6 +383,19 @@ def format_research_results(data: dict | None) -> str:
                 lines.append(f"   Downloads: {ds['downloads']:,}")
             if "url" in ds:
                 lines.append(f"   URL: {ds['url']}")
+            lines.append("")
+
+    if "web_results" in data and data["web_results"]:
+        lines.append("=" * 60)
+        lines.append(f"WEB RESULTS ({len(data['web_results'])} found)")
+        lines.append("=" * 60)
+        for i, wr in enumerate(data["web_results"][:10], 1):  # Limit to 10
+            lines.append(f"{i}. {wr.get('title', 'Unknown')}")
+            desc = wr.get("description", wr.get("snippet", ""))
+            if desc:
+                lines.append(f"   {str(desc)[:120]}...")
+            if "url" in wr:
+                lines.append(f"   URL: {wr['url']}")
             lines.append("")
 
     if "insights" in data and data["insights"]:
@@ -846,8 +871,8 @@ def mcp_list(no_check: bool) -> None:
 
     async def check_server_health(name: str, config: dict) -> tuple[str, bool, str]:
         """Check if an MCP server is reachable."""
-        # STDIO servers don't have URLs to check
-        if config.get("type") == "stdio":
+        # STDIO servers don't have URLs to check - detect by type field or presence of command
+        if config.get("type") == "stdio" or (config.get("command") and not config.get("url")):
             return (name, True, "STDIO (local)")
 
         url = config.get("url")
@@ -923,10 +948,15 @@ def mcp_list(no_check: bool) -> None:
             status_msg = ""
 
         click.echo(f"\n{status} {click.style(name, bold=True)}{status_msg}")
-        server_type = config.get("type", "http")
+        # Detect server type - STDIO if has command and no url, otherwise use type field
+        is_stdio = config.get("type") == "stdio" or (config.get("command") and not config.get("url"))
+        server_type = "stdio" if is_stdio else config.get("type", "http")
         click.echo(f"  Type: {server_type}")
-        if server_type == "stdio":
+        if is_stdio:
             cmd = config.get("command", "N/A")
+            args = config.get("args", [])
+            if args:
+                cmd = f"{cmd} {' '.join(args)}"
             # Truncate long commands
             if len(cmd) > 60:
                 cmd = cmd[:57] + "..."

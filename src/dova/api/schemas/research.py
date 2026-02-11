@@ -27,24 +27,19 @@ class ResearchRequest(BaseModel):
         le=100,
         description="Maximum results per source",
     )
-    include_synthesis: bool = Field(
-        default=True,
-        description="Whether to synthesize results",
+    orchestrator: str = Field(
+        default="thinking",
+        description="Orchestrator type: 'thinking' (deliberation-first) or 'standard' (direct agent)",
     )
-    personalize: bool = Field(
-        default=True,
-        description="Whether to personalize based on user profile",
-    )
-    reasoning_mode: str = Field(
-        default="standard",
-        description="Reasoning mode: 'quick' (no reasoning), 'standard' (iterative refinement), 'react' (full ReAct loop)",
-    )
-    max_reasoning_iterations: int = Field(
-        default=5,
-        ge=1,
-        le=10,
-        description="Maximum ReAct loop iterations (only for 'react' mode)",
-    )
+
+
+class ImageResult(BaseModel):
+    """Generated image result."""
+
+    url: str = Field(..., description="URL or path to the generated image")
+    prompt: str = Field(..., description="Prompt used to generate the image")
+    resolution: str = Field(default="1024x1024", description="Image resolution")
+    seed: int = Field(default=0, description="Seed used for generation")
 
 
 class SearchResult(BaseModel):
@@ -92,6 +87,10 @@ class ResearchResponse(BaseModel):
     web_results: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Web search results",
+    )
+    images: list[ImageResult] = Field(
+        default_factory=list,
+        description="Generated images",
     )
     insights: list[str] = Field(
         default_factory=list,

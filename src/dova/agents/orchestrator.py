@@ -49,6 +49,7 @@ class UserIntent(Enum):
     VALIDATION_REQUEST = "validation_request"
     PROFILE_UPDATE = "profile_update"
     GENERAL_QUESTION = "general_question"
+    IMAGE_GENERATION = "image_generation"
 
 
 class ReasoningMode(Enum):
@@ -87,6 +88,11 @@ class TaskNode:
 class DOVAOrchestrator(BaseAgent):
     """
     Master Orchestrator Agent for DOVA platform.
+
+    .. deprecated::
+        Use :class:`dova.agents.thinking_orchestrator.ThinkingOrchestrator` instead.
+        This class is retained only because ``EVALUATIVE_PATTERNS`` is imported
+        by ``dova.cli.interact``. New code should not instantiate this class.
 
     Coordinates all specialized agents and manages the research workflow.
     """
@@ -160,6 +166,24 @@ Respond in a structured JSON format."""
                     execution_time_ms=(time.time() - start_time) * 1000,
                     intent=intent.intent.value,
                     tasks_executed=0,
+                )
+
+            # Step 2b: Handle image generation requests
+            if intent.intent == UserIntent.IMAGE_GENERATION:
+                self._logger.info("image_generation_starting", query=query)
+                images = await self._generate_images(query)
+                summary = "Image generated successfully." if images else "Failed to generate image."
+                return self._wrap_result(
+                    task,
+                    True,
+                    data={
+                        "summary": summary,
+                        "images": images,
+                        "intent": "image_generation",
+                    },
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                    intent=intent.intent.value,
+                    tasks_executed=1,
                 )
 
             # Step 3: Build task graph based on intent
@@ -252,10 +276,11 @@ CRITICAL INSTRUCTIONS:
 2. Extract the EXACT names/terms from the query - do NOT generalize or paraphrase
 3. If the query mentions a specific model, library, or project name, that MUST be in primary_subject AND search_terms
 4. For recent/news queries, if adding years to search_terms, use CURRENT year ({current_year}) and recent past years - NEVER use outdated years
+5. For image generation requests (create, generate, draw, make an image/picture/illustration/artwork), use "image_generation" intent
 
 Respond with JSON:
 {{
-    "intent": "<one of: research_query, code_search, paper_search, model_search, innovation_request, validation_request, general_question>",
+    "intent": "<one of: research_query, code_search, paper_search, model_search, innovation_request, validation_request, general_question, image_generation>",
     "confidence": <0.0-1.0>,
     "entities": {{
         "primary_subject": "<THE MAIN THING being searched - model name, project name, or core concept - EXTRACT EXACTLY from query>",
@@ -653,8 +678,8 @@ Instructions:
                 try:
                     if server_name == "arxiv":
                         result = await self.mcp_client.invoke(
-                            "arxiv", "search_arxiv",  # Fixed: correct tool name
-                            {"request": {"query": query, "max_results": 3}}  # Fixed: correct param format
+                            "arxiv", "search_papers",  # blazickjp/arxiv-mcp-server tool name
+                            {"query": query, "max_results": 3}
                         )
                         if result:
                             result_str = str(result)[:2000]
@@ -957,3 +982,58 @@ Instructions:
             "mode": result.mode_used.value,
             "participants": result.participating_agents,
         }
+
+    async def _generate_images(self, query: str) -> list[dict[str, Any]]:
+        """Generate images based on user query."""
+        # Enhance the prompt for better image generation
+        enhanced_prompt = await self._enhance_image_prompt(query)
+
+        self._logger.info("generating_image", prompt=enhanced_prompt[:100])
+
+        # Call the base class generate_image method
+        result = await self.generate_image(enhanced_prompt)
+
+        if not result.success:
+            self._logger.warning("image_generation_failed", error=result.error)
+            return []
+
+        # Parse the result from HuggingFace Z-Image-Turbo
+        data = result.data
+        if isinstance(data, (list, tuple)) and len(data) >= 1:
+            gallery = data[0] if isinstance(data[0], list) else [data[0]]
+            seed = data[2] if len(data) > 2 else 0
+            return [
+                {
+                    "url": img.get("url", img) if isinstance(img, dict) else str(img),
+                    "prompt": enhanced_prompt,
+                    "resolution": "1024x1024",
+                    "seed": seed,
+                }
+                for img in gallery
+                if img
+            ]
+        elif isinstance(data, dict):
+            return [{
+                "url": data.get("url", ""),
+                "prompt": enhanced_prompt,
+                "resolution": "1024x1024",
+                "seed": data.get("seed", 0),
+            }]
+
+        return []
+
+    async def _enhance_image_prompt(self, user_prompt: str) -> str:
+        """Enhance user prompt for better image generation."""
+        enhancement_prompt = f"""Rephrase this image request into an optimal prompt for AI image generation.
+
+User request: {user_prompt}
+
+Create a detailed, descriptive prompt that:
+1. Describes the main subject clearly
+2. Includes style descriptors (e.g., photorealistic, digital art, watercolor)
+3. Specifies lighting, mood, and atmosphere
+4. Adds quality keywords (high quality, detailed, 4k)
+
+Return ONLY the enhanced prompt, nothing else."""
+
+        return await self.think(enhancement_prompt, temperature=0.7)

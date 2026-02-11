@@ -12,8 +12,9 @@ export default function Dashboard() {
     'arxiv',
     'github',
     'huggingface',
+    'web',
   ])
-  const [orchestrator, setOrchestrator] = useState<'standard' | 'thinking'>('standard')
+  const [orchestrator, setOrchestrator] = useState<'standard' | 'thinking'>('thinking')
 
   const { mutate: search, data: results, isPending: isSearching } = useResearch()
   const { data: recommendationsData } = useRecommendations()

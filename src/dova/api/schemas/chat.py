@@ -62,6 +62,15 @@ class ThinkingStep(BaseModel):
     content: str = Field(..., description="Step content")
 
 
+class ImageResult(BaseModel):
+    """Generated image result."""
+
+    url: str = Field(..., description="URL or path to the generated image")
+    prompt: str = Field(..., description="Prompt used to generate the image")
+    resolution: str = Field(default="1024x1024", description="Image resolution")
+    seed: int = Field(default=0, description="Seed used for generation")
+
+
 class ChatResponse(BaseModel):
     """Response schema for chat messages."""
 
@@ -73,7 +82,7 @@ class ChatResponse(BaseModel):
     )
     action_taken: str | None = Field(
         default=None,
-        description="Action taken (research, debate, synthesize, respond)",
+        description="Action taken (research, debate, synthesize, respond, image)",
     )
     sources_used: list[str] = Field(
         default_factory=list,
@@ -86,6 +95,10 @@ class ChatResponse(BaseModel):
     debate_results: dict[str, Any] | None = Field(
         default=None,
         description="Debate results if debate action was taken",
+    )
+    images: list[ImageResult] = Field(
+        default_factory=list,
+        description="Generated images if image action was taken",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

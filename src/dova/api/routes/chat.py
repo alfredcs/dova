@@ -14,6 +14,7 @@ from dova.api.middleware.auth import User, get_current_user
 from dova.api.schemas.chat import (
     ChatRequest,
     ChatResponse,
+    ImageResult,
     SessionInfo,
     SessionListResponse,
     ThinkingStep,
@@ -35,6 +36,7 @@ def _get_or_create_session(
     mcp_client: Any,
     memory_service: Any,
     orchestrator_type: str = "standard",
+    orchestrator: Any = None,
 ) -> tuple[InteractiveSession, str, bool]:
     """Get existing session or create new one."""
     is_new = False
@@ -59,6 +61,10 @@ def _get_or_create_session(
     session._mcp_client = mcp_client
     session._memory_service = memory_service
     session._settings = settings
+
+    # Inject shared orchestrator only for thinking mode sessions
+    if orchestrator is not None and orchestrator_type == "thinking":
+        session._thinking_orchestrator = orchestrator
 
     # Start the session
     new_session_id = session.start_session()
@@ -106,6 +112,7 @@ async def send_message(
         llm_router = getattr(request.app.state, "llm_router", None)
         mcp_client = getattr(request.app.state, "mcp_client", None)
         memory_service = getattr(request.app.state, "enhanced_memory_service", None)
+        orchestrator = getattr(request.app.state, "orchestrator", None)
 
         if not llm_router:
             raise HTTPException(status_code=503, detail="Chat service not available")
@@ -119,6 +126,7 @@ async def send_message(
             mcp_client=mcp_client,
             memory_service=memory_service,
             orchestrator_type=body.orchestrator,
+            orchestrator=orchestrator,
         )
 
         # Configure session settings for this request
@@ -145,6 +153,7 @@ async def send_message(
         action_taken = None
         research_results = None
         debate_results = None
+        images: list[ImageResult] = []
         sources_used = []
 
         if session.state and session.state.conversation:
@@ -171,6 +180,28 @@ async def send_message(
                             "recommendation": result.get("recommendation", ""),
                             "confidence": result.get("confidence", 0),
                         }
+                        # Collaborative/deep mode includes research data alongside debate
+                        if result.get("papers") or result.get("repositories") or result.get("models") or result.get("web_results"):
+                            research_results = {
+                                "papers": result.get("papers", []),
+                                "repositories": result.get("repositories", []),
+                                "models": result.get("models", []),
+                                "web_results": result.get("web_results", []),
+                                "summary": result.get("answer", ""),
+                                "answer": result.get("answer", ""),
+                            }
+                            sources_used = body.sources
+
+                    # Extract images from action_result (ThinkingOrchestrator returns them)
+                    raw_images = result.get("images", [])
+                    for img in raw_images:
+                        if isinstance(img, dict):
+                            images.append(ImageResult(
+                                url=img.get("url", ""),
+                                prompt=img.get("prompt", ""),
+                                resolution=img.get("resolution", "1024x1024"),
+                                seed=img.get("seed", 0),
+                            ))
 
         execution_time = time.time() - start_time
 
@@ -190,6 +221,7 @@ async def send_message(
             sources_used=sources_used,
             research_results=research_results,
             debate_results=debate_results,
+            images=images,
             metadata={
                 "is_new_session": is_new,
                 "execution_time_ms": int(execution_time * 1000),

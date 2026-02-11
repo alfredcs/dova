@@ -247,8 +247,8 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         """Convenience method for ArXiv search."""
         return await self.call_tool(
             "arxiv",
-            "search_arxiv",  # Fixed: was "search_papers"
-            {"request": {"query": query, "max_results": max_results}},
+            "search_papers",  # blazickjp/arxiv-mcp-server uses this tool name
+            {"query": query, "max_results": max_results},
         )
 
     async def search_github(
@@ -311,6 +311,44 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         )
         self._logger.info(
             "huggingface_search_complete",
+            success=result.success,
+            error=result.error if not result.success else None,
+        )
+        return result
+
+    async def generate_image(
+        self,
+        prompt: str,
+        resolution: str = "1024x1024 ( 1:1 )",
+        steps: int = 8,
+    ) -> MCPToolResult:
+        """Generate image using HuggingFace Z-Image-Turbo.
+
+        Args:
+            prompt: Text prompt describing the desired image
+            resolution: Output resolution (e.g., "1024x1024 ( 1:1 )")
+            steps: Number of inference steps
+
+        Returns:
+            MCPToolResult with generated image data
+        """
+        self._logger.info(
+            "image_generation_starting",
+            prompt=prompt[:100],
+            resolution=resolution,
+        )
+        result = await self.call_tool(
+            "hugging-face",
+            "gr1_z_image_turbo_generate",
+            {
+                "prompt": prompt,
+                "resolution": resolution,
+                "steps": steps,
+                "random_seed": True,
+            },
+        )
+        self._logger.info(
+            "image_generation_complete",
             success=result.success,
             error=result.error if not result.success else None,
         )

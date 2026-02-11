@@ -42,24 +42,66 @@ export interface HuggingFaceModel {
   library_name?: string;
 }
 
-export interface ResearchResult {
-  source: 'arxiv' | 'github' | 'huggingface';
-  papers?: ArxivPaper[];
-  repositories?: GitHubRepo[];
-  models?: HuggingFaceModel[];
-}
-
-export interface SynthesisSummary {
-  summary: string;
-  key_findings: string[];
-  recommended_actions: string[];
+export interface ImageResult {
+  url: string;
+  prompt: string;
+  resolution: string;
+  seed: number;
 }
 
 export interface ResearchResponse {
   query: string;
-  synthesis: SynthesisSummary;
-  results: ResearchResult[];
-  timestamp: string;
+  status: string;
+  answer: string;
+  summary: string;
+  papers: Record<string, unknown>[];
+  repositories: Record<string, unknown>[];
+  models: Record<string, unknown>[];
+  datasets: Record<string, unknown>[];
+  web_results: Record<string, unknown>[];
+  images: ImageResult[];
+  insights: string[];
+  recommendations: string[];
+  confidence: number;
+  refinement_attempts: number;
+  reasoning_trace: Record<string, unknown>[];
+  debate: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+}
+
+// Search types (source-specific search endpoints)
+export interface SearchResponse {
+  source: string;
+  query: string;
+  results: Record<string, unknown>[];
+  total_count: number;
+  metadata: Record<string, unknown>;
+}
+
+// Chat types
+export interface ThinkingStep {
+  step_type: string;
+  content: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  session_id?: string;
+  sources?: string[];
+  show_thinking?: boolean;
+  orchestrator?: 'standard' | 'thinking';
+}
+
+export interface ChatResponse {
+  session_id: string;
+  message: string;
+  thinking: ThinkingStep[];
+  action_taken?: string;
+  sources_used: string[];
+  research_results?: Record<string, unknown>;
+  debate_results?: Record<string, unknown>;
+  images: ImageResult[];
+  metadata: Record<string, unknown>;
 }
 
 // Profile types
@@ -138,6 +180,24 @@ export interface PromoteToKnowledgeRequest {
   topic: string;
   summary: string;
   session_ids: string[];
+}
+
+// MCP Server types
+export interface MCPServer {
+  name: string;
+  description?: string;
+  transport: 'stdio' | 'http' | 'sse';
+  enabled: boolean;
+  url?: string;
+  command?: string;
+  status: 'healthy' | 'unhealthy' | 'unknown';
+  status_message?: string;
+}
+
+export interface MCPServerListResponse {
+  servers: MCPServer[];
+  total: number;
+  timestamp: string;
 }
 
 // Source types

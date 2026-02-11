@@ -360,7 +360,7 @@ class AutoDiscovery:
         return [
             MCPServerInfo(
                 name="arxiv",
-                tools=["search_arxiv", "search_by_author", "search_by_category"],
+                tools=["search_papers", "download_paper", "read_paper", "list_papers"],
                 metadata={"category": "research"},
             ),
             MCPServerInfo(

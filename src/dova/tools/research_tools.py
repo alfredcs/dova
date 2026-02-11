@@ -48,11 +48,11 @@ def search_arxiv_tool(
 
     # Return tool schema for Strands
     return {
-        "tool_name": "search_arxiv",
+        "tool_name": "search_papers",  # blazickjp/arxiv-mcp-server tool name
         "mcp_server": "arxiv",
         "params": {
             "query": search_query,
-            "max_results": min(max_results, 100),
+            "max_results": min(max_results, 50),  # Server max is 50
         },
     }
 

@@ -20,6 +20,7 @@ from dova.api.routes import (
     chat,
     credentials,
     health,
+    mcp,
     memory,
     profile,
     research,
@@ -144,6 +145,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         num_rounds=2,
     )
     logger.info("debate_agent_initialized", num_rounds=2)
+
+    # Initialize ThinkingOrchestrator as the unified orchestration engine
+    from dova.agents.thinking_orchestrator import ThinkingOrchestrator
+    from dova.services.web_search import create_parallel_search_service
+
+    app.state.orchestrator = ThinkingOrchestrator(
+        llm_router=app.state.llm_router,
+        mcp_client=app.state.mcp_client,
+        memory_service=app.state.enhanced_memory_service,
+        web_search_service=create_parallel_search_service(),
+    )
+    app.state.orchestrator.register_agent("research", app.state.research_agent)
+    app.state.orchestrator.register_agent("debate", app.state.debate_agent)
+    logger.info("thinking_orchestrator_initialized")
 
     # Initialize JWT verifier if Cognito is configured
     if settings.auth.cognito_user_pool_id and settings.auth.cognito_client_id:
@@ -308,6 +323,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(validation.router, prefix="/api/v1", tags=["Validation"])
     app.include_router(memory.router, prefix="/api/v1", tags=["Memory"])
     app.include_router(sources.router, prefix="/api/v1", tags=["Sources"])
+    app.include_router(mcp.router, prefix="/api/v1", tags=["MCP"])
     app.include_router(credentials.router, prefix="/api/v1", tags=["Credentials"])
     app.include_router(subscriptions.router, prefix="/api/v1", tags=["Subscriptions"])
     app.include_router(webhooks.router, prefix="/api/v1", tags=["Webhooks"])

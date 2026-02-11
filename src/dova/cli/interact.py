@@ -736,7 +736,7 @@ Reasoning:"""
         is_followup = len(self.state.conversation) > 2
 
         from datetime import datetime
-        current_date = datetime.now().strftime("%B %Y")  # e.g., "February 2026"
+        current_date = datetime.now().strftime("%B %d, %Y")
         current_year = datetime.now().year
 
         prompt = f"""Based on this analysis, determine the best action.
@@ -751,6 +751,7 @@ Available Actions:
 - research: Search for papers, repos, models (for NEW topics or when needing fresh data)
 - debate: Run Bull vs Bear analysis (for evaluation/decision queries)
 - synthesize: Combine and summarize previous information (for multi-turn synthesis)
+- image: Generate images/pictures/illustrations/artwork (for creative image creation requests)
 - respond: Direct response using existing context (for follow-up questions about already-discussed topics)
 
 IMPORTANT:
@@ -758,15 +759,17 @@ IMPORTANT:
 - Only use "research" when NEW information is needed
 - If information exists in the entities_discussed, use "respond"
 - For recent/news queries, if adding years to search query, use CURRENT year ({current_year}) and recent past - NEVER outdated years
+- For IMAGE GENERATION requests (create, generate, draw, make an image/picture/illustration/artwork), ALWAYS use "image" action - NOT research
 
 {"This appears to be a follow-up question. Check if the answer is in the context before doing new research." if is_followup else ""}
 
 Respond in JSON:
 {{
-    "action": "<action_type>",
+    "action": "<research|debate|synthesize|image|respond>",
     "params": {{
-        "query": "<search query if applicable>",
-        "topic": "<debate topic if applicable>",
+        "query": "<search query if research>",
+        "topic": "<debate topic if debate>",
+        "prompt": "<image description if image action>",
         "sources": ["arxiv", "github", "huggingface", "web"],
         "use_context": true/false
     }},
@@ -804,6 +807,8 @@ JSON:"""
                 return await self._action_debate(params)
             elif action == "synthesize":
                 return await self._action_synthesize(params)
+            elif action == "image":
+                return await self._action_image(params)
             else:
                 return {"status": "skipped", "reason": "No action required"}
         except Exception as e:
@@ -864,12 +869,20 @@ JSON:"""
             model_dicts = [to_dict(m) for m in models[:5]]
             web_dicts = [to_dict(w) for w in web_results[:5]]
 
+            # Also extract images from the result (for image generation)
+            if hasattr(data, '__dict__'):
+                images = getattr(data, 'images', []) or []
+            else:
+                images = data.get("images", []) or []
+            image_dicts = [to_dict(img) for img in images]
+
             return {
                 "status": "success",
                 "papers": paper_dicts,
                 "repositories": repo_dicts,
                 "models": model_dicts,
                 "web_results": web_dicts,
+                "images": image_dicts,
                 "summary": summary,
                 "answer": answer,
             }
@@ -881,12 +894,33 @@ JSON:"""
         from dova.agents.base import AgentTask
 
         topic = params.get("topic", params.get("query", ""))
+        context = params.get("context", {})
+
+        # In collaborative/deep mode, run research first so the debate
+        # has real data instead of relying on LLM training knowledge.
+        reasoning_mode = params.get("reasoning_mode", "standard")
+        research_data = {}
+        if reasoning_mode in ("collaborative", "deep"):
+            sources = getattr(self, "_research_sources", None) or ["arxiv", "github", "huggingface", "web"]
+            research_result = await self._action_research({
+                "query": topic,
+                "sources": sources,
+            })
+            if research_result.get("status") == "success":
+                research_data = research_result
+                # Provide a summary of findings to the debate agent
+                context["research_summary"] = research_result.get("summary", "")
+                context["research_answer"] = research_result.get("answer", "")
+                context["papers_found"] = len(research_result.get("papers", []))
+                context["repos_found"] = len(research_result.get("repositories", []))
+                context["models_found"] = len(research_result.get("models", []))
+                context["web_results_found"] = len(research_result.get("web_results", []))
 
         task = AgentTask(
             type="debate",
             params={
                 "topic": topic,
-                "context": params.get("context", {}),
+                "context": context,
             },
             user_id=self.user_id,
         )
@@ -894,7 +928,7 @@ JSON:"""
         result = await self.debate_agent.execute(task)
 
         if result.success:
-            return {
+            debate_result = {
                 "status": "success",
                 "summary": result.data.get("summary", ""),
                 "bull_strengths": result.data.get("bull_strengths", []),
@@ -902,6 +936,14 @@ JSON:"""
                 "recommendation": result.data.get("recommendation", ""),
                 "confidence": result.data.get("confidence_score", 0),
             }
+            # Merge research data so the frontend can display papers/repos/models
+            if research_data:
+                debate_result["papers"] = research_data.get("papers", [])
+                debate_result["repositories"] = research_data.get("repositories", [])
+                debate_result["models"] = research_data.get("models", [])
+                debate_result["web_results"] = research_data.get("web_results", [])
+                debate_result["answer"] = research_data.get("answer", "")
+            return debate_result
         else:
             return {"status": "error", "error": result.error}
 
@@ -937,6 +979,120 @@ Synthesis:"""
         )
 
         return {"status": "success", "synthesis": response}
+
+    async def _action_image(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Execute image generation action using HuggingFace Z-Image-Turbo."""
+        from dova.config.providers import TaskType
+
+        prompt = params.get("prompt", params.get("query", ""))
+        if not prompt:
+            return {"status": "error", "error": "No prompt provided for image generation"}
+
+        logger.info("image_generation_starting", prompt=prompt[:100])
+
+        # Step 1: Enhance the prompt for better image generation
+        enhancement_prompt = f"""Rephrase this image request into an optimal prompt for AI image generation.
+
+User request: {prompt}
+
+Create a detailed, descriptive prompt that:
+1. Describes the main subject clearly
+2. Includes style descriptors (e.g., photorealistic, digital art, watercolor)
+3. Specifies lighting, mood, and atmosphere
+4. Adds quality keywords (high quality, detailed, 4k)
+
+Return ONLY the enhanced prompt, nothing else."""
+
+        enhanced_prompt = await self._llm_complete(
+            prompt=enhancement_prompt,
+            task_type=TaskType.REASONING,
+            temperature=0.7,
+            max_tokens=500,
+        )
+        enhanced_prompt = enhanced_prompt.strip()
+        logger.info("image_prompt_enhanced", original=prompt[:50], enhanced=enhanced_prompt[:100])
+
+        # Step 2: Call HuggingFace Z-Image-Turbo via MCP
+        if not self._mcp_client:
+            return {"status": "error", "error": "MCP client not available for image generation"}
+
+        try:
+            result = await self._mcp_client.invoke(
+                "hugging-face",
+                "gr1_z_image_turbo_generate",
+                {
+                    "prompt": enhanced_prompt,
+                    "resolution": "1024x1024 ( 1:1 )",
+                    "steps": 8,
+                    "random_seed": True,
+                },
+            )
+
+            logger.info(
+                "image_generation_complete",
+                result_type=type(result).__name__,
+                result_preview=str(result)[:500] if result else "None",
+            )
+
+            # Parse the result - Z-Image-Turbo returns (gallery_images, seed_str, seed_int)
+            images = []
+
+            # Handle string result - might be JSON or direct URL
+            if isinstance(result, str):
+                result = result.strip()
+                # Try to parse as JSON
+                try:
+                    import json
+                    parsed = json.loads(result)
+                    if isinstance(parsed, list):
+                        result = parsed
+                    elif isinstance(parsed, dict):
+                        result = parsed
+                except json.JSONDecodeError:
+                    # Might be a direct URL or error message
+                    if result.startswith(("http://", "https://", "data:")):
+                        images.append({
+                            "url": result,
+                            "prompt": enhanced_prompt,
+                            "resolution": "1024x1024",
+                            "seed": 0,
+                        })
+                    else:
+                        logger.warning("image_generation_unexpected_string", result=result[:200])
+                        return {"status": "error", "error": f"Unexpected response: {result[:200]}"}
+
+            if isinstance(result, (list, tuple)) and len(result) >= 1:
+                gallery = result[0] if isinstance(result[0], list) else [result[0]]
+                seed = result[2] if len(result) > 2 else 0
+                for img in gallery:
+                    if img:
+                        url = img.get("url", img) if isinstance(img, dict) else str(img)
+                        images.append({
+                            "url": url,
+                            "prompt": enhanced_prompt,
+                            "resolution": "1024x1024",
+                            "seed": seed,
+                        })
+            elif isinstance(result, dict):
+                images.append({
+                    "url": result.get("url", ""),
+                    "prompt": enhanced_prompt,
+                    "resolution": "1024x1024",
+                    "seed": result.get("seed", 0),
+                })
+
+            if images:
+                return {
+                    "status": "success",
+                    "images": images,
+                    "summary": f"Generated {len(images)} image(s) based on your request.",
+                }
+            else:
+                return {"status": "error", "error": "No images generated"}
+
+        except Exception as e:
+            logger.exception("image_generation_error", error=str(e))
+            return {"status": "error", "error": f"Image generation failed: {str(e)}"}
 
     async def _reflect(
         self,
@@ -1033,8 +1189,42 @@ Synthesis:"""
                 ]
                 context_parts.append(f"Debate Analysis:\n" + "\n".join(debate_summary))
 
+                # Include research data when debate ran with research (collaborative/deep mode)
+                if action_result.get("papers") or action_result.get("repositories") or action_result.get("web_results"):
+                    research_lines = []
+                    for p in (action_result.get("papers") or [])[:5]:
+                        title = p.get("title", "Unknown")
+                        arxiv_id = p.get("metadata", {}).get("arxiv_id", p.get("arxiv_id", ""))
+                        authors = p.get("metadata", {}).get("authors", p.get("authors", []))
+                        author_str = ", ".join(authors[:3]) if authors else ""
+                        research_lines.append(f"  - Paper: {title} [{arxiv_id}] by {author_str}")
+                    for r in (action_result.get("repositories") or [])[:5]:
+                        name = r.get("name") or r.get("full_name", "Unknown")
+                        desc = (r.get("description") or "")[:80]
+                        research_lines.append(f"  - Repo: {name} - {desc}")
+                    for m in (action_result.get("models") or [])[:3]:
+                        research_lines.append(f"  - Model: {m.get('id', 'Unknown')}")
+                    for w in (action_result.get("web_results") or [])[:5]:
+                        title = w.get("title", "Unknown")
+                        desc = (w.get("description") or "")[:200]
+                        url = w.get("url", "")
+                        research_lines.append(f"  - Web: **{title}**: {desc}")
+                        if url:
+                            research_lines.append(f"    Source: {url}")
+                    if research_lines:
+                        context_parts.append(f"Research Results (ONLY reference these — do NOT invent titles):\n" + "\n".join(research_lines))
+
             elif action == "synthesize":
                 context_parts.append(f"Synthesis:\n{action_result.get('synthesis', '')}")
+
+            elif action == "image":
+                images = action_result.get("images", [])
+                if images:
+                    image_summary = [f"Generated {len(images)} image(s):"]
+                    for img in images:
+                        image_summary.append(f"  - Prompt: {img.get('prompt', '')[:100]}...")
+                        image_summary.append(f"  - Resolution: {img.get('resolution', '1024x1024')}")
+                    context_parts.append(f"Image Generation Results:\n" + "\n".join(image_summary))
 
         prompt = f"""Generate a helpful, informative response based on this context:
 
@@ -1042,7 +1232,8 @@ Synthesis:"""
 
 Guidelines:
 - Be direct and informative
-- Reference specific findings when available
+- ONLY reference papers, repositories, and models that appear in the Research Results above — NEVER invent or hallucinate titles
+- If no Research Results are provided, do not cite specific paper titles
 - Acknowledge limitations if applicable
 - Suggest next steps if relevant
 
