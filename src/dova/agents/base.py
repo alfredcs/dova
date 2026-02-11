@@ -180,6 +180,7 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         server: str,
         tool: str,
         params: dict[str, Any],
+        cache_ttl: float = 600,
     ) -> MCPToolResult:
         """
         Invoke an MCP tool.
@@ -188,6 +189,7 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
             server: MCP server name (e.g., "arxiv", "github")
             tool: Tool name to invoke
             params: Tool parameters
+            cache_ttl: Cache time-to-live in seconds (default 10 min)
 
         Returns:
             MCPToolResult with the tool response
@@ -207,7 +209,7 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
                 MetricNames.MCP_CALL_LATENCY,
                 {"server": server, "tool": tool},
             ):
-                result = await self.mcp_client.invoke(server, tool, params)
+                result = await self.mcp_client.invoke(server, tool, params, cache_ttl=cache_ttl)
 
             self.metrics.increment(
                 MetricNames.MCP_CALL_COUNT,
@@ -243,12 +245,19 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         self,
         query: str,
         max_results: int = 10,
+        sort_by: str = "submittedDate",
+        sort_order: str = "descending",
     ) -> MCPToolResult:
         """Convenience method for ArXiv search."""
         return await self.call_tool(
             "arxiv",
             "search_papers",  # blazickjp/arxiv-mcp-server uses this tool name
-            {"query": query, "max_results": max_results},
+            {
+                "query": query,
+                "max_results": max_results,
+                "sort_by": sort_by,
+                "sort_order": sort_order,
+            },
         )
 
     async def search_github(
@@ -289,6 +298,7 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         query: str,
         search_type: str = "models",
         limit: int = 20,
+        sort: str | None = "modified",
     ) -> MCPToolResult:
         """Convenience method for HuggingFace search.
 
@@ -296,6 +306,7 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
             query: Search query
             search_type: Type of search (models, datasets, papers, spaces)
             limit: Maximum results to return
+            sort: Sort order (e.g., "modified", "trending", "likes", "downloads")
         """
         tool = f"{search_type[:-1]}_search" if search_type.endswith("s") else f"{search_type}_search"
         self._logger.info(
@@ -304,10 +315,13 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
             search_type=search_type,
             tool=tool,
         )
+        params = {"query": query, "limit": limit}
+        if sort:
+            params["sort"] = sort
         result = await self.call_tool(
             "hugging-face",  # Fixed: MCP server name uses hyphen
             tool,
-            {"query": query, "limit": limit},
+            params,
         )
         self._logger.info(
             "huggingface_search_complete",

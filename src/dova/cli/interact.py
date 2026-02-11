@@ -1154,20 +1154,51 @@ Return ONLY the enhanced prompt, nothing else."""
                 if action_result.get("answer"):
                     result_summary.append(f"Answer: {action_result['answer']}")
                 if action_result.get("papers"):
-                    papers = action_result["papers"][:3]
-                    result_summary.append(f"Found {len(action_result.get('papers', []))} papers")
+                    papers = action_result["papers"][:5]
+                    result_summary.append(f"Found {len(action_result.get('papers', []))} papers:")
                     for p in papers:
-                        result_summary.append(f"  - {p.get('title', 'Unknown')}")
+                        title = p.get('title', 'Unknown')
+                        url = p.get('url', '')
+                        authors = p.get('metadata', {}).get('authors', p.get('authors', []))
+                        author_str = ', '.join(authors[:3]) if authors else ''
+                        arxiv_id = p.get('metadata', {}).get('arxiv_id', p.get('arxiv_id', ''))
+                        abstract = p.get('description', p.get('summary', ''))[:300]
+                        result_summary.append(f"  - **{title}**")
+                        if arxiv_id:
+                            result_summary.append(f"    ArXiv: {arxiv_id}")
+                        if url:
+                            result_summary.append(f"    URL: {url}")
+                        if author_str:
+                            result_summary.append(f"    Authors: {author_str}")
+                        if abstract:
+                            result_summary.append(f"    Abstract: {abstract}")
                 if action_result.get("repositories"):
-                    repos = action_result["repositories"][:3]
-                    result_summary.append(f"Found {len(action_result.get('repositories', []))} repositories")
+                    repos = action_result["repositories"][:5]
+                    result_summary.append(f"Found {len(action_result.get('repositories', []))} repositories:")
                     for r in repos:
-                        result_summary.append(f"  - {r.get('name', 'Unknown')}: {r.get('description', '')[:50]}")
+                        name = r.get('name', r.get('full_name', 'Unknown'))
+                        desc = r.get('description', '')[:150]
+                        url = r.get('url', r.get('html_url', ''))
+                        stars = r.get('metadata', {}).get('stars', r.get('stars', 0))
+                        lang = r.get('metadata', {}).get('language', r.get('language', ''))
+                        result_summary.append(f"  - **{name}** ({stars} stars, {lang}): {desc}")
+                        if url:
+                            result_summary.append(f"    URL: {url}")
                 if action_result.get("models"):
-                    models = action_result["models"][:3]
-                    result_summary.append(f"Found {len(action_result.get('models', []))} models")
+                    models = action_result["models"][:5]
+                    result_summary.append(f"Found {len(action_result.get('models', []))} models:")
                     for m in models:
-                        result_summary.append(f"  - {m.get('id', 'Unknown')}")
+                        mid = m.get('id', m.get('title', 'Unknown'))
+                        downloads = m.get('metadata', {}).get('downloads', m.get('downloads', 0))
+                        tags = m.get('metadata', {}).get('tags', m.get('tags', []))
+                        pipeline = m.get('metadata', {}).get('pipeline_tag', '')
+                        tag_str = ', '.join(tags[:5]) if tags else ''
+                        url = m.get('url', f'https://huggingface.co/{mid}')
+                        result_summary.append(f"  - **{mid}** ({downloads} downloads, {pipeline})")
+                        if tag_str:
+                            result_summary.append(f"    Tags: {tag_str}")
+                        if url:
+                            result_summary.append(f"    URL: {url}")
                 if action_result.get("web_results"):
                     web_results = action_result["web_results"][:5]
                     result_summary.append(f"Found {len(action_result.get('web_results', []))} web sources:")
@@ -1231,11 +1262,15 @@ Return ONLY the enhanced prompt, nothing else."""
 {chr(10).join(context_parts)}
 
 Guidelines:
-- Be direct and informative
-- ONLY reference papers, repositories, and models that appear in the Research Results above — NEVER invent or hallucinate titles
+- Provide a comprehensive, in-depth answer with detailed explanations
+- Include mathematical formulas or equations where relevant (use LaTeX notation: $formula$)
+- ALWAYS include source URLs as inline links for every paper, repo, model, or web source you reference
+- ONLY reference papers, repositories, and models that appear in the Research Results above — NEVER invent or hallucinate titles or URLs
 - If no Research Results are provided, do not cite specific paper titles
+- Structure the response with clear sections and headers when covering multiple aspects
+- For technical topics, explain key concepts, methods, and their significance
 - Acknowledge limitations if applicable
-- Suggest next steps if relevant
+- Suggest follow-up research directions if relevant
 
 Response:"""
 

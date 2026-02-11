@@ -621,7 +621,7 @@ When analyzing search results:
             original_query=query,
         )
 
-        result = await self.search_arxiv(search_query, max_results=20)
+        result = await self.search_arxiv(search_query, max_results=20, sort_by="submittedDate")
 
         self._logger.info(
             "arxiv_search_complete",
@@ -705,8 +705,8 @@ When analyzing search results:
             sort_by_stars=sort_by_stars,
         )
 
-        # Add sort parameter for "most starred" queries
-        sort_param = "stars" if sort_by_stars else None
+        # Add sort parameter - default to "updated" for recency
+        sort_param = "stars" if sort_by_stars else "updated"
         result = await self.search_github(search_query, search_type="repositories", per_page=20, sort=sort_param)
 
         if result.success and result.data:
@@ -747,8 +747,8 @@ When analyzing search results:
         search_query = self._build_huggingface_query(query, entities)
         self._logger.debug("huggingface_query", original=query, optimized=search_query)
 
-        # Search models
-        model_result = await self.search_huggingface(search_query, search_type="models", limit=15)
+        # Search models - sort by recently modified
+        model_result = await self.search_huggingface(search_query, search_type="models", limit=15, sort="modified")
         if model_result.success and model_result.data:
             models = model_result.data if isinstance(model_result.data, list) else [model_result.data]
             for model in models:
@@ -772,8 +772,8 @@ When analyzing search results:
                     )
                 )
 
-        # Search datasets
-        dataset_result = await self.search_huggingface(search_query, search_type="datasets", limit=10)
+        # Search datasets - sort by recently modified
+        dataset_result = await self.search_huggingface(search_query, search_type="datasets", limit=10, sort="modified")
         if dataset_result.success and dataset_result.data:
             datasets = dataset_result.data if isinstance(dataset_result.data, list) else [dataset_result.data]
             for dataset in datasets:
@@ -1163,10 +1163,14 @@ When analyzing search results:
                 parts.append(f"language:{lang_map[tech_lower]}")
                 break
 
-        # Add date filter if time_range is specified
+        # Add date filter - use explicit time_range or default to 6 months
         time_range = entities.get("time_range")
         if time_range:
             parts.append(f"pushed:>{time_range}")
+        else:
+            from datetime import datetime, timedelta
+            six_months_ago = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
+            parts.append(f"pushed:>{six_months_ago}")
 
         # Only add minimum stars if not already sorting by stars (avoid over-filtering)
         query_lower = query.lower()
@@ -1216,11 +1220,6 @@ When analyzing search results:
         cleaned = query.lower()
         for phrase in stop_phrases:
             cleaned = re.sub(phrase, ' ', cleaned, flags=re.IGNORECASE)
-
-        # Remove date patterns like "Oct 2025", "October 2025", "2025-01"
-        cleaned = re.sub(r'\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*\d{4}\b', '', cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r'\b\d{4}[-/]\d{1,2}([-/]\d{1,2})?\b', '', cleaned)
-        cleaned = re.sub(r'\b\d{4}\b', '', cleaned)
 
         # Clean up extra whitespace
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()

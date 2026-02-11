@@ -1329,22 +1329,70 @@ Return ONLY the enhanced prompt, nothing else."""
 
         if results.get("papers"):
             papers = results["papers"][:5]
-            paper_lines = [f"- {p.get('title', 'Unknown')}" for p in papers]
+            paper_lines = []
+            for p in papers:
+                title = p.get('title', 'Unknown')
+                url = p.get('url', '')
+                authors = p.get('metadata', {}).get('authors', p.get('authors', []))
+                author_str = ', '.join(authors[:3]) if authors else ''
+                arxiv_id = p.get('metadata', {}).get('arxiv_id', p.get('arxiv_id', ''))
+                abstract = p.get('description', p.get('summary', ''))[:300]
+                line = f"- **{title}**"
+                if arxiv_id:
+                    line += f"\n  ArXiv: {arxiv_id}"
+                if url:
+                    line += f"\n  URL: {url}"
+                if author_str:
+                    line += f"\n  Authors: {author_str}"
+                if abstract:
+                    line += f"\n  Abstract: {abstract}"
+                paper_lines.append(line)
             result_parts.append(f"**Papers Found ({len(results['papers'])}):**\n" + "\n".join(paper_lines))
 
         if results.get("repositories"):
             repos = results["repositories"][:5]
-            repo_lines = [f"- {r.get('name', '')} ({r.get('stars', 0)} stars): {r.get('description', '')[:80]}" for r in repos]
+            repo_lines = []
+            for r in repos:
+                name = r.get('name', r.get('full_name', 'Unknown'))
+                desc = r.get('description', '')[:150]
+                url = r.get('url', r.get('html_url', ''))
+                stars = r.get('metadata', {}).get('stars', r.get('stars', 0))
+                lang = r.get('metadata', {}).get('language', r.get('language', ''))
+                line = f"- **{name}** ({stars} stars, {lang}): {desc}"
+                if url:
+                    line += f"\n  URL: {url}"
+                repo_lines.append(line)
             result_parts.append(f"**Repositories Found ({len(results['repositories'])}):**\n" + "\n".join(repo_lines))
 
         if results.get("models"):
-            models = results["models"][:3]
-            model_lines = [f"- {m.get('id', '')} ({m.get('downloads', 0)} downloads)" for m in models]
+            models = results["models"][:5]
+            model_lines = []
+            for m in models:
+                mid = m.get('id', m.get('title', 'Unknown'))
+                downloads = m.get('metadata', {}).get('downloads', m.get('downloads', 0))
+                tags = m.get('metadata', {}).get('tags', m.get('tags', []))
+                pipeline = m.get('metadata', {}).get('pipeline_tag', '')
+                tag_str = ', '.join(tags[:5]) if tags else ''
+                url = m.get('url', f'https://huggingface.co/{mid}')
+                line = f"- **{mid}** ({downloads} downloads, {pipeline})"
+                if tag_str:
+                    line += f"\n  Tags: {tag_str}"
+                if url:
+                    line += f"\n  URL: {url}"
+                model_lines.append(line)
             result_parts.append(f"**Models Found ({len(results['models'])}):**\n" + "\n".join(model_lines))
 
         if results.get("web_results"):
             web = results["web_results"][:5]
-            web_lines = [f"- {w.get('title', '')}: {w.get('description', '')[:100]}" for w in web]
+            web_lines = []
+            for w in web:
+                title = w.get('title', 'Unknown')
+                desc = w.get('description', '')[:200]
+                url = w.get('url', '')
+                line = f"- **{title}**: {desc}"
+                if url:
+                    line += f"\n  URL: {url}"
+                web_lines.append(line)
             result_parts.append(f"**Web Results ({len(results['web_results'])}):**\n" + "\n".join(web_lines))
 
         if results.get("images"):
@@ -1418,6 +1466,13 @@ CRITICAL RULES - FOLLOW EXACTLY:
 5. ALWAYS ANSWER
    - No refusals. Best estimate with confidence level.
    - "Based on similar model pricing, I estimate..." is always better than "I can't help"
+
+6. COMPREHENSIVE OUTPUT
+   - Provide in-depth explanations with detailed analysis
+   - Include mathematical formulas or equations where relevant (use LaTeX notation: $formula$)
+   - ALWAYS include source URLs as inline links for every paper, repo, model, or web source you reference
+   - Structure the response with clear sections and headers when covering multiple aspects
+   - For technical topics, explain key concepts, methods, and their significance
 
 Response:"""
 

@@ -9,6 +9,9 @@
     <!-- Code highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Math rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <style>
         :root {
             --primary: #6366f1;
@@ -304,6 +307,7 @@
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             text-align: left;
+            display: block;
         }
 
         .message.user .message-bubble {
@@ -447,6 +451,19 @@
             margin: 0.5rem 0;
         }
 
+        /* KaTeX math styles */
+        .message-bubble .katex-display {
+            margin: 1rem 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 0.5rem 0;
+        }
+
+        .message-bubble .katex {
+            color: var(--text);
+            font-size: 1.05em;
+        }
+
         /* Action indicator */
         .action-badge {
             display: inline-flex;
@@ -530,7 +547,7 @@
 
         .debate-columns {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 1rem;
             margin-bottom: 1rem;
         }
@@ -757,10 +774,6 @@
             }
 
             .suggestions {
-                grid-template-columns: 1fr;
-            }
-
-            .debate-columns {
                 grid-template-columns: 1fr;
             }
 
@@ -1115,21 +1128,21 @@
                     <h2>Welcome to DOVA</h2>
                     <p>Your AI research assistant. Ask questions, explore papers, compare technologies, and get insights from ArXiv, GitHub, HuggingFace, and the web.</p>
                     <div class="suggestions">
-                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest advances in multi-agent LLM systems?')">
+                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest papers on speculative decoding and draft-model distillation that achieve near-lossless speedups for LLM inference?')">
                             <h4>Research Papers</h4>
-                            <p>Latest advances in multi-agent LLM systems</p>
+                            <p>Latest speculative decoding papers with draft-model distillation for LLM inference speedups</p>
                         </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('Compare RAG vs fine-tuning for knowledge retrieval')">
+                        <div class="suggestion-card" onclick="sendSuggestion('Compare MoE sparse routing strategies (top-k, expert choice, soft routing) for scaling mixture-of-experts transformers beyond 1T parameters — what are the stability and load-balancing tradeoffs?')">
                             <h4>Compare Technologies</h4>
-                            <p>RAG vs fine-tuning tradeoffs</p>
+                            <p>MoE routing strategies at 1T+ scale: top-k vs expert choice vs soft routing tradeoffs</p>
                         </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('Find the most popular transformer implementations on GitHub')">
+                        <div class="suggestion-card" onclick="sendSuggestion('Find actively maintained open-source repos implementing RLHF with DPO or KTO alignment for instruction-tuned language models, with support for multi-GPU training')">
                             <h4>Discover Code</h4>
-                            <p>Popular transformer implementations</p>
+                            <p>Open-source RLHF repos with DPO/KTO alignment and multi-GPU training support</p>
                         </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('What models are trending on HuggingFace for text generation?')">
+                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest state-of-the-art open-weight multimodal models on HuggingFace that handle interleaved image-text reasoning, and how do they compare on MMMU and MathVista benchmarks?')">
                             <h4>Trending Models</h4>
-                            <p>HuggingFace text generation models</p>
+                            <p>SOTA open-weight multimodal models for interleaved image-text reasoning benchmarks</p>
                         </div>
                     </div>
                 </div>
@@ -1334,21 +1347,21 @@
                     <h2>Welcome to DOVA</h2>
                     <p>Your AI research assistant. Ask questions, explore papers, compare technologies, and get insights from ArXiv, GitHub, HuggingFace, and the web.</p>
                     <div class="suggestions">
-                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest advances in multi-agent LLM systems?')">
+                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest papers on speculative decoding and draft-model distillation that achieve near-lossless speedups for LLM inference?')">
                             <h4>Research Papers</h4>
-                            <p>Latest advances in multi-agent LLM systems</p>
+                            <p>Latest speculative decoding papers with draft-model distillation for LLM inference speedups</p>
                         </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('Compare RAG vs fine-tuning for knowledge retrieval')">
+                        <div class="suggestion-card" onclick="sendSuggestion('Compare MoE sparse routing strategies (top-k, expert choice, soft routing) for scaling mixture-of-experts transformers beyond 1T parameters — what are the stability and load-balancing tradeoffs?')">
                             <h4>Compare Technologies</h4>
-                            <p>RAG vs fine-tuning tradeoffs</p>
+                            <p>MoE routing strategies at 1T+ scale: top-k vs expert choice vs soft routing tradeoffs</p>
                         </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('Find the most popular transformer implementations on GitHub')">
+                        <div class="suggestion-card" onclick="sendSuggestion('Find actively maintained open-source repos implementing RLHF with DPO or KTO alignment for instruction-tuned language models, with support for multi-GPU training')">
                             <h4>Discover Code</h4>
-                            <p>Popular transformer implementations</p>
+                            <p>Open-source RLHF repos with DPO/KTO alignment and multi-GPU training support</p>
                         </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('What models are trending on HuggingFace for text generation?')">
+                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest state-of-the-art open-weight multimodal models on HuggingFace that handle interleaved image-text reasoning, and how do they compare on MMMU and MathVista benchmarks?')">
                             <h4>Trending Models</h4>
-                            <p>HuggingFace text generation models</p>
+                            <p>SOTA open-weight multimodal models for interleaved image-text reasoning benchmarks</p>
                         </div>
                     </div>
                 </div>
@@ -1642,12 +1655,46 @@
             if (!content) return '';
 
             try {
-                // Use marked.js to render markdown
-                const html = marked.parse(content);
+                // Extract math expressions before markdown parsing
+                // (markdown would mangle \frac, _ as emphasis, etc.)
+                const mathBlocks = [];
+                let processed = content;
+
+                // Display math: $$...$$
+                processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+                    const idx = mathBlocks.length;
+                    mathBlocks.push({ math: math.trim(), display: true });
+                    return `%%MATH_${idx}%%`;
+                });
+
+                // Inline math: $...$  (no newlines inside)
+                processed = processed.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
+                    const idx = mathBlocks.length;
+                    mathBlocks.push({ math: math.trim(), display: false });
+                    return `%%MATH_${idx}%%`;
+                });
+
+                // Parse markdown
+                let html = marked.parse(processed);
+
+                // Replace placeholders with KaTeX-rendered HTML
+                html = html.replace(/%%MATH_(\d+)%%/g, (_, idx) => {
+                    const block = mathBlocks[parseInt(idx)];
+                    try {
+                        return katex.renderToString(block.math, {
+                            displayMode: block.display,
+                            throwOnError: false,
+                        });
+                    } catch (e) {
+                        // Fallback: show raw LaTeX in a code block
+                        const raw = escapeHtml(block.math);
+                        return block.display ? `<pre><code>${raw}</code></pre>` : `<code>${raw}</code>`;
+                    }
+                });
+
                 return html;
             } catch (e) {
                 console.error('Markdown parsing error:', e);
-                // Fallback to escaped content
                 return '<p>' + escapeHtml(content) + '</p>';
             }
         }
