@@ -16,11 +16,11 @@ class AWSSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="AWS_")
 
-    region: str = Field(default="us-east-1", description="AWS region")
+    region: str = Field(default="us-west-2", description="AWS region")
     access_key_id: str | None = Field(default=None, description="AWS access key ID")
     secret_access_key: str | None = Field(default=None, description="AWS secret access key")
     bedrock_model_id: str = Field(
-        default="anthropic.claude-sonnet-4-20250514-v1:0",
+        default="global.anthropic.claude-sonnet-4-6",
         description="Default Bedrock model ID",
     )
     agentcore_agent_id: str | None = Field(

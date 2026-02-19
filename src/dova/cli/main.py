@@ -39,13 +39,20 @@ def cli(ctx: click.Context, debug: bool) -> None:
 @click.option("--port", default=8000, help="Port to bind to")
 @click.option("--reload/--no-reload", default=True, help="Enable auto-reload")
 @click.option(
+    "--workers",
+    "-w",
+    default=1,
+    type=int,
+    help="Number of worker processes (use 0 for all CPUs, incompatible with --reload)",
+)
+@click.option(
     "--mode",
     type=click.Choice(["fastapi", "agentcore"]),
     default="fastapi",
     help="Runtime mode: fastapi (local dev) or agentcore (AWS deployment)",
 )
 @click.pass_context
-def serve(ctx: click.Context, host: str, port: int, reload: bool, mode: str) -> None:
+def serve(ctx: click.Context, host: str, port: int, reload: bool, workers: int, mode: str) -> None:
     """Start the DOVA API server.
 
     Dual mode operation:
@@ -77,13 +84,29 @@ def serve(ctx: click.Context, host: str, port: int, reload: bool, mode: str) -> 
     else:
         import uvicorn
 
-        click.echo(f"Starting DOVA FastAPI server on {host}:{port}")
+        # Resolve worker count: 0 means all CPUs
+        if workers == 0:
+            workers = os.cpu_count() or 1
+
+        # Uvicorn doesn't support reload + multiple workers
+        if workers > 1 and reload:
+            click.echo(
+                click.style(
+                    "Error: --reload is incompatible with multiple workers. "
+                    "Use --no-reload with --workers.",
+                    fg="red",
+                )
+            )
+            sys.exit(1)
+
+        click.echo(f"Starting DOVA FastAPI server on {host}:{port} (workers: {workers})")
 
         uvicorn.run(
             "dova.api.main:create_app",
             host=host,
             port=port,
             reload=reload,
+            workers=workers,
             factory=True,
         )
 

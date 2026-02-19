@@ -4,6 +4,7 @@ LLM Provider Configuration and Router.
 Supports multiple LLM providers with automatic fallback and task-specific routing.
 """
 
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -53,10 +54,10 @@ TASK_TIER_MAPPING: dict[TaskType, ModelTier] = {
 # - ADVANCED: Complex tasks (coding, deep reasoning)
 # - REASONING: Extended thinking with budget tokens
 DEFAULT_BEDROCK_MODELS: dict[ModelTier, str] = {
-    ModelTier.BASIC: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    ModelTier.STANDARD: "us.anthropic.claude-sonnet-4-20250514-v1:0",
-    ModelTier.ADVANCED: "us.anthropic.claude-opus-4-5-20251101-v1:0",
-    ModelTier.REASONING: "us.anthropic.claude-opus-4-5-20251101-v1:0",
+    ModelTier.BASIC: os.environ.get("BEDROCK_MODEL_BASIC", "global.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    ModelTier.STANDARD: os.environ.get("BEDROCK_MODEL_STANDARD", "global.anthropic.claude-sonnet-4-6"),
+    ModelTier.ADVANCED: os.environ.get("BEDROCK_MODEL_ADVANCED", "global.anthropic.claude-opus-4-6-v1"),
+    ModelTier.REASONING: os.environ.get("BEDROCK_MODEL_REASONING", "global.anthropic.claude-opus-4-6-v1"),
 }
 
 DEFAULT_ANTHROPIC_MODELS: dict[ModelTier, str] = {
@@ -191,7 +192,7 @@ class LLMProvider(ABC):
 class BedrockProvider(LLMProvider):
     """AWS Bedrock LLM provider."""
 
-    def __init__(self, config: ProviderConfig, region: str = "us-east-1"):
+    def __init__(self, config: ProviderConfig, region: str = "us-west-2"):
         super().__init__(config)
         self.region = region
         self._client = None
@@ -515,7 +516,7 @@ class LLMRouter:
 
         # Try providers in order
         sorted_providers = self._get_sorted_providers(strategy)
-        last_error: Exception | None = None
+        errors: list[tuple[str, Exception]] = []
 
         for name, provider in sorted_providers:
             if name == preferred_provider:
@@ -524,10 +525,11 @@ class LLMRouter:
                 return await provider.complete(request)
             except Exception as e:
                 logger.warning("provider_failed", provider=name, error=str(e))
-                last_error = e
+                errors.append((name, e))
                 continue
 
-        raise RuntimeError(f"All providers failed. Last error: {last_error}")
+        error_details = "; ".join(f"[{name}] {e}" for name, e in errors)
+        raise RuntimeError(f"All providers failed: {error_details}")
 
     async def embed(
         self, texts: list[str], preferred_provider: str | None = None
@@ -739,6 +741,19 @@ def create_llm_router_from_settings() -> LLMRouter:
             "no_llm_providers_configured",
             hint="Set AWS credentials for Bedrock, ANTHROPIC_API_KEY, or OPENAI_API_KEY",
         )
+
+    # Log provider summary at startup
+    if providers:
+        sorted_providers = sorted(providers.values(), key=lambda p: p.config.priority)
+        order = [f"{p.name} (priority={p.config.priority})" for p in sorted_providers]
+        logger.info("llm_provider_order", providers=order)
+        for p in sorted_providers:
+            models_by_tier: dict[str, str] = {}
+            for task_type, model_cfg in p.config.models.items():
+                tier = TASK_TIER_MAPPING.get(task_type, ModelTier.STANDARD).value
+                if tier not in models_by_tier:
+                    models_by_tier[tier] = model_cfg.model_id
+            logger.info(f"llm_models_{p.name}", **models_by_tier)
 
     return LLMRouter(providers=providers)
 
