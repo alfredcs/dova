@@ -4,11 +4,12 @@ Chat Endpoints for DOVA API.
 Provides multi-turn conversational interface similar to Claude.ai/ChatGPT.
 """
 
+import json
 import time
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from dova.api.middleware.auth import User, get_current_user
 from dova.api.schemas.chat import (
@@ -234,6 +235,64 @@ async def send_message(
     except Exception as e:
         logger.exception("chat_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/upload", response_model=ChatResponse)
+async def send_message_with_files(
+    request: Request,
+    message: str = Form(...),
+    session_id: str | None = Form(default=None),
+    sources: str = Form(default='["arxiv","github","huggingface","web"]'),
+    show_thinking: bool = Form(default=False),
+    reasoning_mode: str = Form(default="standard"),
+    auto_debate: bool = Form(default=True),
+    enable_two_pass: bool = Form(default=True),
+    orchestrator: str = Form(default="standard"),
+    files: list[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_user),
+) -> ChatResponse:
+    """
+    Send a chat message with optional file attachments.
+
+    Accepts multipart form data with files (.txt, .pdf, .png).
+    File contents are extracted and appended to the message.
+    """
+    from dova.services.file_processor import MAX_FILES, process_uploaded_file
+
+    if len(files) > MAX_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_FILES} files allowed",
+        )
+
+    # Parse sources JSON string
+    try:
+        parsed_sources = json.loads(sources)
+    except (json.JSONDecodeError, TypeError):
+        parsed_sources = ["arxiv", "github", "huggingface", "web"]
+
+    # Process attached files and combine with message
+    combined_message = message
+    if files:
+        file_parts = []
+        for f in files:
+            content = await process_uploaded_file(f)
+            file_parts.append(f"[File: {f.filename}]\n{content}")
+        attached = "\n\n".join(file_parts)
+        combined_message = f"{message}\n\n--- Attached Files ---\n\n{attached}"
+
+    # Build a ChatRequest-equivalent body and delegate to the same logic
+    body = ChatRequest.model_construct(
+        message=combined_message,
+        session_id=session_id,
+        sources=parsed_sources,
+        show_thinking=show_thinking,
+        reasoning_mode=reasoning_mode,
+        auto_debate=auto_debate,
+        enable_two_pass=enable_two_pass,
+        orchestrator=orchestrator,
+    )
+    return await send_message(request, body, current_user)
 
 
 @router.get("/chat/sessions", response_model=SessionListResponse)

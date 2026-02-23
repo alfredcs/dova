@@ -4,6 +4,7 @@ export interface ResearchQuery {
   sources?: string[];
   max_results?: number;
   orchestrator?: 'standard' | 'thinking';
+  files?: File[];
 }
 
 export interface ArxivPaper {

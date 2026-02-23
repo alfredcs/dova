@@ -19,12 +19,13 @@ export default function Dashboard() {
   const { mutate: search, data: results, isPending: isSearching } = useResearch()
   const { data: recommendationsData } = useRecommendations()
 
-  const handleSearch = (query: string) => {
+  const handleSearch = (query: string, files: File[] = []) => {
     search({
       query,
       sources: selectedSources,
       max_results: 10,
       orchestrator,
+      files: files.length > 0 ? files : undefined,
     })
   }
 

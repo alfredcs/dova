@@ -1087,6 +1087,56 @@
             background: var(--primary);
             color: white;
         }
+
+        /* File Upload */
+        .attach-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 0.5rem;
+            font-size: 1.2rem;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+        }
+
+        .attach-btn:hover {
+            color: var(--text);
+        }
+
+        .file-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            padding: 0.25rem 0.5rem 0;
+        }
+
+        .file-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            color: var(--text-muted);
+        }
+
+        .file-chip-remove {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .file-chip-remove:hover {
+            color: var(--error);
+        }
     </style>
 </head>
 <body>
@@ -1152,6 +1202,8 @@
             <div class="input-area">
                 <div class="input-container">
                     <div class="input-wrapper">
+                        <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="Attach files (.txt, .pdf, .png, .jpg, .csv, .md, .tex)">📎</button>
+                        <input type="file" id="fileInput" accept=".txt,.pdf,.png,.jpg,.csv,.md,.tex" multiple style="display:none" onchange="handleFileSelect(event)">
                         <textarea
                             class="message-input"
                             id="messageInput"
@@ -1164,6 +1216,7 @@
                             ➤
                         </button>
                     </div>
+                    <div class="file-chips" id="fileChips"></div>
                     <div class="input-options">
                         <span class="option-chip active" data-source="arxiv" onclick="toggleSource(this)">ArXiv</span>
                         <span class="option-chip active" data-source="github" onclick="toggleSource(this)">GitHub</span>
@@ -1280,6 +1333,7 @@
         let currentSessionId = null;
         let showThinking = false;
         let isLoading = false;
+        let attachedFiles = [];
 
         // Settings state
         let settings = {
@@ -1397,6 +1451,29 @@
             textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
         }
 
+        function handleFileSelect(event) {
+            const newFiles = Array.from(event.target.files);
+            attachedFiles = [...attachedFiles, ...newFiles].slice(0, 5);
+            renderFileChips();
+            event.target.value = '';
+        }
+
+        function removeFile(index) {
+            attachedFiles.splice(index, 1);
+            renderFileChips();
+        }
+
+        function renderFileChips() {
+            const container = document.getElementById('fileChips');
+            if (attachedFiles.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            container.innerHTML = attachedFiles.map((f, i) =>
+                `<span class="file-chip">${escapeHtml(f.name)}<button class="file-chip-remove" onclick="removeFile(${i})">&times;</button></span>`
+            ).join('');
+        }
+
         function sendSuggestion(text) {
             document.getElementById('messageInput').value = text;
             sendMessage();
@@ -1425,19 +1502,40 @@
             updateSendButton();
 
             try {
-                const response = await fetch('/api/v1/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: message,
-                        session_id: currentSessionId,
-                        sources: getSources(),
-                        show_thinking: settings.showThinking,
-                        reasoning_mode: settings.reasoningMode,
-                        auto_debate: settings.autoDebate,
-                        enable_two_pass: settings.twoPassInsights
-                    })
-                });
+                let response;
+                if (attachedFiles.length > 0) {
+                    const formData = new FormData();
+                    formData.append('message', message);
+                    if (currentSessionId) formData.append('session_id', currentSessionId);
+                    formData.append('sources', JSON.stringify(getSources()));
+                    formData.append('show_thinking', settings.showThinking);
+                    formData.append('reasoning_mode', settings.reasoningMode);
+                    formData.append('auto_debate', settings.autoDebate);
+                    formData.append('enable_two_pass', settings.twoPassInsights);
+                    for (const file of attachedFiles) {
+                        formData.append('files', file);
+                    }
+                    response = await fetch('/api/v1/chat/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    attachedFiles = [];
+                    renderFileChips();
+                } else {
+                    response = await fetch('/api/v1/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: message,
+                            session_id: currentSessionId,
+                            sources: getSources(),
+                            show_thinking: settings.showThinking,
+                            reasoning_mode: settings.reasoningMode,
+                            auto_debate: settings.autoDebate,
+                            enable_two_pass: settings.twoPassInsights
+                        })
+                    });
+                }
 
                 hideTypingIndicator();
 

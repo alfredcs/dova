@@ -2,10 +2,11 @@
 Research Endpoints for DOVA API.
 """
 
+import json
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from dova.api.schemas.research import (
     ResearchRequest,
@@ -205,6 +206,56 @@ async def execute_research(
     except Exception as e:
         logger.exception("research_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/research/upload", response_model=ResearchResponse)
+async def execute_research_with_files(
+    request: Request,
+    query: str = Form(...),
+    sources: str = Form(default='["arxiv","github","huggingface"]'),
+    max_results: int = Form(default=20),
+    orchestrator: str = Form(default="thinking"),
+    files: list[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_user),
+) -> ResearchResponse:
+    """
+    Execute a research query with optional file attachments.
+
+    Accepts multipart form data with files (.txt, .pdf, .png).
+    File contents are extracted and appended to the query.
+    """
+    from dova.services.file_processor import MAX_FILES, process_uploaded_file
+
+    if len(files) > MAX_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum {MAX_FILES} files allowed",
+        )
+
+    # Parse sources JSON string
+    try:
+        parsed_sources = json.loads(sources)
+    except (json.JSONDecodeError, TypeError):
+        parsed_sources = ["arxiv", "github", "huggingface"]
+
+    # Process attached files and combine with query
+    combined_query = query
+    if files:
+        file_parts = []
+        for f in files:
+            content = await process_uploaded_file(f)
+            file_parts.append(f"[File: {f.filename}]\n{content}")
+        attached = "\n\n".join(file_parts)
+        combined_query = f"{query}\n\n--- Attached Files ---\n\n{attached}"
+
+    # Build body bypassing max_length validation (combined query includes file content)
+    body = ResearchRequest.model_construct(
+        query=combined_query,
+        sources=parsed_sources,
+        max_results=max_results,
+        orchestrator=orchestrator,
+    )
+    return await execute_research(request, body, current_user)
 
 
 @router.post("/search/{source}", response_model=SearchResponse)
