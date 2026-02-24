@@ -27,6 +27,7 @@ class SynthesizedInsight:
     confidence: float
     sources: list[str] = field(default_factory=list)
     related_topics: list[str] = field(default_factory=list)
+    rationale: str = ""
 
 
 @dataclass
@@ -107,6 +108,7 @@ Provide balanced, objective analysis with clear confidence levels."""
                         {
                             "title": f.title,
                             "summary": f.summary,
+                            "rationale": f.rationale,
                             "confidence": f.confidence,
                             "sources": f.sources,
                             "related_topics": f.related_topics,
@@ -148,13 +150,15 @@ Provide a comprehensive synthesis including:
 1. EXECUTIVE SUMMARY (2-3 paragraphs)
    - What is the current state of this research area?
    - What are the dominant approaches and their trade-offs?
+   - What is the trajectory of the field (emerging vs mature)?
 
 2. KEY FINDINGS (3-5 findings)
    For each finding:
    - title: concise title
-   - summary: 2-3 sentence summary
+   - summary: 3-5 sentence summary covering the core contribution, methodology or approach used, and significance
+   - rationale: why this finding matters — explain the practical impact, how it advances the field, or why a practitioner should care
    - confidence: 0.0-1.0 based on evidence strength
-   - sources: which sources support this
+   - sources: which sources support this (include URLs when available)
    - related_topics: connected research areas
 
 3. KNOWLEDGE GAPS
@@ -162,8 +166,9 @@ Provide a comprehensive synthesis including:
    - What areas lack implementation or validation?
 
 4. RECOMMENDATIONS (3-5)
-   - Actionable next steps for researchers
-   - Promising directions to explore
+   - Actionable next steps with rationale for why each is worth pursuing
+   - Promising directions to explore and what evidence supports them
+   - When suggesting implementation approaches, use PDL (Program Description Language) style pseudo code — NOT Python or any specific language
 
 5. CROSS-REFERENCES
    - papers_to_code: which papers have implementations
@@ -342,19 +347,44 @@ Respond in JSON format."""
                 if data.papers:
                     sections.append("Papers:")
                     for p in data.papers[:5]:
-                        sections.append(f"  - {p.title}: {p.description[:150]}...")
+                        meta = getattr(p, "metadata", {}) or {}
+                        authors = meta.get("authors", [])
+                        author_str = f" | Authors: {', '.join(authors[:3])}" if authors else ""
+                        categories = meta.get("categories", [])
+                        cat_str = f" | Categories: {', '.join(categories[:3])}" if categories else ""
+                        url = getattr(p, "url", "")
+                        url_str = f" | URL: {url}" if url else ""
+                        sections.append(
+                            f"  - {p.title}{author_str}{cat_str}{url_str}\n"
+                            f"    {p.description[:300]}"
+                        )
                 if data.repositories:
                     sections.append("Repositories:")
                     for r in data.repositories[:5]:
-                        sections.append(f"  - {r.title}: {r.description[:100]}...")
+                        meta = getattr(r, "metadata", {}) or {}
+                        stars = meta.get("stars", "")
+                        lang = meta.get("language", "")
+                        detail = f" ({stars} stars, {lang})" if stars else ""
+                        url = getattr(r, "url", "")
+                        url_str = f" | URL: {url}" if url else ""
+                        sections.append(
+                            f"  - {r.title}{detail}{url_str}\n"
+                            f"    {r.description[:200]}"
+                        )
                 if data.models:
                     sections.append("Models:")
                     for m in data.models[:5]:
-                        sections.append(f"  - {m.title}")
+                        meta = getattr(m, "metadata", {}) or {}
+                        downloads = meta.get("downloads", "")
+                        pipeline = meta.get("pipeline_tag", "")
+                        detail = f" ({downloads} downloads, {pipeline})" if downloads else ""
+                        desc = getattr(m, "description", "")
+                        desc_str = f"\n    {desc[:200]}" if desc else ""
+                        sections.append(f"  - {m.title}{detail}{desc_str}")
             elif isinstance(data, dict):
-                sections.append(str(data)[:500])
+                sections.append(str(data)[:1000])
             elif isinstance(data, str):
-                sections.append(data[:500])
+                sections.append(data[:1000])
 
         return "\n".join(sections) if sections else "No results available"
 
@@ -443,6 +473,7 @@ Return JSON:
                             confidence=finding.get("confidence", 0.5),
                             sources=finding.get("sources", []),
                             related_topics=finding.get("related_topics", []),
+                            rationale=finding.get("rationale", ""),
                         )
                     )
 

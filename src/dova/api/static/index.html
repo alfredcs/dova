@@ -252,6 +252,10 @@
             font-size: 0.75rem;
             color: var(--text-muted);
             margin: 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         /* Messages */
@@ -263,8 +267,6 @@
         }
 
         .message.user {
-            flex-direction: row-reverse;
-            margin-left: auto;
         }
 
         .message-avatar {
@@ -293,7 +295,7 @@
         }
 
         .message.user .message-content {
-            text-align: right;
+            text-align: left;
         }
 
         .message-bubble {
@@ -1173,29 +1175,7 @@
         <!-- Chat Container -->
         <div class="chat-container">
             <div class="messages-area" id="messagesArea">
-                <!-- Welcome screen shown initially -->
-                <div class="welcome-screen" id="welcomeScreen">
-                    <h2>Welcome to DOVA</h2>
-                    <p>Your AI research assistant. Ask questions, explore papers, compare technologies, and get insights from ArXiv, GitHub, HuggingFace, and the web.</p>
-                    <div class="suggestions">
-                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest papers on speculative decoding and draft-model distillation that achieve near-lossless speedups for LLM inference?')">
-                            <h4>Research Papers</h4>
-                            <p>Latest speculative decoding papers with draft-model distillation for LLM inference speedups</p>
-                        </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('Compare MoE sparse routing strategies (top-k, expert choice, soft routing) for scaling mixture-of-experts transformers beyond 1T parameters — what are the stability and load-balancing tradeoffs?')">
-                            <h4>Compare Technologies</h4>
-                            <p>MoE routing strategies at 1T+ scale: top-k vs expert choice vs soft routing tradeoffs</p>
-                        </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('Find actively maintained open-source repos implementing RLHF with DPO or KTO alignment for instruction-tuned language models, with support for multi-GPU training')">
-                            <h4>Discover Code</h4>
-                            <p>Open-source RLHF repos with DPO/KTO alignment and multi-GPU training support</p>
-                        </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest state-of-the-art open-weight multimodal models on HuggingFace that handle interleaved image-text reasoning, and how do they compare on MMMU and MathVista benchmarks?')">
-                            <h4>Trending Models</h4>
-                            <p>SOTA open-weight multimodal models for interleaved image-text reasoning benchmarks</p>
-                        </div>
-                    </div>
-                </div>
+                <!-- Welcome screen populated dynamically by buildWelcomeHtml() -->
             </div>
 
             <!-- Input Area -->
@@ -1343,8 +1323,152 @@
             twoPassInsights: true
         };
 
+        // Sample question pool — hard research problems, randomly pick 4 on each new chat
+        const SAMPLE_QUESTIONS = [
+            // Agent orchestration
+            {
+                category: 'Agent Orchestration',
+                query: 'Multi-agent LLM systems suffer from cascading errors where one bad agent output derails the entire pipeline. How can we design fault-tolerant orchestration with rollback, verification gates, and partial re-execution to solve this?'
+            },
+            {
+                category: 'Agent Orchestration',
+                query: 'LLM agents struggle with long-horizon tasks that require 50+ tool calls because context windows fill up and earlier reasoning degrades. What memory architectures and state-compression techniques can maintain coherent planning over hundreds of steps?'
+            },
+            {
+                category: 'Agent Orchestration',
+                query: 'When multiple LLM agents collaborate, they often duplicate work or produce conflicting outputs with no resolution mechanism. How can shared world-state representations and consensus protocols solve coordination failures in multi-agent systems?'
+            },
+            {
+                category: 'Agent Orchestration',
+                query: 'Current agent frameworks statically assign tasks to specialized sub-agents, but real problems require dynamic re-planning when sub-tasks fail or new information arrives. What approaches enable runtime task graph rewriting with minimal wasted compute?'
+            },
+            // Reasoning
+            {
+                category: 'Reasoning',
+                query: 'LLMs produce plausible but unfaithful chain-of-thought traces — the stated reasoning often does not reflect the actual computation driving the answer. How can we detect and enforce faithful reasoning where the CoT causally determines the output?'
+            },
+            {
+                category: 'Reasoning',
+                query: 'Scaling test-time compute (best-of-N, tree search, iterative refinement) improves reasoning but costs 10-100x more FLOPs. How can we build learned verifiers that allocate extra compute only to problems that need it, achieving accuracy gains at under 2x cost?'
+            },
+            {
+                category: 'Reasoning',
+                query: 'Small models (7-13B) collapse on multi-step math and code reasoning even with CoT prompting. How can process reward models and step-level supervision be combined with distillation to transfer strong reasoning from 70B+ teachers to deployable-size students?'
+            },
+            {
+                category: 'Reasoning',
+                query: 'LLMs fail systematically on compositional reasoning — correctly solving sub-problems but failing when they must be chained. What decomposition strategies and intermediate verification methods can close the gap between sub-problem and end-to-end accuracy?'
+            },
+            // Fine-tuning efficiency
+            {
+                category: 'Fine-tuning Efficiency',
+                query: 'Fine-tuning 70B+ models on domain data causes catastrophic forgetting of general capabilities within a few hundred steps. How can elastic weight consolidation, adapter isolation, or replay buffers preserve base model knowledge while acquiring new skills?'
+            },
+            {
+                category: 'Fine-tuning Efficiency',
+                query: 'LoRA adapters trained independently on different tasks interfere when merged, degrading performance on all tasks. What weight-space geometry techniques (task arithmetic, TIES, DARE) can enable lossless multi-adapter composition without retraining?'
+            },
+            {
+                category: 'Fine-tuning Efficiency',
+                query: 'Most fine-tuning runs waste 80%+ of training data on already-learned examples. How can online difficulty scoring, curriculum learning, and active data selection reduce the samples needed to reach target performance by an order of magnitude?'
+            },
+            {
+                category: 'Fine-tuning Efficiency',
+                query: 'QLoRA enables fine-tuning large models on consumer GPUs but introduces quantization noise that accumulates in low-rank updates. How can quantization-aware adapter training or gradient compensation eliminate this accuracy gap versus full-precision LoRA?'
+            },
+            // Inference efficiency
+            {
+                category: 'Inference Efficiency',
+                query: 'KV-cache memory grows linearly with sequence length, making 128K+ context serving prohibitively expensive. How can learned cache eviction policies, cross-layer KV sharing, or sub-linear attention mechanisms reduce memory to O(sqrt(n)) without quality loss?'
+            },
+            {
+                category: 'Inference Efficiency',
+                query: 'Speculative decoding with draft models achieves 2-3x speedup but breaks down when the draft model is poorly calibrated to the target. How can online draft adaptation and token-tree verification push acceptance rates above 90% for diverse workloads?'
+            },
+            {
+                category: 'Inference Efficiency',
+                query: 'Post-training quantization to INT4 degrades performance on reasoning-heavy tasks even when perplexity looks fine. How can activation-aware quantization (AWQ, SqueezeLLM) or mixed-precision strategies preserve reasoning accuracy at 4-bit inference?'
+            },
+            {
+                category: 'Inference Efficiency',
+                query: 'MoE models waste communication bandwidth activating and routing to experts across nodes during distributed inference. How can expert locality-aware placement, predictive prefetching, or hierarchical routing cut inter-node communication by 5x+?'
+            },
+            // Model training
+            {
+                category: 'Model Training',
+                query: 'Large-scale pre-training runs suffer from sudden loss spikes that waste days of compute and require manual restarts. How can mu-parametrization, gradient clipping schedules, or learning rate rewinding make training self-healing and spike-resistant?'
+            },
+            {
+                category: 'Model Training',
+                query: 'DPO avoids the reward model bottleneck of RLHF but can overfit to surface patterns in preference data, producing polished but vacuous outputs. How can KTO, IPO, or hybrid approaches achieve genuine alignment without reward hacking?'
+            },
+            {
+                category: 'Model Training',
+                query: 'Chinchilla scaling laws do not account for MoE architectures where active parameters differ from total parameters. How should compute-optimal training budgets be recalculated for sparse MoE models to avoid over- or under-training?'
+            },
+            {
+                category: 'Model Training',
+                query: 'Training data quality matters more than quantity, but current filtering (perplexity-based, dedup) is crude. How can learned data selection models or influence-function-based scoring identify the highest-value training subsets for a given capability target?'
+            },
+        ];
+
+        function pickRandomSuggestions(n = 4) {
+            // Pick n items from distinct categories when possible
+            const byCategory = {};
+            for (const q of SAMPLE_QUESTIONS) {
+                (byCategory[q.category] = byCategory[q.category] || []).push(q);
+            }
+            const categories = Object.keys(byCategory);
+            const picked = [];
+            // Shuffle categories
+            for (let i = categories.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [categories[i], categories[j]] = [categories[j], categories[i]];
+            }
+            // Pick one from each category first
+            for (const cat of categories) {
+                if (picked.length >= n) break;
+                const items = byCategory[cat];
+                picked.push(items[Math.floor(Math.random() * items.length)]);
+            }
+            // Fill remaining from the full pool if needed
+            if (picked.length < n) {
+                const remaining = SAMPLE_QUESTIONS.filter(q => !picked.includes(q));
+                for (let i = remaining.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
+                }
+                picked.push(...remaining.slice(0, n - picked.length));
+            }
+            return picked;
+        }
+
+        // Current set of displayed suggestions (populated each time we build the welcome screen)
+        let _currentSuggestions = [];
+
+        function buildSuggestionsHtml() {
+            _currentSuggestions = pickRandomSuggestions(4);
+            return _currentSuggestions.map((q, i) =>
+                `<div class="suggestion-card" onclick="sendSuggestionByIndex(${i})">
+                    <h4>${q.category}</h4>
+                    <p>${q.query}</p>
+                </div>`
+            ).join('\n');
+        }
+
+        function buildWelcomeHtml() {
+            return `<div class="welcome-screen" id="welcomeScreen">
+                <h2>Welcome to DOVA</h2>
+                <p>Your AI research assistant. Ask questions, explore papers, compare technologies, and get insights from ArXiv, GitHub, HuggingFace, and the web.</p>
+                <div class="suggestions">
+                    ${buildSuggestionsHtml()}
+                </div>
+            </div>`;
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('messagesArea').innerHTML = buildWelcomeHtml();
             loadSettings();
             loadSessions();
             updateSettingsDisplay();
@@ -1396,30 +1520,7 @@
 
         function newChat() {
             currentSessionId = null;
-            document.getElementById('messagesArea').innerHTML = `
-                <div class="welcome-screen" id="welcomeScreen">
-                    <h2>Welcome to DOVA</h2>
-                    <p>Your AI research assistant. Ask questions, explore papers, compare technologies, and get insights from ArXiv, GitHub, HuggingFace, and the web.</p>
-                    <div class="suggestions">
-                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest papers on speculative decoding and draft-model distillation that achieve near-lossless speedups for LLM inference?')">
-                            <h4>Research Papers</h4>
-                            <p>Latest speculative decoding papers with draft-model distillation for LLM inference speedups</p>
-                        </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('Compare MoE sparse routing strategies (top-k, expert choice, soft routing) for scaling mixture-of-experts transformers beyond 1T parameters — what are the stability and load-balancing tradeoffs?')">
-                            <h4>Compare Technologies</h4>
-                            <p>MoE routing strategies at 1T+ scale: top-k vs expert choice vs soft routing tradeoffs</p>
-                        </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('Find actively maintained open-source repos implementing RLHF with DPO or KTO alignment for instruction-tuned language models, with support for multi-GPU training')">
-                            <h4>Discover Code</h4>
-                            <p>Open-source RLHF repos with DPO/KTO alignment and multi-GPU training support</p>
-                        </div>
-                        <div class="suggestion-card" onclick="sendSuggestion('What are the latest state-of-the-art open-weight multimodal models on HuggingFace that handle interleaved image-text reasoning, and how do they compare on MMMU and MathVista benchmarks?')">
-                            <h4>Trending Models</h4>
-                            <p>SOTA open-weight multimodal models for interleaved image-text reasoning benchmarks</p>
-                        </div>
-                    </div>
-                </div>
-            `;
+            document.getElementById('messagesArea').innerHTML = buildWelcomeHtml();
             loadSessions();
         }
 
@@ -1472,6 +1573,14 @@
             container.innerHTML = attachedFiles.map((f, i) =>
                 `<span class="file-chip">${escapeHtml(f.name)}<button class="file-chip-remove" onclick="removeFile(${i})">&times;</button></span>`
             ).join('');
+        }
+
+        function sendSuggestionByIndex(index) {
+            const q = _currentSuggestions[index];
+            if (q) {
+                document.getElementById('messageInput').value = q.query;
+                sendMessage();
+            }
         }
 
         function sendSuggestion(text) {

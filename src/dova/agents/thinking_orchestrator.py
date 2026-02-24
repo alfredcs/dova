@@ -1201,6 +1201,9 @@ Response:"""
                     "downloads": m.get("downloads", 0),
                     "likes": m.get("likes", 0),
                     "tags": m.get("tags", []),
+                    "pipeline_tag": m.get("pipeline_tag", ""),
+                    "library_name": m.get("library_name", ""),
+                    "last_modified": m.get("lastModified", m.get("last_modified", "")),
                 }
                 for m in models if isinstance(m, dict)
             ]
@@ -1371,10 +1374,13 @@ Return ONLY the enhanced prompt, nothing else."""
                 mid = m.get('id', m.get('title', 'Unknown'))
                 downloads = m.get('metadata', {}).get('downloads', m.get('downloads', 0))
                 tags = m.get('metadata', {}).get('tags', m.get('tags', []))
-                pipeline = m.get('metadata', {}).get('pipeline_tag', '')
+                pipeline = m.get('metadata', {}).get('pipeline_tag', m.get('pipeline_tag', ''))
+                library = m.get('library_name', '')
                 tag_str = ', '.join(tags[:5]) if tags else ''
                 url = m.get('url', f'https://huggingface.co/{mid}')
                 line = f"- **{mid}** ({downloads} downloads, {pipeline})"
+                if library:
+                    line += f"\n  Library: {library}"
                 if tag_str:
                     line += f"\n  Tags: {tag_str}"
                 if url:
@@ -1473,6 +1479,21 @@ CRITICAL RULES - FOLLOW EXACTLY:
    - ALWAYS include source URLs as inline links for every paper, repo, model, or web source you reference
    - Structure the response with clear sections and headers when covering multiple aspects
    - For technical topics, explain key concepts, methods, and their significance
+   - For each key finding or recommendation, explain the RATIONALE: why it matters, what problem it solves, or what makes it significant
+   - When comparing approaches, explain trade-offs and under what conditions each excels
+   - Connect findings to practical implications — who benefits and how
+   - When showing implementation frameworks or algorithmic approaches, use PDL (Program Description Language) style pseudo code instead of Python or any specific programming language. Example PDL format:
+     ```
+     PROCEDURE TrainModel(data, config)
+       preprocessed ← Preprocess(data, config.tokenizer)
+       FOR each epoch IN 1..config.num_epochs DO
+         loss ← ComputeLoss(model, preprocessed)
+         UPDATE model.parameters USING Backprop(loss)
+       END FOR
+       RETURN model
+     END PROCEDURE
+     ```
+   - PDL pseudo code should be language-agnostic, using clear keywords like PROCEDURE, FOR, IF/THEN/ELSE, WHILE, RETURN, CALL, INPUT, OUTPUT
 
 Response:"""
 
@@ -1500,7 +1521,7 @@ Response:"""
 
         # Code examples
         if user_model.prefers_code_examples:
-            instructions.append("Include code examples where relevant.")
+            instructions.append("When showing implementation details, use PDL-style pseudo code (not Python or any specific language).")
 
         # Citations
         if user_model.prefers_citations:
