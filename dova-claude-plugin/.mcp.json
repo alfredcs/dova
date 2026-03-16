@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dova": {
+      "command": "dova",
+      "args": ["mcp", "serve"]
+    }
+  }
+}

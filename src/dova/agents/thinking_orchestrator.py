@@ -11,13 +11,14 @@ based DOVAOrchestrator, this one:
    decides they would genuinely help
 """
 
+import asyncio
 import json
 import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import structlog
 
@@ -33,6 +34,9 @@ from dova.services.web_search import (
 from dova.utils.metrics import MetricsCollector
 
 logger = structlog.get_logger(__name__)
+
+# Progress callback type: (event_type, data) -> awaitable
+ProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]] | None
 
 
 # Tool descriptions for known tool types
@@ -286,12 +290,13 @@ Critical rules:
 - The year is {_current_year()}. Do NOT claim it is an earlier year.
 - If tools return no results, say so honestly — do NOT fabricate results."""
 
-    async def execute(self, task: AgentTask) -> AgentResult:
+    async def execute(self, task: AgentTask, progress: ProgressCallback = None) -> AgentResult:
         """
         Execute with deliberation-first approach.
 
         Args:
             task: Task containing the user query
+            progress: Optional async callback for streaming progress events.
 
         Returns:
             AgentResult with personalized response
@@ -322,9 +327,33 @@ Critical rules:
             allowed_sources = task.params.get("sources")
             max_results = task.params.get("max_results")
 
-            deliberation = await self._deliberate(
-                query, user_model, context, allowed_sources=allowed_sources,
-            )
+            # Fast path: skip LLM deliberation when user explicitly selected sources
+            if allowed_sources and len(allowed_sources) > 0:
+                enriched_query = _enrich_query_with_date(query)
+                deliberation = Deliberation(
+                    understanding=query,
+                    can_answer_from_context=False,
+                    action=ActionDecision.USE_TOOLS,
+                    reasoning="User explicitly selected sources — skipping deliberation",
+                    tools_to_use=[
+                        ToolConsideration(
+                            tool_name=s,
+                            would_help=True,
+                            rationale=f"User selected {s}",
+                            search_query=enriched_query,
+                        )
+                        for s in allowed_sources
+                    ],
+                )
+                self._logger.info(
+                    "fast_path_deliberation",
+                    sources=allowed_sources,
+                    query=query,
+                )
+            else:
+                deliberation = await self._deliberate(
+                    query, user_model, context, allowed_sources=allowed_sources,
+                )
 
             # Override: if the query implies recency, force tool usage
             if (
@@ -402,6 +431,15 @@ Critical rules:
                 allowed_sources=allowed_sources,
             )
 
+            if progress:
+                tools_planned = [t.tool_name for t in deliberation.tools_to_use if t.would_help]
+                await progress("stage", {
+                    "stage": "deliberating",
+                    "message": f"Decided to {'search ' + ', '.join(tools_planned) if deliberation.action == ActionDecision.USE_TOOLS else 'respond directly'}",
+                    "action": deliberation.action.value,
+                    "tools_planned": tools_planned,
+                })
+
             # 3. Execute based on deliberation decision
             response: str
             tools_used: list[str] = []
@@ -413,13 +451,25 @@ Critical rules:
                 )
             elif deliberation.action == ActionDecision.USE_TOOLS:
                 tool_results = await self._execute_selected_tools(
-                    deliberation, allowed_sources=allowed_sources, max_results=max_results,
+                    deliberation, allowed_sources=allowed_sources,
+                    max_results=max_results, progress=progress,
                 )
                 tools_used = [t.tool_name for t in deliberation.tools_to_use if t.would_help]
                 action_result = tool_results
-                response = await self._synthesize_with_results(
-                    query, tool_results, user_model, context, deliberation
-                )
+
+                if progress:
+                    await progress("stage", {
+                        "stage": "synthesizing",
+                        "message": "Synthesizing results...",
+                    })
+
+                    response = await self._synthesize_with_results_stream(
+                        query, tool_results, user_model, context, deliberation, progress
+                    )
+                else:
+                    response = await self._synthesize_with_results(
+                        query, tool_results, user_model, context, deliberation
+                    )
             else:  # CLARIFY
                 response = deliberation.clarification_needed
                 context.last_assistant_question = response
@@ -667,6 +717,7 @@ Response:"""
         deliberation: Deliberation,
         allowed_sources: list[str] | None = None,
         max_results: int | None = None,
+        progress: ProgressCallback = None,
     ) -> dict[str, Any]:
         """Execute only the tools that deliberation decided are needed.
 
@@ -711,14 +762,13 @@ Response:"""
 
         limit = max_results or 10
 
+        # Filter to actionable tools
+        builtin_sources = {"arxiv", "github", "huggingface", "hugging-face", "web"}
+        active_tools: list[ToolConsideration] = []
         for tool in deliberation.tools_to_use:
             if not tool.would_help:
                 continue
-
-            # Filter by allowed sources when specified
-            # Always allow "image" and dynamic MCP tools through
             if allowed_set is not None and tool.tool_name not in allowed_set:
-                builtin_sources = {"arxiv", "github", "huggingface", "hugging-face", "web"}
                 if tool.tool_name in builtin_sources:
                     self._logger.info(
                         "tool_skipped_by_source_filter",
@@ -726,50 +776,108 @@ Response:"""
                         allowed=list(allowed_set),
                     )
                     continue
+            active_tools.append(tool)
 
+        async def _run_tool(tool: ToolConsideration) -> tuple[str, Any]:
+            """Execute a single tool and return (result_key, data)."""
+            search_query = _enrich_query_with_date(tool.search_query)
+            self._logger.info(
+                "executing_tool",
+                tool=tool.tool_name,
+                query=search_query,
+                rationale=tool.rationale,
+            )
+            if progress:
+                await progress("log", {
+                    "timestamp": time.time(),
+                    "step": f"{tool.tool_name}_search",
+                    "status": "started",
+                    "elapsed_ms": 0,
+                })
+                await progress("stage", {
+                    "stage": "searching",
+                    "tool": tool.tool_name,
+                    "message": f"Searching {tool.tool_name}...",
+                })
+
+            tool_start = time.time()
             try:
-                # Enrich query with current year when it implies recency
-                search_query = _enrich_query_with_date(tool.search_query)
-
-                self._logger.info(
-                    "executing_tool",
-                    tool=tool.tool_name,
-                    query=search_query,
-                    rationale=tool.rationale,
-                )
-
-                # Built-in tools
                 if tool.tool_name == "arxiv":
-                    arxiv_results = await self._search_arxiv(search_query, max_results=limit)
-                    results["papers"].extend(arxiv_results)
-
+                    result_key, data = "papers", await self._search_arxiv(search_query, max_results=limit)
                 elif tool.tool_name == "github":
-                    github_results = await self._search_github(search_query, max_results=limit)
-                    results["repositories"].extend(github_results)
-
+                    result_key, data = "repositories", await self._search_github(search_query, max_results=limit)
                 elif tool.tool_name in ("huggingface", "hugging-face"):
-                    hf_results = await self._search_huggingface(search_query, max_results=limit)
-                    results["models"].extend(hf_results.get("models", []))
-                    results["datasets"].extend(hf_results.get("datasets", []))
-
+                    result_key, data = "huggingface", await self._search_huggingface(search_query, max_results=limit)
                 elif tool.tool_name == "web":
-                    web_results = await self._search_web(search_query, max_results=limit)
-                    results["web_results"].extend(web_results)
-
+                    result_key, data = "web_results", await self._search_web(search_query, max_results=limit)
                 elif tool.tool_name == "image":
                     enhanced_prompt = await self._enhance_image_prompt(tool.search_query)
-                    image_results = await self._generate_image(enhanced_prompt)
-                    results["images"].extend(image_results)
-
+                    result_key, data = "images", await self._generate_image(enhanced_prompt)
                 else:
-                    # Dynamic MCP tool - could be aggregated (awslabs) or direct
-                    mcp_results = await self._execute_mcp_tool(
-                        tool.tool_name, search_query
-                    )
-                    results["mcp_results"].extend(mcp_results)
+                    result_key, data = "mcp_results", await self._execute_mcp_tool(tool.tool_name, search_query)
 
-            except Exception as e:
-                self._logger.warning("tool_execution_error", tool=tool.tool_name, error=str(e))
+                elapsed_ms = (time.time() - tool_start) * 1000
+                if progress:
+                    if isinstance(data, list):
+                        items = data
+                        count = len(data)
+                    elif isinstance(data, dict):
+                        items = data.get("models", []) + data.get("datasets", [])
+                        count = len(items)
+                    else:
+                        items = []
+                        count = 0
+                    await progress("tool_complete", {
+                        "tool": tool.tool_name,
+                        "result_key": result_key,
+                        "count": count,
+                        "items": items,
+                        "elapsed_ms": round(elapsed_ms),
+                    })
+                    await progress("log", {
+                        "timestamp": time.time(),
+                        "step": f"{tool.tool_name}_search",
+                        "status": "completed",
+                        "elapsed_ms": round(elapsed_ms),
+                    })
+                return (result_key, data)
+            except Exception as exc:
+                elapsed_ms = (time.time() - tool_start) * 1000
+                if progress:
+                    await progress("error", {
+                        "message": str(exc),
+                        "tool": tool.tool_name,
+                    })
+                    await progress("log", {
+                        "timestamp": time.time(),
+                        "step": f"{tool.tool_name}_search",
+                        "status": "error",
+                        "elapsed_ms": round(elapsed_ms),
+                        "detail": str(exc),
+                    })
+                raise
+
+        # Execute ALL tools in parallel
+        tool_outputs = await asyncio.gather(
+            *[_run_tool(t) for t in active_tools],
+            return_exceptions=True,
+        )
+
+        # Aggregate results
+        for i, output in enumerate(tool_outputs):
+            if isinstance(output, Exception):
+                self._logger.warning(
+                    "tool_execution_error",
+                    tool=active_tools[i].tool_name,
+                    error=str(output),
+                )
+                continue
+            key, data = output
+            if key == "huggingface":
+                results["models"].extend(data.get("models", []))
+                results["datasets"].extend(data.get("datasets", []))
+            elif key in results:
+                results[key].extend(data if isinstance(data, list) else [data])
 
         # Deduplicate results by natural key
         def _dedup(items: list[dict], key: str) -> list[dict]:
@@ -1188,11 +1296,15 @@ Response:"""
         ]
 
     async def _search_huggingface(self, query: str, max_results: int = 10) -> dict[str, list[dict[str, Any]]]:
-        """Search HuggingFace for models and datasets."""
+        """Search HuggingFace for models and datasets in parallel."""
         results: dict[str, list[dict[str, Any]]] = {"models": [], "datasets": []}
 
-        # Search models
-        model_result = await self.search_huggingface(query, search_type="models", limit=max_results)
+        # Search models and datasets concurrently
+        model_result, dataset_result = await asyncio.gather(
+            self.search_huggingface(query, search_type="models", limit=max_results),
+            self.search_huggingface(query, search_type="datasets", limit=max(max_results // 2, 3)),
+        )
+
         if model_result.success and model_result.data:
             models = model_result.data if isinstance(model_result.data, list) else [model_result.data]
             results["models"] = [
@@ -1208,8 +1320,6 @@ Response:"""
                 for m in models if isinstance(m, dict)
             ]
 
-        # Search datasets
-        dataset_result = await self.search_huggingface(query, search_type="datasets", limit=max(max_results // 2, 3))
         if dataset_result.success and dataset_result.data:
             datasets = dataset_result.data if isinstance(dataset_result.data, list) else [dataset_result.data]
             results["datasets"] = [
@@ -1327,7 +1437,53 @@ Return ONLY the enhanced prompt, nothing else."""
         deliberation: Deliberation,
     ) -> str:
         """Synthesize results into a personalized response."""
-        # Build result summary
+        prompt = self._build_synthesis_prompt(query, results, user_model, context, deliberation)
+        return await self.think(
+            prompt,
+            task_type=TaskType.SUMMARIZATION,
+            temperature=0.5,
+        )
+
+    async def _synthesize_with_results_stream(
+        self,
+        query: str,
+        results: dict[str, Any],
+        user_model: UserModel,
+        context: ConversationContext,
+        deliberation: Deliberation,
+        progress: Any,
+    ) -> str:
+        """Synthesize results with token streaming via progress callback.
+
+        Builds the same prompt as _synthesize_with_results, but streams tokens
+        as synthesis_token events so the frontend can display them incrementally.
+        Returns the full response string.
+        """
+        # Build the prompt by calling the non-streaming method's prompt logic.
+        # We duplicate the prompt construction to avoid refactoring the
+        # existing method, keeping the change minimal.
+        prompt = self._build_synthesis_prompt(query, results, user_model, context, deliberation)
+
+        chunks: list[str] = []
+        async for token in self.think_stream(
+            prompt,
+            task_type=TaskType.SUMMARIZATION,
+            temperature=0.5,
+        ):
+            chunks.append(token)
+            await progress("synthesis_token", {"token": token})
+
+        return "".join(chunks)
+
+    def _build_synthesis_prompt(
+        self,
+        query: str,
+        results: dict[str, Any],
+        user_model: UserModel,
+        context: ConversationContext,
+        deliberation: Deliberation,
+    ) -> str:
+        """Build the synthesis prompt. Shared by streaming and non-streaming paths."""
         result_parts = []
 
         if results.get("papers"):
@@ -1409,15 +1565,11 @@ Return ONLY the enhanced prompt, nothing else."""
             for mcp_result in results["mcp_results"]:
                 source = mcp_result.get("source", "unknown")
                 data = mcp_result.get("data", {})
-
-                # Special handling for pricing results - apply fuzzy matching
                 if "pricing" in source.lower() and isinstance(data, (dict, list)):
                     fuzzy_result = self._process_pricing_with_fuzzy_match(query, data)
                     if fuzzy_result:
                         result_parts.append(fuzzy_result)
                         continue
-
-                # Format based on data type
                 if isinstance(data, dict):
                     summary = json.dumps(data, indent=2)[:500]
                 elif isinstance(data, list):
@@ -1426,15 +1578,13 @@ Return ONLY the enhanced prompt, nothing else."""
                     summary = str(data)[:500]
                 result_parts.append(f"**{source}:**\n{summary}")
 
-        # Get personalization
         style_instructions = self._get_style_instructions(user_model)
 
-        # Add inferred entity context if available
         inferred_context = ""
         if hasattr(deliberation, 'inferred_entity') and deliberation.inferred_entity:
             inferred_context = f"\nNote: User likely meant '{deliberation.inferred_entity}' - adjust response accordingly.\n"
 
-        prompt = f"""Synthesize these search results into a helpful response.
+        return f"""Synthesize these search results into a helpful response.
 
 TODAY'S DATE: {_current_date_str()}
 
@@ -1496,12 +1646,6 @@ CRITICAL RULES - FOLLOW EXACTLY:
    - PDL pseudo code should be language-agnostic, using clear keywords like PROCEDURE, FOR, IF/THEN/ELSE, WHILE, RETURN, CALL, INPUT, OUTPUT
 
 Response:"""
-
-        return await self.think(
-            prompt,
-            task_type=TaskType.SUMMARIZATION,
-            temperature=0.5,
-        )
 
     def _get_style_instructions(self, user_model: UserModel) -> str:
         """Get personalization instructions based on user model."""

@@ -8,6 +8,7 @@ Handles research queries across multiple sources:
 - Web search (multi-provider: Brave, Perplexity, Tavily, DuckDuckGo)
 """
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -747,8 +748,12 @@ When analyzing search results:
         search_query = self._build_huggingface_query(query, entities)
         self._logger.debug("huggingface_query", original=query, optimized=search_query)
 
-        # Search models - sort by recently modified
-        model_result = await self.search_huggingface(search_query, search_type="models", limit=15, sort="modified")
+        # Search models and datasets concurrently
+        model_result, dataset_result = await asyncio.gather(
+            self.search_huggingface(search_query, search_type="models", limit=15, sort="modified"),
+            self.search_huggingface(search_query, search_type="datasets", limit=10, sort="modified"),
+        )
+
         if model_result.success and model_result.data:
             models = model_result.data if isinstance(model_result.data, list) else [model_result.data]
             for model in models:
@@ -772,8 +777,6 @@ When analyzing search results:
                     )
                 )
 
-        # Search datasets - sort by recently modified
-        dataset_result = await self.search_huggingface(search_query, search_type="datasets", limit=10, sort="modified")
         if dataset_result.success and dataset_result.data:
             datasets = dataset_result.data if isinstance(dataset_result.data, list) else [dataset_result.data]
             for dataset in datasets:
@@ -948,28 +951,41 @@ When analyzing search results:
     async def _search_custom_sources(
         self, query: str, user_id: str
     ) -> list[SearchResult]:
-        """Search all enabled custom sources for a user."""
+        """Search all enabled custom sources for a user in parallel."""
         if not self.source_registry:
             return []
 
         sources = await self.source_registry.get_sources(user_id, enabled_only=True)
         custom_sources = [s for s in sources if s.source_type != SourceType.BUILTIN]
 
+        if not custom_sources:
+            return []
+
+        async def _fetch_one(source):
+            items = await self.source_fetcher.fetch(source, query)
+            return [
+                SearchResult(
+                    source=source.id,
+                    title=item.get("title", ""),
+                    url=item.get("url", ""),
+                    description=item.get("description", ""),
+                    metadata={"source_name": source.name, "source_type": source.source_type.value},
+                    relevance_score=source.quality.quality_score,
+                )
+                for item in items
+            ]
+
+        fetch_results = await asyncio.gather(
+            *[_fetch_one(s) for s in custom_sources],
+            return_exceptions=True,
+        )
+
         results = []
-        for source in custom_sources:
-            try:
-                items = await self.source_fetcher.fetch(source, query)
-                for item in items:
-                    results.append(SearchResult(
-                        source=source.id,
-                        title=item.get("title", ""),
-                        url=item.get("url", ""),
-                        description=item.get("description", ""),
-                        metadata={"source_name": source.name, "source_type": source.source_type.value},
-                        relevance_score=source.quality.quality_score,
-                    ))
-            except Exception as e:
-                self._logger.warning("custom_source_error", source=source.id, error=str(e))
+        for i, fetch_result in enumerate(fetch_results):
+            if isinstance(fetch_result, Exception):
+                self._logger.warning("custom_source_error", source=custom_sources[i].id, error=str(fetch_result))
+            else:
+                results.extend(fetch_result)
 
         return results
 
@@ -980,8 +996,6 @@ When analyzing search results:
         user_id: str | None = None,
     ) -> ResearchFindings:
         """Search sources based on query type and intent, with smart routing."""
-        import asyncio
-
         # Get intent to determine source selection
         intent = entities.get("intent", {})
         primary_source = intent.get("primary_source")

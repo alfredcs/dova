@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
@@ -174,6 +175,31 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         )
 
         return response.content
+
+    async def think_stream(
+        self,
+        prompt: str,
+        task_type: TaskType = TaskType.REASONING,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncIterator[str]:
+        """
+        Stream an LLM call, yielding tokens as they arrive.
+
+        Same interface as think() but returns an async iterator of token strings.
+        """
+        request = LLMRequest(
+            task_type=task_type,
+            messages=[{"role": "user", "content": prompt}],
+            system_prompt=system_prompt or self.system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+
+        async for token in self.llm_router.stream(request):
+            yield token
 
     async def call_tool(
         self,

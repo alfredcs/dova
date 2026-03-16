@@ -40,7 +40,7 @@ class ModelTier(Enum):
 TASK_TIER_MAPPING: dict[TaskType, ModelTier] = {
     TaskType.CLASSIFICATION: ModelTier.BASIC,
     TaskType.EXTRACTION: ModelTier.BASIC,
-    TaskType.SUMMARIZATION: ModelTier.BASIC,
+    TaskType.SUMMARIZATION: ModelTier.STANDARD,
     TaskType.CHAT: ModelTier.STANDARD,
     TaskType.CODE_GENERATION: ModelTier.ADVANCED,
     TaskType.REASONING: ModelTier.ADVANCED,
@@ -525,6 +525,46 @@ class LLMRouter:
                 return await provider.complete(request)
             except Exception as e:
                 logger.warning("provider_failed", provider=name, error=str(e))
+                errors.append((name, e))
+                continue
+
+        error_details = "; ".join(f"[{name}] {e}" for name, e in errors)
+        raise RuntimeError(f"All providers failed: {error_details}")
+
+    async def stream(
+        self,
+        request: LLMRequest,
+        strategy: RoutingStrategy | None = None,
+        preferred_provider: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Route streaming request to providers with fallback."""
+        strategy = strategy or self.default_strategy
+
+        if preferred_provider and preferred_provider in self.providers:
+            provider = self.providers[preferred_provider]
+            try:
+                async for token in provider.stream(request):
+                    yield token
+                return
+            except Exception as e:
+                logger.warning(
+                    "preferred_provider_stream_failed",
+                    provider=preferred_provider,
+                    error=str(e),
+                )
+
+        sorted_providers = self._get_sorted_providers(strategy)
+        errors: list[tuple[str, Exception]] = []
+
+        for name, provider in sorted_providers:
+            if name == preferred_provider:
+                continue
+            try:
+                async for token in provider.stream(request):
+                    yield token
+                return
+            except Exception as e:
+                logger.warning("provider_stream_failed", provider=name, error=str(e))
                 errors.append((name, e))
                 continue
 

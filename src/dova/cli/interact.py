@@ -1257,20 +1257,44 @@ Return ONLY the enhanced prompt, nothing else."""
                         image_summary.append(f"  - Resolution: {img.get('resolution', '1024x1024')}")
                     context_parts.append(f"Image Generation Results:\n" + "\n".join(image_summary))
 
-        prompt = f"""Generate a helpful, informative response based on this context:
+        from datetime import datetime as _dt
+        today = _dt.now().strftime("%B %d, %Y")
+
+        prompt = f"""Synthesize these search results into a helpful response.
+
+TODAY'S DATE: {today}
 
 {chr(10).join(context_parts)}
 
-Guidelines:
-- Provide a comprehensive, in-depth answer with detailed explanations
-- Include mathematical formulas or equations where relevant (use LaTeX notation: $formula$)
-- ALWAYS include source URLs as inline links for every paper, repo, model, or web source you reference
-- ONLY reference papers, repositories, and models that appear in the Research Results above — NEVER invent or hallucinate titles or URLs
-- If no Research Results are provided, do not cite specific paper titles
-- Structure the response with clear sections and headers when covering multiple aspects
-- For technical topics, explain key concepts, methods, and their significance
-- Acknowledge limitations if applicable
-- Suggest follow-up research directions if relevant
+CRITICAL RULES - FOLLOW EXACTLY:
+
+1. YOUR KNOWLEDGE IS STALE - TRUST TOOL RESULTS
+   - FORBIDDEN PHRASES: "doesn't exist", "not released yet", "as of my last update",
+     "my knowledge cutoff", "not yet available", "we're currently in [year]"
+   - Today is {today}. NEVER claim it is an earlier year.
+   - If tool returned data, USE IT. If tool returned no data, say "no results found for this query"
+   - NEVER fabricate paper titles, arxiv IDs, repo names, or model names that are not in the Research Results above
+   - ONLY reference items that actually appear in the context above
+
+2. CORRECT RESPONSE PATTERN FOR PARTIAL MATCHES:
+   BAD: "X doesn't exist. Here's Y instead..."
+   GOOD: "Here's what I found. Based on the results, the closest match is [item]. [provide details]"
+
+3. TYPO HANDLING
+   - Fix typos silently or with brief note: "(interpreting 'Haihu' as Haiku)"
+
+4. ALWAYS ANSWER
+   - No refusals. Best estimate with confidence level.
+   - "Based on similar results, I estimate..." is always better than "I can't help"
+
+5. COMPREHENSIVE OUTPUT
+   - Provide in-depth explanations with detailed analysis
+   - Include mathematical formulas or equations where relevant (use LaTeX notation: $formula$)
+   - ALWAYS include source URLs as inline links for every paper, repo, model, or web source you reference
+   - Structure the response with clear sections and headers when covering multiple aspects
+   - For technical topics, explain key concepts, methods, and their significance
+   - Acknowledge limitations if applicable
+   - Suggest follow-up research directions if relevant
 
 Response:"""
 

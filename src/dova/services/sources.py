@@ -188,6 +188,13 @@ class SourceFetcher:
 
     def __init__(self):
         self._logger = logger.bind(service="source_fetcher")
+        self._session: aiohttp.ClientSession | None = None
+
+    def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create a shared aiohttp session."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
 
     async def fetch(self, source: Source, query: str) -> list[dict[str, Any]]:
         """Fetch results from a source."""
@@ -209,12 +216,12 @@ class SourceFetcher:
             return []
 
         try:
-            async with aiohttp.ClientSession() as session:
-                headers = source.config.headers.copy()
-                async with session.get(source.config.url, headers=headers) as resp:
-                    if resp.status != 200:
-                        return []
-                    html = await resp.text()
+            session = self._get_session()
+            headers = source.config.headers.copy()
+            async with session.get(source.config.url, headers=headers) as resp:
+                if resp.status != 200:
+                    return []
+                html = await resp.text()
 
             soup = BeautifulSoup(html, "html.parser")
 
@@ -246,9 +253,9 @@ class SourceFetcher:
             return []
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(source.config.url) as resp:
-                    content = await resp.text()
+            session = self._get_session()
+            async with session.get(source.config.url) as resp:
+                content = await resp.text()
 
             feed = feedparser.parse(content)
             query_lower = query.lower()
@@ -290,11 +297,11 @@ class SourceFetcher:
             # Substitute query in URL
             url = source.config.url.replace("{query}", query)
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers) as resp:
-                    if resp.status != 200:
-                        return []
-                    data = await resp.json()
+            session = self._get_session()
+            async with session.get(url, headers=headers) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
 
             # Handle common API response formats
             if isinstance(data, list):

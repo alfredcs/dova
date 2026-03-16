@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__dova__dova_research",
+      "mcp__dova__dova_search",
+      "mcp__dova__dova_debate",
+      "mcp__dova__dova_validate",
+      "mcp__dova__dova_web_search"
+    ]
+  }
+}

@@ -78,23 +78,27 @@ class DuckDuckGoProvider(WebSearchProvider):
         return True  # Always available
 
     async def search(self, query: str, max_results: int = 10) -> list[WebSearchResult]:
-        """Search using DuckDuckGo."""
+        """Search using DuckDuckGo (runs sync client in executor to avoid blocking)."""
         try:
             from ddgs import DDGS
 
-            results = []
-            with DDGS() as ddgs:
-                for r in ddgs.text(query, max_results=max_results):
-                    results.append(
-                        WebSearchResult(
-                            title=r.get("title", ""),
-                            url=r.get("href", r.get("link", "")),
-                            snippet=r.get("body", r.get("snippet", "")),
-                            published_date=None,  # DDG doesn't provide dates
-                            source_provider=self.name,
-                        )
-                    )
-            return results
+            def _sync_search() -> list[dict]:
+                with DDGS() as ddgs:
+                    return list(ddgs.text(query, max_results=max_results))
+
+            loop = asyncio.get_event_loop()
+            raw_results = await loop.run_in_executor(None, _sync_search)
+
+            return [
+                WebSearchResult(
+                    title=r.get("title", ""),
+                    url=r.get("href", r.get("link", "")),
+                    snippet=r.get("body", r.get("snippet", "")),
+                    published_date=None,
+                    source_provider=self.name,
+                )
+                for r in raw_results
+            ]
         except Exception as e:
             logger.warning("duckduckgo_search_error", error=str(e))
             return []
@@ -106,6 +110,7 @@ class BraveSearchProvider(WebSearchProvider):
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key
         self._base_url = "https://api.search.brave.com/res/v1/web/search"
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def name(self) -> str:
@@ -120,22 +125,23 @@ class BraveSearchProvider(WebSearchProvider):
             return []
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    self._base_url,
-                    headers={
-                        "Accept": "application/json",
-                        "X-Subscription-Token": self.api_key,
-                    },
-                    params={
-                        "q": query,
-                        "count": max_results,
-                        "freshness": "pw",  # Past week for recent results
-                    },
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                data = response.json()
+            if self._client is None:
+                self._client = httpx.AsyncClient(timeout=30.0)
+
+            response = await self._client.get(
+                self._base_url,
+                headers={
+                    "Accept": "application/json",
+                    "X-Subscription-Token": self.api_key,
+                },
+                params={
+                    "q": query,
+                    "count": max_results,
+                    "freshness": "pw",  # Past week for recent results
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
 
             results = []
             for item in data.get("web", {}).get("results", []):
@@ -161,6 +167,7 @@ class PerplexityProvider(WebSearchProvider):
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key
         self._base_url = "https://api.perplexity.ai/chat/completions"
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def name(self) -> str:
@@ -175,28 +182,29 @@ class PerplexityProvider(WebSearchProvider):
             return []
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self._base_url,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": "sonar",
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "You are a search assistant. Provide factual information with sources.",
-                            },
-                            {"role": "user", "content": query},
-                        ],
-                        "return_citations": True,
-                    },
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                data = response.json()
+            if self._client is None:
+                self._client = httpx.AsyncClient(timeout=30.0)
+
+            response = await self._client.post(
+                self._base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "sonar",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a search assistant. Provide factual information with sources.",
+                        },
+                        {"role": "user", "content": query},
+                    ],
+                    "return_citations": True,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
 
             results = []
             # Perplexity returns a synthesized answer with citations
@@ -260,7 +268,7 @@ class TavilyProvider(WebSearchProvider):
         return bool(self.api_key)
 
     async def search(self, query: str, max_results: int = 10) -> list[WebSearchResult]:
-        """Search using Tavily API."""
+        """Search using Tavily API (runs sync client in executor to avoid blocking)."""
         if not self.api_key:
             return []
 
@@ -270,11 +278,17 @@ class TavilyProvider(WebSearchProvider):
             if self._client is None:
                 self._client = TavilyClient(api_key=self.api_key)
 
-            response = self._client.search(
-                query=query,
-                search_depth="advanced",
-                max_results=max_results,
-            )
+            client = self._client
+
+            def _sync_search() -> dict:
+                return client.search(
+                    query=query,
+                    search_depth="advanced",
+                    max_results=max_results,
+                )
+
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, _sync_search)
 
             results = []
             for item in response.get("results", []):

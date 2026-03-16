@@ -70,6 +70,20 @@ export interface ResearchResponse {
   metadata: Record<string, unknown>;
 }
 
+// Streaming event types
+export interface StreamEvent {
+  event: string;
+  data: Record<string, unknown>;
+}
+
+export interface TransactionLogEntry {
+  timestamp: number;
+  step: string;
+  status: 'started' | 'completed' | 'error';
+  elapsed_ms?: number;
+  detail?: string;
+}
+
 // Search types (source-specific search endpoints)
 export interface SearchResponse {
   source: string;

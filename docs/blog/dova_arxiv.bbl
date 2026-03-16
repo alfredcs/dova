@@ -1,0 +1,214 @@
+\begin{thebibliography}{29}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Alomrani et~al.(2025)Alomrani, Zhang, Li, Sun, Pal, Zhang, Hu, Ajwani,
+  Valkanas, et~al.]{alomrani2025reasoning}
+Alomrani, M.~A., Zhang, Y., Li, D., Sun, Q., Pal, S., Zhang, Z., Hu, Y.,
+  Ajwani, R.~D., Valkanas, A., et~al.
+\newblock Reasoning on a budget: A survey of adaptive and controllable
+  test-time compute in {LLMs}.
+\newblock \emph{arXiv preprint arXiv:2507.02076}, 2025.
+
+\bibitem[{Anthropic}(2024{\natexlab{a}})]{anthropic2024claude}
+{Anthropic}.
+\newblock The {Claude} model family: Technical report.
+\newblock Technical report, Anthropic, 2024{\natexlab{a}}.
+
+\bibitem[{Anthropic}(2024{\natexlab{b}})]{anthropic2024mcp}
+{Anthropic}.
+\newblock Model context protocol specification.
+\newblock Technical report, Anthropic, 2024{\natexlab{b}}.
+\newblock \url{https://modelcontextprotocol.io}.
+
+\bibitem[Brown et~al.(2020)Brown, Mann, Ryder, Subbiah, Kaplan, Dhariwal,
+  Neelakantan, Shyam, Sastry, Askell, et~al.]{brown2020gpt3}
+Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J.~D., Dhariwal, P.,
+  Neelakantan, A., Shyam, P., Sastry, G., Askell, A., et~al.
+\newblock Language models are few-shot learners.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~33, pp.\  1877--1901, 2020.
+
+\bibitem[Carbonell \& Goldstein(1998)Carbonell and Goldstein]{carbonell1998mmr}
+Carbonell, J. and Goldstein, J.
+\newblock The use of {MMR}, diversity-based reranking for reordering documents
+  and producing summaries.
+\newblock In \emph{Proceedings of the 21st Annual International ACM SIGIR
+  Conference on Research and Development in Information Retrieval}, pp.\
+  335--336, 1998.
+
+\bibitem[Dang et~al.(2025)Dang, Qian, Luo, Fan, Xie, Shi, Chen, Yang, Che,
+  Tian, et~al.]{dang2025evolving}
+Dang, Y., Qian, C., Luo, X., Fan, J., Xie, Z., Shi, R., Chen, W., Yang, C.,
+  Che, X., Tian, Y., et~al.
+\newblock Multi-agent collaboration via evolving orchestration.
+\newblock \emph{arXiv preprint arXiv:2505.19591}, 2025.
+
+\bibitem[Du et~al.(2023)Du, Li, Torralba, Tenenbaum, and
+  Mordatch]{du2023debate}
+Du, Y., Li, S., Torralba, A., Tenenbaum, J.~B., and Mordatch, I.
+\newblock Improving factuality and reasoning in language models through
+  multiagent debate.
+\newblock \emph{arXiv preprint arXiv:2305.14325}, 2023.
+
+\bibitem[Ferrag et~al.(2025)Ferrag, Tihanyi, and Debbah]{ferrag2025agents}
+Ferrag, M.~A., Tihanyi, N., and Debbah, M.
+\newblock From {LLM} reasoning to autonomous {AI} agents: A comprehensive
+  review.
+\newblock \emph{arXiv preprint arXiv:2504.19678}, 2025.
+
+\bibitem[Goyal et~al.(2023)Goyal, Ji, Rawat, Menon, Kumar, and
+  Naber]{goyal2023think}
+Goyal, S., Ji, Z., Rawat, A.~S., Menon, A.~K., Kumar, S., and Naber, V.
+\newblock Think before you speak: Training language models with pause tokens.
+\newblock \emph{arXiv preprint arXiv:2310.02226}, 2023.
+
+\bibitem[Graves(2016)]{graves2016adaptive}
+Graves, A.
+\newblock Adaptive computation time for recurrent neural networks.
+\newblock \emph{arXiv preprint arXiv:1603.08983}, 2016.
+
+\bibitem[Hayes-Roth(1985)]{hayesroth1985blackboard}
+Hayes-Roth, B.
+\newblock A blackboard architecture for control.
+\newblock \emph{Artificial Intelligence}, 26\penalty0 (3):\penalty0 251--321,
+  1985.
+
+\bibitem[Hong et~al.(2023)Hong, Zhuge, Chen, Zheng, Cheng, Zhang, Wang, Wang,
+  Yau, Lin, et~al.]{hong2023metagpt}
+Hong, S., Zhuge, M., Chen, J., Zheng, X., Cheng, Y., Zhang, C., Wang, J., Wang,
+  Z., Yau, S. K.~S., Lin, Z., et~al.
+\newblock {MetaGPT}: Meta programming for a multi-agent collaborative
+  framework.
+\newblock \emph{arXiv preprint arXiv:2308.00352}, 2023.
+
+\bibitem[Li et~al.(2023)Li, Hammoud, Itani, Khizbullin, and
+  Ghanem]{li2023camel}
+Li, G., Hammoud, H. A. A.~K., Itani, H., Khizbullin, D., and Ghanem, B.
+\newblock {CAMEL}: Communicative agents for ``mind'' exploration of large
+  language model society.
+\newblock \emph{Advances in Neural Information Processing Systems}, 36, 2023.
+
+\bibitem[Li et~al.(2025)Li, Zhao, Zhang, and Gan]{li2025budget}
+Li, J., Zhao, W., Zhang, Y., and Gan, C.
+\newblock Steering {LLM} thinking with budget guidance.
+\newblock \emph{arXiv preprint arXiv:2506.13752}, 2025.
+
+\bibitem[Liang et~al.(2023)Liang, He, Jiao, Wang, Wang, Wang, Yang, Tu, and
+  Shi]{liang2023debate}
+Liang, T., He, Z., Jiao, W., Wang, X., Wang, Y., Wang, R., Yang, Y., Tu, Z.,
+  and Shi, S.
+\newblock Encouraging divergent thinking in large language models through
+  multi-agent debate.
+\newblock \emph{arXiv preprint arXiv:2305.19118}, 2023.
+
+\bibitem[Madaan et~al.(2023)Madaan, Tandon, Gupta, Hallinan, Gao, Wiegreffe,
+  Alon, Dziri, Prabhumoye, Yang, et~al.]{madaan2023selfrefine}
+Madaan, A., Tandon, N., Gupta, P., Hallinan, S., Gao, L., Wiegreffe, S., Alon,
+  U., Dziri, N., Prabhumoye, S., Yang, Y., et~al.
+\newblock Self-refine: Iterative refinement with self-feedback.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~36, 2023.
+
+\bibitem[Park et~al.(2023)Park, O'Brien, Cai, Morris, Liang, and
+  Bernstein]{park2023generative}
+Park, J.~S., O'Brien, J.~C., Cai, C.~J., Morris, M.~R., Liang, P., and
+  Bernstein, M.~S.
+\newblock Generative agents: Interactive simulacra of human behavior.
+\newblock In \emph{Proceedings of the 36th Annual ACM Symposium on User
+  Interface Software and Technology}, pp.\  1--22, 2023.
+
+\bibitem[Patil et~al.(2023)Patil, Zhang, Wang, and Gonzalez]{patil2023gorilla}
+Patil, S.~G., Zhang, T., Wang, X., and Gonzalez, J.~E.
+\newblock Gorilla: Large language model connected with massive {APIs}.
+\newblock \emph{arXiv preprint arXiv:2305.15334}, 2023.
+
+\bibitem[Qin et~al.(2023)Qin, Liang, Ye, Zhu, Yan, Lu, Lin, Cong, Tang, Qian,
+  et~al.]{qin2023toolllm}
+Qin, Y., Liang, S., Ye, Y., Zhu, K., Yan, L., Lu, Y., Lin, Y., Cong, X., Tang,
+  X., Qian, B., et~al.
+\newblock {ToolLLM}: Facilitating large language models to master 16000+
+  real-world {APIs}.
+\newblock \emph{arXiv preprint arXiv:2307.16789}, 2023.
+
+\bibitem[Schick et~al.(2023)Schick, Dwivedi-Yu, Dess{\`i}, Raileanu, Lomeli,
+  Hambro, Zettlemoyer, Cancedda, and Scialom]{schick2023toolformer}
+Schick, T., Dwivedi-Yu, J., Dess{\`i}, R., Raileanu, R., Lomeli, M., Hambro,
+  E., Zettlemoyer, L., Cancedda, N., and Scialom, T.
+\newblock Toolformer: Language models can teach themselves to use tools.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~36, 2023.
+
+\bibitem[Shinn et~al.(2023)Shinn, Cassano, Gopinath, Narasimhan, and
+  Yao]{shinn2023reflexion}
+Shinn, N., Cassano, F., Gopinath, A., Narasimhan, K., and Yao, S.
+\newblock Reflexion: Language agents with verbal reinforcement learning.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~36, 2023.
+
+\bibitem[Tran et~al.(2025)Tran, Dao, Nguyen, Pham, O'Sullivan, and
+  Nguyen]{tran2025multiagent}
+Tran, K.-T., Dao, D., Nguyen, M.-D., Pham, Q.-V., O'Sullivan, B., and Nguyen,
+  H.~D.
+\newblock Multi-agent collaboration mechanisms: A survey of {LLMs}.
+\newblock \emph{arXiv preprint arXiv:2501.06322}, 2025.
+
+\bibitem[Wang et~al.(2023)Wang, Wei, Schuurmans, Le, Chi, Narasimhan,
+  Chowdhery, and Zhou]{wang2023selfconsistency}
+Wang, X., Wei, J., Schuurmans, D., Le, Q., Chi, E., Narasimhan, S., Chowdhery,
+  A., and Zhou, D.
+\newblock Self-consistency improves chain of thought reasoning in language
+  models.
+\newblock In \emph{International Conference on Learning Representations}, 2023.
+
+\bibitem[Wei et~al.(2022)Wei, Wang, Schuurmans, Bosma, Ichter, Xia, Chi, Le,
+  and Zhou]{wei2022chain}
+Wei, J., Wang, X., Schuurmans, D., Bosma, M., Ichter, B., Xia, F., Chi, E., Le,
+  Q., and Zhou, D.
+\newblock Chain-of-thought prompting elicits reasoning in large language
+  models.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~35, pp.\  24824--24837, 2022.
+
+\bibitem[Wei et~al.(2026)Wei, Li, Liu, Ning, Yang, Zou, Zeng, Qiu, Lin, Fu,
+  et~al.]{wei2026agentic}
+Wei, T., Li, T.-W., Liu, Z., Ning, X., Yang, Z., Zou, J., Zeng, Z., Qiu, R.,
+  Lin, X., Fu, D., et~al.
+\newblock Agentic reasoning for large language models.
+\newblock \emph{arXiv preprint arXiv:2601.12538}, 2026.
+
+\bibitem[Wu et~al.(2023)Wu, Bansal, Zhang, Wu, Li, Zhu, Jiang, Zhang, Zhang,
+  Liu, et~al.]{wu2023autogen}
+Wu, Q., Bansal, G., Zhang, J., Wu, Y., Li, B., Zhu, E., Jiang, L., Zhang, X.,
+  Zhang, S., Liu, J., et~al.
+\newblock {AutoGen}: Enabling next-gen {LLM} applications via multi-agent
+  conversation.
+\newblock \emph{arXiv preprint arXiv:2308.08155}, 2023.
+
+\bibitem[Yao et~al.(2023{\natexlab{a}})Yao, Yu, Zhao, Shafran, Griffiths, Cao,
+  and Narasimhan]{yao2023tree}
+Yao, S., Yu, D., Zhao, J., Shafran, I., Griffiths, T.~L., Cao, Y., and
+  Narasimhan, K.
+\newblock Tree of thoughts: Deliberate problem solving with large language
+  models.
+\newblock \emph{Advances in Neural Information Processing Systems}, 36,
+  2023{\natexlab{a}}.
+
+\bibitem[Yao et~al.(2023{\natexlab{b}})Yao, Zhao, Yu, Du, Shafran, Narasimhan,
+  and Cao]{yao2023react}
+Yao, S., Zhao, J., Yu, D., Du, N., Shafran, I., Narasimhan, K., and Cao, Y.
+\newblock {ReAct}: Synergizing reasoning and acting in language models.
+\newblock In \emph{International Conference on Learning Representations},
+  2023{\natexlab{b}}.
+
+\bibitem[Zhou et~al.(2023)Zhou, Yan, Shlapentokh-Rothman, Wang, and
+  Wang]{zhou2023lats}
+Zhou, A., Yan, K., Shlapentokh-Rothman, M., Wang, H., and Wang, Y.-X.
+\newblock Language agent tree search unifies reasoning, acting, and planning in
+  language models.
+\newblock \emph{arXiv preprint arXiv:2310.04406}, 2023.
+
+\end{thebibliography}

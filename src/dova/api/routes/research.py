@@ -2,11 +2,14 @@
 Research Endpoints for DOVA API.
 """
 
+import asyncio
 import json
+import time
 from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from starlette.responses import StreamingResponse
 
 from dova.api.schemas.research import (
     ResearchRequest,
@@ -256,6 +259,192 @@ async def execute_research_with_files(
         orchestrator=orchestrator,
     )
     return await execute_research(request, body, current_user)
+
+
+async def _run_streaming_research(
+    request: Request,
+    query: str,
+    sources: list[str],
+    max_results: int,
+    orchestrator_name: str,
+    user: User,
+) -> StreamingResponse:
+    """Shared SSE streaming logic for JSON and multipart endpoints."""
+    from dova.agents.base import AgentTask
+    from dova.agents.thinking_orchestrator import ThinkingOrchestrator
+
+    orch = getattr(request.app.state, "orchestrator", None)
+    if orch is None or orchestrator_name != "thinking":
+        raise HTTPException(status_code=503, detail="Streaming requires thinking orchestrator")
+
+    queue: asyncio.Queue[tuple[str, dict] | None] = asyncio.Queue()
+
+    async def progress_cb(event_type: str, data: dict) -> None:
+        await queue.put((event_type, data))
+
+    task = AgentTask(
+        type="research",
+        params={"query": query, "sources": sources, "max_results": max_results},
+        user_id=user.id,
+    )
+
+    async def event_generator():
+        research_task = asyncio.create_task(_do_research(orch, task, queue, progress_cb))
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                evt_type, evt_data = item
+                yield f"event: {evt_type}\ndata: {json.dumps(evt_data, default=str)}\n\n"
+        except asyncio.CancelledError:
+            research_task.cancel()
+            raise
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+async def _do_research(
+    orchestrator,
+    task,
+    queue: asyncio.Queue,
+    progress_cb,
+) -> None:
+    """Run orchestrator and push final result or error, then sentinel."""
+    try:
+        result = await orchestrator.execute(task, progress=progress_cb)
+        if result.success:
+            from dova.agents.thinking_orchestrator import ThinkingOrchestrator
+            data = ThinkingOrchestrator.extract_research_data(result.data or {})
+
+            papers = data.get("papers", [])
+            repositories = data.get("repositories", [])
+            models = data.get("models", [])
+            datasets = data.get("datasets", [])
+            web_results = data.get("web_results", [])
+
+            # Build summary matching the non-streaming endpoint
+            found_parts = []
+            if papers:
+                found_parts.append(f"{len(papers)} papers")
+            if repositories:
+                found_parts.append(f"{len(repositories)} repositories")
+            if models:
+                found_parts.append(f"{len(models)} models")
+            if datasets:
+                found_parts.append(f"{len(datasets)} datasets")
+            if web_results:
+                found_parts.append(f"{len(web_results)} web results")
+            summary = f"Found {', '.join(found_parts)}" if found_parts else "No results found"
+
+            deliberation = data.get("deliberation", {})
+            has_results = bool(papers or repositories or models or datasets or web_results)
+            confidence = _derive_confidence(deliberation, has_results)
+
+            knowledge_gaps = deliberation.get("knowledge_gaps", [])
+            insights = [f"Knowledge gap identified: {gap}" for gap in knowledge_gaps[:5]] if knowledge_gaps else []
+
+            tools_used = deliberation.get("tools_used", [])
+            recommendations = []
+            if not has_results and tools_used:
+                recommendations.append("Try broadening your query or adding more sources.")
+            if knowledge_gaps:
+                recommendations.append("Consider a follow-up query to fill the identified knowledge gaps.")
+
+            await queue.put(("complete", {
+                "query": task.params.get("query", ""),
+                "status": "completed",
+                "answer": data.get("response", ""),
+                "summary": summary,
+                "papers": papers,
+                "repositories": repositories,
+                "models": models,
+                "datasets": datasets,
+                "web_results": web_results,
+                "images": data.get("images", []),
+                "insights": insights,
+                "recommendations": recommendations,
+                "confidence": confidence,
+                "refinement_attempts": 0,
+                "reasoning_trace": [],
+                "debate": {},
+                "metadata": {
+                    "execution_time_ms": result.execution_time_ms,
+                    "tools_used": tools_used,
+                },
+            }))
+        else:
+            await queue.put(("error", {"message": result.error or "Unknown error"}))
+    except Exception as e:
+        logger.exception("streaming_research_error", error=str(e))
+        await queue.put(("error", {"message": str(e)}))
+    finally:
+        await queue.put(None)
+
+
+@router.post("/research/stream")
+async def stream_research(
+    request: Request,
+    body: ResearchRequest,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """SSE streaming endpoint for research queries (JSON body)."""
+    return await _run_streaming_research(
+        request,
+        query=body.query,
+        sources=body.sources,
+        max_results=body.max_results,
+        orchestrator_name=body.orchestrator,
+        user=current_user,
+    )
+
+
+@router.post("/research/stream/upload")
+async def stream_research_with_files(
+    request: Request,
+    query: str = Form(...),
+    sources: str = Form(default='["arxiv","github","huggingface"]'),
+    max_results: int = Form(default=20),
+    orchestrator: str = Form(default="thinking"),
+    files: list[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """SSE streaming endpoint for research queries with file uploads."""
+    from dova.services.file_processor import MAX_FILES, process_uploaded_file
+
+    if len(files) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_FILES} files allowed")
+
+    try:
+        parsed_sources = json.loads(sources)
+    except (json.JSONDecodeError, TypeError):
+        parsed_sources = ["arxiv", "github", "huggingface"]
+
+    combined_query = query
+    if files:
+        file_parts = []
+        for f in files:
+            content = await process_uploaded_file(f)
+            file_parts.append(f"[File: {f.filename}]\n{content}")
+        attached = "\n\n".join(file_parts)
+        combined_query = f"{query}\n\n--- Attached Files ---\n\n{attached}"
+
+    return await _run_streaming_research(
+        request,
+        query=combined_query,
+        sources=parsed_sources,
+        max_results=max_results,
+        orchestrator_name=orchestrator,
+        user=current_user,
+    )
 
 
 @router.post("/search/{source}", response_model=SearchResponse)

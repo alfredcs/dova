@@ -340,15 +340,17 @@ def format_research_results(data: dict | None) -> str:
         data.get("web_results"),
     ])
 
-    if "summary" in data and data["summary"]:
+    # Show the LLM-synthesized answer prominently first — this is the same
+    # synthesis produced by ThinkingOrchestrator that the web UI displays.
+    answer = data.get("summary", "")
+    if isinstance(answer, dict):
+        answer = answer.get("text", answer.get("content", str(answer)))
+    if answer:
+        lines.append(str(answer))
+        lines.append("")
         lines.append("=" * 60)
-        lines.append("SUMMARY")
+        lines.append("SOURCES")
         lines.append("=" * 60)
-        summary = data["summary"]
-        if isinstance(summary, dict):
-            # Handle dict summary (e.g., from synthesis agent)
-            summary = summary.get("text", summary.get("content", str(summary)))
-        lines.append(str(summary))
         lines.append("")
 
     if "papers" in data and data["papers"]:
@@ -795,6 +797,31 @@ def models(ctx: click.Context) -> None:
 def mcp() -> None:
     """Manage MCP server configurations."""
     pass
+
+
+@mcp.command("serve")
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "http"]),
+    default="stdio",
+    help="Transport protocol (stdio for Claude Code, http for development)",
+)
+@click.option("--port", default=8080, type=int, help="Port for HTTP transport")
+def mcp_serve(transport: str, port: int) -> None:
+    """Start Dova as an MCP server for Claude Code.
+
+    Examples:
+        dova mcp serve                    # stdio (default, for Claude Code)
+        dova mcp serve --transport http   # HTTP mode for development
+    """
+    from dova.mcp_server import mcp as mcp_app
+
+    if transport == "http":
+        mcp_app.settings.host = "0.0.0.0"
+        mcp_app.settings.port = port
+        mcp_app.run(transport="streamable-http")
+    else:
+        mcp_app.run(transport="stdio")
 
 
 @mcp.command("add")
