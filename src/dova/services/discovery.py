@@ -109,13 +109,13 @@ KNOWN_MODELS: dict[str, dict[str, Any]] = {
         "capabilities": ["reasoning", "code", "analysis", "vision"],
         "pricing": {"input": 0.003, "output": 0.015},
     },
-    "gpt-4o": {
+    "gpt-5.4": {
         "provider": "openai",
         "context_length": 128000,
         "capabilities": ["reasoning", "code", "analysis", "vision"],
         "pricing": {"input": 0.005, "output": 0.015},
     },
-    "gpt-4o-mini": {
+    "gpt-5.4-mini": {
         "provider": "openai",
         "context_length": 128000,
         "capabilities": ["reasoning", "code", "fast"],

@@ -788,8 +788,8 @@ def models(ctx: click.Context) -> None:
   export ANTHROPIC_MODEL_ADVANCED=claude-sonnet-4-20250514
 
   # OpenAI tier models
-  export OPENAI_MODEL_BASIC=gpt-4o-mini
-  export OPENAI_MODEL_ADVANCED=gpt-4o
+  export OPENAI_MODEL_BASIC=gpt-5.4-mini
+  export OPENAI_MODEL_ADVANCED=gpt-5.4
     """)
 
 

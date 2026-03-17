@@ -97,7 +97,7 @@ async def retry_async(
                     "retry_exhausted",
                     function=func.__name__,
                     attempts=attempt + 1,
-                    error=str(e),
+                    error=str(e) or f"{type(e).__name__}()",
                 )
                 raise
 
@@ -108,7 +108,7 @@ async def retry_async(
                 attempt=attempt + 1,
                 max_retries=config.max_retries,
                 delay=delay,
-                error=str(e),
+                error=str(e) or f"{type(e).__name__}()",
             )
             await asyncio.sleep(delay)
 

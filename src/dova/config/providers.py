@@ -4,10 +4,12 @@ LLM Provider Configuration and Router.
 Supports multiple LLM providers with automatic fallback and task-specific routing.
 """
 
+import asyncio
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import partial
 from typing import Any, AsyncIterator
 
 import structlog
@@ -68,11 +70,18 @@ DEFAULT_ANTHROPIC_MODELS: dict[ModelTier, str] = {
 }
 
 DEFAULT_OPENAI_MODELS: dict[ModelTier, str] = {
-    ModelTier.BASIC: "gpt-4o-mini",
-    ModelTier.STANDARD: "gpt-4o",
-    ModelTier.ADVANCED: "gpt-4o",
-    ModelTier.REASONING: "o1-preview",
+    ModelTier.BASIC: "gpt-5.4-mini",
+    ModelTier.STANDARD: "gpt-5.4",
+    ModelTier.ADVANCED: "gpt-5.4",
+    ModelTier.REASONING: "gpt-5.4",
 }
+
+# Max completion tokens per OpenAI model (to avoid invalid_request_error)
+OPENAI_MAX_COMPLETION_TOKENS: dict[str, int] = {
+    "gpt-5.4": 16384,
+    "gpt-5.4-mini": 16384,
+}
+OPENAI_DEFAULT_MAX_TOKENS = 16384
 
 
 class RoutingStrategy(Enum):
@@ -225,11 +234,16 @@ class BedrockProvider(LLMProvider):
             body["system"] = request.system_prompt
 
         start_time = time.time()
-        response = self.client.invoke_model(
-            modelId=model_config.model_id,
-            body=json.dumps(body),
-            contentType="application/json",
-            accept="application/json",
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            partial(
+                self.client.invoke_model,
+                modelId=model_config.model_id,
+                body=json.dumps(body),
+                contentType="application/json",
+                accept="application/json",
+            ),
         )
         latency_ms = (time.time() - start_time) * 1000
 
@@ -280,14 +294,19 @@ class BedrockProvider(LLMProvider):
 
         model_config = self.get_model_config(TaskType.EMBEDDING)
         embeddings = []
+        loop = asyncio.get_event_loop()
 
         for text in texts:
             body = {"inputText": text}
-            response = self.client.invoke_model(
-                modelId=model_config.model_id,
-                body=json.dumps(body),
-                contentType="application/json",
-                accept="application/json",
+            response = await loop.run_in_executor(
+                None,
+                partial(
+                    self.client.invoke_model,
+                    modelId=model_config.model_id,
+                    body=json.dumps(body),
+                    contentType="application/json",
+                    accept="application/json",
+                ),
             )
             result = json.loads(response["body"].read())
             embeddings.append(result["embedding"])
@@ -297,7 +316,8 @@ class BedrockProvider(LLMProvider):
     async def health_check(self) -> bool:
         """Check Bedrock connectivity."""
         try:
-            self.client.list_foundation_models()
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.client.list_foundation_models)
             return True
         except Exception as e:
             logger.warning("bedrock_health_check_failed", error=str(e))
@@ -396,6 +416,11 @@ class OpenAIProvider(LLMProvider):
             self._client = AsyncOpenAI(api_key=self.api_key)
         return self._client
 
+    def _clamp_max_tokens(self, model_id: str, max_tokens: int) -> int:
+        """Clamp max_tokens to the model's supported limit."""
+        model_limit = OPENAI_MAX_COMPLETION_TOKENS.get(model_id, OPENAI_DEFAULT_MAX_TOKENS)
+        return min(max_tokens, model_limit)
+
     async def complete(self, request: LLMRequest) -> LLMResponse:
         """Generate completion using OpenAI API."""
         import time
@@ -406,10 +431,15 @@ class OpenAIProvider(LLMProvider):
         if request.system_prompt:
             messages.insert(0, {"role": "system", "content": request.system_prompt})
 
+        max_tokens = self._clamp_max_tokens(
+            model_config.model_id,
+            request.max_tokens or model_config.max_tokens,
+        )
+
         start_time = time.time()
         response = await self.client.chat.completions.create(
             model=model_config.model_id,
-            max_tokens=request.max_tokens or model_config.max_tokens,
+            max_completion_tokens=max_tokens,
             temperature=request.temperature or model_config.temperature,
             messages=messages,
         )
@@ -432,9 +462,14 @@ class OpenAIProvider(LLMProvider):
         if request.system_prompt:
             messages.insert(0, {"role": "system", "content": request.system_prompt})
 
+        max_tokens = self._clamp_max_tokens(
+            model_config.model_id,
+            request.max_tokens or model_config.max_tokens,
+        )
+
         stream = await self.client.chat.completions.create(
             model=model_config.model_id,
-            max_tokens=request.max_tokens or model_config.max_tokens,
+            max_completion_tokens=max_tokens,
             temperature=request.temperature or model_config.temperature,
             messages=messages,
             stream=True,
