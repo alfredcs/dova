@@ -80,9 +80,7 @@ ARXIV_MCP = MCPServerConfig(
                         "maximum": 50,
                     },
                     "date_from": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
-                    "date_to": {"type": "string", "description": "End date (YYYY-MM-DD)"},
                     "categories": {"type": "array", "items": {"type": "string"}},
-                    "sort_by": {"type": "string", "enum": ["relevance", "date"]},
                 },
                 "required": ["query"],
             },
@@ -201,47 +199,30 @@ GITHUB_MCP = MCPServerConfig(
 
 
 # HuggingFace MCP Server
-# Note: The actual MCP server name is "hugging-face" (with hyphen)
+# The HF MCP server at https://huggingface.co/mcp exposes:
+#   hub_repo_search, paper_search, space_search, hub_repo_details,
+#   hf_doc_search, hf_doc_fetch, hf_whoami, gr1_z_image_turbo_generate
 HUGGINGFACE_MCP = MCPServerConfig(
-    name="hugging-face",  # MCP server uses hyphen
+    name="hugging-face",  # MCP server name (with hyphen for convention)
     description="HuggingFace Hub search for models, datasets, papers, and spaces",
     transport=MCPTransport.STDIO,
     command="uvx --from huggingface-mcp-server hf-mcp-server",
     priority=1,
     tools=[
         MCPTool(
-            name="model_search",
-            description="Search for ML models on HuggingFace Hub",
+            name="hub_repo_search",
+            description="Search for models and datasets on HuggingFace Hub",
             input_schema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "task": {"type": "string"},
-                    "library": {"type": "string"},
-                    "author": {"type": "string"},
                     "sort": {
                         "type": "string",
                         "enum": ["trendingScore", "downloads", "likes"],
                     },
                     "limit": {"type": "integer", "default": 20},
                 },
-            },
-            capabilities=[MCPCapability.SEARCH],
-        ),
-        MCPTool(
-            name="dataset_search",
-            description="Search for datasets on HuggingFace Hub",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "author": {"type": "string"},
-                    "sort": {
-                        "type": "string",
-                        "enum": ["trendingScore", "downloads", "likes"],
-                    },
-                    "limit": {"type": "integer", "default": 20},
-                },
+                "required": ["query"],
             },
             capabilities=[MCPCapability.SEARCH],
         ),

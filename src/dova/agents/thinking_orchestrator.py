@@ -1251,7 +1251,11 @@ Response:"""
     async def _search_arxiv(self, query: str, max_results: int = 10) -> list[dict[str, Any]]:
         """Search ArXiv for papers."""
         result = await self.search_arxiv(query, max_results=max_results)
-        if not result.success or not result.data:
+        if not result.success:
+            self._logger.warning("arxiv_search_failed", error=result.error, query=query)
+            return []
+        if not result.data:
+            self._logger.warning("arxiv_search_empty", query=query)
             return []
 
         data = result.data
@@ -1262,10 +1266,19 @@ Response:"""
         else:
             papers = [data]
 
+        def _arxiv_url(p: dict) -> str:
+            url = p.get("url", "")
+            if url and url.startswith("http"):
+                return url
+            arxiv_id = p.get("id", "")
+            if arxiv_id:
+                return f"https://arxiv.org/abs/{arxiv_id}"
+            return url or ""
+
         return [
             {
                 "title": p.get("title", ""),
-                "url": p.get("url", p.get("id", "")),
+                "url": _arxiv_url(p),
                 "description": p.get("summary", p.get("abstract", ""))[:500],
                 "authors": p.get("authors", []),
                 "arxiv_id": p.get("id", ""),
@@ -1277,7 +1290,11 @@ Response:"""
     async def _search_github(self, query: str, max_results: int = 10) -> list[dict[str, Any]]:
         """Search GitHub for repositories."""
         result = await self.search_github(query, search_type="repositories", per_page=max_results)
-        if not result.success or not result.data:
+        if not result.success:
+            self._logger.warning("github_search_failed", error=result.error, query=query)
+            return []
+        if not result.data:
+            self._logger.warning("github_search_empty", query=query)
             return []
 
         repos = result.data.get("items", result.data) if isinstance(result.data, dict) else result.data
@@ -1295,40 +1312,184 @@ Response:"""
             for r in repos if isinstance(r, dict)
         ]
 
+    @staticmethod
+    def _parse_hf_markdown(text: str) -> list[dict[str, Any]]:
+        """Parse HuggingFace MCP markdown response into structured dicts.
+
+        The HF MCP server returns results as formatted markdown, not JSON.
+        Two formats are used:
+
+        hub_repo_search format:
+            ### owner/model-name
+            **Downloads:** 123 | **Likes:** 45 | **Trending Score:** 0.5
+            **Tags:** tag1, tag2
+            **Link:** [https://hf.co/owner/model-name](...)
+
+        paper_search format:
+            ## Paper Title Here
+            Published on 6 Oct, 2025
+            **Authors:** Author1, Author2
+            ### Abstract
+            Abstract text...
+        """
+        items: list[dict[str, Any]] = []
+        current: dict[str, Any] | None = None
+        in_abstract = False
+
+        for line in text.split("\n"):
+            line = line.strip()
+
+            # New item: ## heading (paper title) or ### heading (repo id)
+            # But skip "### Abstract" which is a sub-section, not a new item
+            if line.startswith("## ") and not line.startswith("### "):
+                # h2 = paper title or section header
+                title = line[3:].strip()
+                # Skip section headers like "## Models (5)"
+                if re.match(r"^(Models|Datasets|Spaces)\s*\(\d+\)", title):
+                    continue
+                if current:
+                    items.append(current)
+                current = {"id": title, "title": title, "name": title}
+                in_abstract = False
+                continue
+
+            if line.startswith("### "):
+                heading = line[4:].strip()
+                if heading.lower() == "abstract":
+                    in_abstract = True
+                    if current:
+                        current.setdefault("description", "")
+                    continue
+                # h3 that's not "Abstract" = repo item (hub_repo_search format)
+                in_abstract = False
+                if current:
+                    items.append(current)
+                current = {"id": heading, "title": heading, "name": heading}
+                continue
+
+            if current is None:
+                continue
+
+            # Collect abstract text
+            if in_abstract and line and not line.startswith("**"):
+                existing = current.get("description", "")
+                current["description"] = (existing + " " + line).strip()[:500]
+                continue
+
+            if line.startswith("---"):
+                in_abstract = False
+                continue
+
+            # Parse **Key:** value patterns
+            if "**Downloads:**" in line:
+                for part in line.split("|"):
+                    part = part.strip()
+                    if "**Downloads:**" in part:
+                        try:
+                            current["downloads"] = int(part.split("**Downloads:**")[1].strip().replace(",", ""))
+                        except (ValueError, IndexError):
+                            pass
+                    elif "**Likes:**" in part:
+                        try:
+                            current["likes"] = int(part.split("**Likes:**")[1].strip().replace(",", ""))
+                        except (ValueError, IndexError):
+                            pass
+
+            elif "**Tags:**" in line:
+                tags_str = line.split("**Tags:**")[1].strip()
+                current["tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
+                for tag in current["tags"]:
+                    if tag in ("text-generation", "fill-mask", "text-classification",
+                               "token-classification", "question-answering", "summarization",
+                               "translation", "image-classification", "object-detection",
+                               "text-to-image", "automatic-speech-recognition"):
+                        current["pipeline_tag"] = tag
+                        break
+
+            elif "**Authors:**" in line:
+                current["authors"] = line.split("**Authors:**")[1].strip()
+
+            elif "**Link:**" in line:
+                url_match = re.search(r'\[?(https?://[^\s\]]+)', line)
+                if url_match:
+                    current["url"] = url_match.group(1)
+
+            elif line.startswith("Published on"):
+                current["published"] = line.replace("Published on", "").strip()
+
+            elif "**Created:**" in line:
+                current["last_modified"] = line.split("**Created:**")[1].strip()
+
+        if current:
+            items.append(current)
+
+        return items
+
     async def _search_huggingface(self, query: str, max_results: int = 10) -> dict[str, list[dict[str, Any]]]:
-        """Search HuggingFace for models and datasets in parallel."""
+        """Search HuggingFace for models and datasets using hub_repo_search."""
         results: dict[str, list[dict[str, Any]]] = {"models": [], "datasets": []}
 
-        # Search models and datasets concurrently
-        model_result, dataset_result = await asyncio.gather(
+        # hub_repo_search returns both models and datasets; also search papers
+        model_result, paper_result = await asyncio.gather(
             self.search_huggingface(query, search_type="models", limit=max_results),
-            self.search_huggingface(query, search_type="datasets", limit=max(max_results // 2, 3)),
+            self.search_huggingface(query, search_type="papers", limit=max(max_results // 2, 5)),
         )
 
+        if not model_result.success:
+            self._logger.warning("huggingface_model_search_failed", error=model_result.error, query=query)
+        if not paper_result.success:
+            self._logger.warning("huggingface_paper_search_failed", error=paper_result.error, query=query)
+
         if model_result.success and model_result.data:
-            models = model_result.data if isinstance(model_result.data, list) else [model_result.data]
-            results["models"] = [
-                {
-                    "id": m.get("id", m.get("modelId", "")),
+            data = model_result.data
+            # HF MCP server returns markdown text, not JSON
+            if isinstance(data, str):
+                items = self._parse_hf_markdown(data)
+            elif isinstance(data, list):
+                items = [m for m in data if isinstance(m, dict)]
+            elif isinstance(data, dict):
+                items = [data]
+            else:
+                items = []
+
+            for m in items:
+                model_id = m.get("id", m.get("modelId", ""))
+                entry = {
+                    "id": model_id,
+                    "title": m.get("title", model_id),
+                    "name": model_id,
                     "downloads": m.get("downloads", 0),
                     "likes": m.get("likes", 0),
                     "tags": m.get("tags", []),
                     "pipeline_tag": m.get("pipeline_tag", ""),
                     "library_name": m.get("library_name", ""),
+                    "url": m.get("url", f"https://huggingface.co/{model_id}" if model_id else ""),
                     "last_modified": m.get("lastModified", m.get("last_modified", "")),
                 }
-                for m in models if isinstance(m, dict)
-            ]
+                results["models"].append(entry)
 
-        if dataset_result.success and dataset_result.data:
-            datasets = dataset_result.data if isinstance(dataset_result.data, list) else [dataset_result.data]
-            results["datasets"] = [
-                {
-                    "id": d.get("id", d.get("datasetId", "")),
-                    "downloads": d.get("downloads", 0),
-                }
-                for d in datasets if isinstance(d, dict)
-            ]
+        # Paper results (also markdown text)
+        if paper_result.success and paper_result.data:
+            data = paper_result.data
+            if isinstance(data, str):
+                papers = self._parse_hf_markdown(data)
+            elif isinstance(data, list):
+                papers = [p for p in data if isinstance(p, dict)]
+            elif isinstance(data, dict):
+                papers = [data]
+            else:
+                papers = []
+
+            for p in papers:
+                paper_id = p.get("id", p.get("paperId", ""))
+                results["datasets"].append({
+                    "id": paper_id,
+                    "title": p.get("title", paper_id),
+                    "name": paper_id,
+                    "downloads": 0,
+                    "url": p.get("url", ""),
+                    "source": "hf_papers",
+                })
 
         return results
 

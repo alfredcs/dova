@@ -696,7 +696,7 @@ Instructions:
 
                     elif server_name == "huggingface":
                         result = await self.mcp_client.invoke(
-                            "hugging-face", "model_search",  # Fixed: MCP server name uses hyphen
+                            "hugging-face", "hub_repo_search",
                             {"query": query, "limit": 3}
                         )
                         if result:

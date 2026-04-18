@@ -622,7 +622,7 @@ When analyzing search results:
             original_query=query,
         )
 
-        result = await self.search_arxiv(search_query, max_results=20, sort_by="submittedDate")
+        result = await self.search_arxiv(search_query, max_results=20)
 
         self._logger.info(
             "arxiv_search_complete",

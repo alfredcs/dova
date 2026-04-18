@@ -13,6 +13,11 @@ from functools import partial
 from typing import Any, AsyncIterator
 
 import structlog
+from dotenv import load_dotenv
+
+# Load .env before module-level defaults are evaluated so BEDROCK_MODEL_*
+# env vars win over the hard-coded fallbacks below.
+load_dotenv()
 
 logger = structlog.get_logger(__name__)
 
@@ -825,6 +830,8 @@ def create_llm_router_from_settings() -> LLMRouter:
         for p in sorted_providers:
             models_by_tier: dict[str, str] = {}
             for task_type, model_cfg in p.config.models.items():
+                if task_type == TaskType.EMBEDDING:
+                    continue  # Embedding uses a dedicated model, not a tier LLM
                 tier = TASK_TIER_MAPPING.get(task_type, ModelTier.STANDARD).value
                 if tier not in models_by_tier:
                     models_by_tier[tier] = model_cfg.model_id

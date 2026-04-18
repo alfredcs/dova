@@ -140,21 +140,14 @@ def search_huggingface_tool(
 
     params: dict[str, Any] = {"query": query, "limit": min(limit, 100)}
 
-    if search_type == "models":
-        tool_name = "model_search"
-        if task:
-            params["task"] = task
-        if library:
-            params["library"] = library
-        params["sort"] = sort_by
-    elif search_type == "datasets":
-        tool_name = "dataset_search"
+    if search_type in ("models", "datasets"):
+        tool_name = "hub_repo_search"
         params["sort"] = sort_by
     elif search_type == "papers":
         tool_name = "paper_search"
         params["results_limit"] = limit
     else:
-        tool_name = "model_search"
+        tool_name = "hub_repo_search"
 
     return {
         "tool_name": tool_name,

@@ -370,7 +370,7 @@ class AutoDiscovery:
             ),
             MCPServerInfo(
                 name="hugging-face",  # MCP server name uses hyphen
-                tools=["model_search", "dataset_search", "paper_search", "space_search"],
+                tools=["hub_repo_search", "paper_search", "space_search", "hub_repo_details"],
                 metadata={"category": "ml"},
             ),
         ]

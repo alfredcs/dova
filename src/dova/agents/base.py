@@ -271,8 +271,6 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         self,
         query: str,
         max_results: int = 10,
-        sort_by: str = "submittedDate",
-        sort_order: str = "descending",
     ) -> MCPToolResult:
         """Convenience method for ArXiv search."""
         return await self.call_tool(
@@ -281,8 +279,6 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
             {
                 "query": query,
                 "max_results": max_results,
-                "sort_by": sort_by,
-                "sort_order": sort_order,
             },
         )
 
@@ -324,7 +320,7 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         query: str,
         search_type: str = "models",
         limit: int = 20,
-        sort: str | None = "modified",
+        sort: str | None = "downloads",
     ) -> MCPToolResult:
         """Convenience method for HuggingFace search.
 
@@ -332,20 +328,37 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
             query: Search query
             search_type: Type of search (models, datasets, papers, spaces)
             limit: Maximum results to return
-            sort: Sort order (e.g., "modified", "trending", "likes", "downloads")
+            sort: Sort order ("trendingScore", "downloads", "likes")
         """
-        tool = f"{search_type[:-1]}_search" if search_type.endswith("s") else f"{search_type}_search"
+        # Map search types to actual HuggingFace MCP tool names
+        # The HF MCP server at https://huggingface.co/mcp uses:
+        #   hub_repo_search (for models/datasets), paper_search, space_search
+        tool_map = {
+            "models": "hub_repo_search",
+            "datasets": "hub_repo_search",
+            "papers": "paper_search",
+            "spaces": "space_search",
+        }
+        tool = tool_map.get(search_type, "hub_repo_search")
+
         self._logger.info(
             "huggingface_search_starting",
             query=query,
             search_type=search_type,
             tool=tool,
         )
-        params = {"query": query, "limit": limit}
-        if sort:
-            params["sort"] = sort
+        params: dict[str, Any] = {"query": query}
+        if tool == "hub_repo_search":
+            params["limit"] = limit
+            if sort:
+                params["sort"] = sort
+        elif tool == "paper_search":
+            params["results_limit"] = limit
+        elif tool == "space_search":
+            params["limit"] = limit
+
         result = await self.call_tool(
-            "hugging-face",  # Fixed: MCP server name uses hyphen
+            "hugging-face",  # MCP server name
             tool,
             params,
         )
