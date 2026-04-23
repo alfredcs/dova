@@ -223,15 +223,16 @@
         .suggestions {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-            max-width: 600px;
+            gap: 1.25rem;
+            max-width: 960px;
+            width: 100%;
         }
 
         .suggestion-card {
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 0.75rem;
-            padding: 1rem;
+            padding: 1.25rem 1.5rem;
             cursor: pointer;
             text-align: left;
             transition: all 0.2s;
@@ -243,19 +244,16 @@
         }
 
         .suggestion-card h4 {
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             color: var(--text);
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.5rem;
         }
 
         .suggestion-card p {
-            font-size: 0.75rem;
+            font-size: 0.85rem;
+            line-height: 1.5;
             color: var(--text-muted);
             margin: 0;
-            display: -webkit-box;
-            -webkit-line-clamp: 4;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
         }
 
         /* Messages */
@@ -640,6 +638,175 @@
         .thinking-step-type.reasoning { background: #3b82f6; color: white; }
         .thinking-step-type.plan { background: var(--warning); color: black; }
         .thinking-step-type.action { background: var(--primary); color: white; }
+        .thinking-step-type.reflection { background: #a855f7; color: white; }
+        .thinking-step-type.deliberation { background: #06b6d4; color: black; }
+        .thinking-step-type.tool { background: #64748b; color: white; }
+        .thinking-step-type.stage { background: #facc15; color: black; }
+
+        /* Right-side live thinking sidebar */
+        .thinking-sidebar {
+            width: 320px;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            transform: translateX(0);
+            transition: transform 0.25s ease, width 0.25s ease;
+        }
+        .thinking-sidebar.collapsed {
+            width: 0;
+            border-left: none;
+            overflow: hidden;
+        }
+        .thinking-sidebar-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .thinking-sidebar-header h3 {
+            font-size: 0.85rem;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .thinking-sidebar-status {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        .thinking-sidebar-status.active {
+            color: var(--primary-light);
+        }
+        .thinking-sidebar-status.active::before {
+            content: '● ';
+            animation: pulse 1.4s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+        .thinking-feed {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.8rem;
+            line-height: 1.45;
+        }
+        .thinking-feed .thinking-entry {
+            padding: 0.5rem 0.6rem;
+            margin-bottom: 0.45rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 0.4rem;
+            color: var(--text-muted);
+            word-wrap: break-word;
+        }
+        .thinking-feed .thinking-entry .thinking-step-type {
+            display: inline-block;
+            margin-bottom: 0.25rem;
+        }
+        .thinking-feed .thinking-entry p {
+            margin: 0;
+            font-size: 0.78rem;
+            color: var(--text);
+        }
+        .thinking-feed .thinking-entry.muted p {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        .thinking-feed-empty {
+            padding: 1.5rem 1rem;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            text-align: center;
+        }
+        @media (max-width: 1024px) {
+            .thinking-sidebar {
+                position: fixed;
+                right: 0;
+                top: 56px;
+                bottom: 0;
+                z-index: 500;
+                box-shadow: -4px 0 12px rgba(0,0,0,0.4);
+            }
+            .thinking-sidebar.collapsed { transform: translateX(100%); width: 320px; }
+        }
+
+        /* IEEE-style algorithm block */
+        .algorithm-block {
+            margin: 1rem 0;
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem 0.85rem 1rem;
+            font-family: 'Computer Modern', 'Latin Modern Roman', 'Times New Roman', Georgia, serif;
+            counter-reset: algo-line;
+            color: var(--text);
+            overflow-x: auto;
+        }
+        .algorithm-block .algo-caption {
+            font-weight: 700;
+            border-bottom: 1.5px solid var(--border);
+            padding-bottom: 0.35rem;
+            margin-bottom: 0.55rem;
+            font-size: 0.95rem;
+            color: var(--primary-light);
+            letter-spacing: 0.02em;
+        }
+        .algorithm-block .algo-line {
+            display: grid;
+            grid-template-columns: 2.2rem auto 1fr;
+            gap: 0.4rem;
+            align-items: baseline;
+            padding: 0.05rem 0;
+            font-size: 0.88rem;
+        }
+        .algorithm-block .algo-line::before {
+            counter-increment: algo-line;
+            content: counter(algo-line) ":";
+            color: var(--text-dim);
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            font-size: 0.8rem;
+            padding-right: 0.3rem;
+        }
+        .algorithm-block .algo-line.algo-require::before,
+        .algorithm-block .algo-line.algo-ensure::before,
+        .algorithm-block .algo-line.algo-input::before,
+        .algorithm-block .algo-line.algo-output::before {
+            content: "";
+            counter-increment: none;
+        }
+        .algorithm-block .algo-kw {
+            font-weight: 700;
+            color: #f472b6;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-size: 0.8rem;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+        .algorithm-block .algo-body {
+            color: var(--text);
+        }
+        .algorithm-block .algo-line.algo-nested-1 .algo-body { padding-left: 1.1rem; }
+        .algorithm-block .algo-line.algo-nested-2 .algo-body { padding-left: 2.2rem; }
+        .algorithm-block .algo-line.algo-nested-3 .algo-body { padding-left: 3.3rem; }
+        .algorithm-block .algo-comment {
+            color: var(--success);
+            font-style: italic;
+        }
+        .streaming-caret {
+            display: inline-block;
+            animation: caret-blink 1s steps(2, start) infinite;
+            color: var(--primary-light);
+            margin-left: 2px;
+        }
+        @keyframes caret-blink {
+            to { visibility: hidden; }
+        }
 
         /* Typing Indicator */
         .typing-indicator {
@@ -1208,6 +1375,17 @@
                 </div>
             </div>
         </div>
+
+        <!-- Right-side live Thinking panel -->
+        <aside class="thinking-sidebar collapsed" id="thinkingSidebar" aria-label="Live thinking">
+            <div class="thinking-sidebar-header">
+                <h3>💭 Thinking</h3>
+                <span class="thinking-sidebar-status" id="thinkingStatus">idle</span>
+            </div>
+            <div class="thinking-feed" id="thinkingFeed">
+                <div class="thinking-feed-empty">Thinking steps appear here as DOVA reasons, searches, and synthesizes.</div>
+            </div>
+        </aside>
     </div>
 
     <!-- Settings Modal -->
@@ -1472,6 +1650,7 @@
             loadSettings();
             loadSessions();
             updateSettingsDisplay();
+            updateThinkingButton();
         });
 
         // Session Management
@@ -1534,11 +1713,7 @@
             chip.classList.toggle('active');
         }
 
-        function toggleThinking() {
-            showThinking = !showThinking;
-            const btn = document.getElementById('thinkingBtn');
-            btn.style.background = showThinking ? 'var(--primary)' : 'transparent';
-        }
+        // toggleThinking is redefined later to control the live sidebar
 
         function handleKeyDown(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -1605,14 +1780,15 @@
             input.value = '';
             input.style.height = 'auto';
 
-            // Show typing indicator
-            showTypingIndicator();
             isLoading = true;
             updateSendButton();
+            resetThinkingFeed();
+            setThinkingStatus('active', 'thinking…');
 
             try {
-                let response;
                 if (attachedFiles.length > 0) {
+                    // Upload path stays non-streaming
+                    showTypingIndicator();
                     const formData = new FormData();
                     formData.append('message', message);
                     if (currentSessionId) formData.append('session_id', currentSessionId);
@@ -1621,54 +1797,236 @@
                     formData.append('reasoning_mode', settings.reasoningMode);
                     formData.append('auto_debate', settings.autoDebate);
                     formData.append('enable_two_pass', settings.twoPassInsights);
+                    formData.append('orchestrator', 'thinking');
                     for (const file of attachedFiles) {
                         formData.append('files', file);
                     }
-                    response = await fetch('/api/v1/chat/upload', {
+                    const response = await fetch('/api/v1/chat/upload', {
                         method: 'POST',
-                        body: formData
+                        body: formData,
                     });
                     attachedFiles = [];
                     renderFileChips();
+                    hideTypingIndicator();
+                    if (!response.ok) {
+                        const error = await response.json().catch(() => ({}));
+                        throw new Error(error.detail || 'Failed to send message');
+                    }
+                    const data = await response.json();
+                    currentSessionId = data.session_id;
+                    addAssistantMessage(data);
                 } else {
-                    response = await fetch('/api/v1/chat', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            message: message,
-                            session_id: currentSessionId,
-                            sources: getSources(),
-                            show_thinking: settings.showThinking,
-                            reasoning_mode: settings.reasoningMode,
-                            auto_debate: settings.autoDebate,
-                            enable_two_pass: settings.twoPassInsights
-                        })
-                    });
+                    await streamMessage(message);
                 }
-
-                hideTypingIndicator();
-
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.detail || 'Failed to send message');
-                }
-
-                const data = await response.json();
-                currentSessionId = data.session_id;
-
-                // Add assistant message
-                addAssistantMessage(data);
-
-                // Refresh sessions list
                 loadSessions();
-
             } catch (error) {
                 hideTypingIndicator();
                 addMessage('assistant', `Error: ${error.message}`, { isError: true });
             } finally {
                 isLoading = false;
                 updateSendButton();
+                setThinkingStatus('idle', 'idle');
             }
+        }
+
+        async function streamMessage(message) {
+            const response = await fetch('/api/v1/chat/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: currentSessionId,
+                    sources: getSources(),
+                    show_thinking: true,
+                    reasoning_mode: settings.reasoningMode,
+                    auto_debate: settings.autoDebate,
+                    enable_two_pass: settings.twoPassInsights,
+                    orchestrator: 'thinking',
+                }),
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${response.status}`);
+            }
+
+            const streamState = createStreamingAssistantMessage();
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const events = buffer.split(/\n\n/);
+                    buffer = events.pop() || '';
+                    for (const evt of events) handleSseEvent(evt, streamState);
+                }
+                if (buffer.trim()) handleSseEvent(buffer, streamState);
+            } catch (e) {
+                streamState.finalize();
+                throw e;
+            }
+            streamState.finalize();
+        }
+
+        function handleSseEvent(raw, streamState) {
+            const lines = raw.split('\n');
+            let event = 'message';
+            let dataStr = '';
+            for (const line of lines) {
+                if (line.startsWith('event:')) event = line.slice(6).trim();
+                else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+            }
+            if (!dataStr) return;
+            let data;
+            try { data = JSON.parse(dataStr); } catch { return; }
+
+            if (event === 'thinking') {
+                appendThinkingStep(data.step_type || 'reasoning', data.content || '');
+            } else if (event === 'stage') {
+                appendThinkingStep('stage', data.message || data.stage || '');
+                setThinkingStatus('active', data.stage || 'working…');
+            } else if (event === 'log') {
+                if (data.status && data.step) {
+                    appendThinkingStep('tool', `${data.step}: ${data.status}${data.elapsed_ms ? ` (${Math.round(data.elapsed_ms)}ms)` : ''}`);
+                }
+            } else if (event === 'tool_complete') {
+                appendThinkingStep('action', `${data.tool} → ${data.count} result${data.count === 1 ? '' : 's'}`);
+            } else if (event === 'synthesis_token') {
+                streamState.appendToken(data.token || '');
+            } else if (event === 'complete') {
+                streamState.complete(data);
+                if (data.session_id) currentSessionId = data.session_id;
+            } else if (event === 'error') {
+                streamState.error(data.message || 'Unknown error');
+            }
+        }
+
+        function createStreamingAssistantMessage() {
+            const messagesArea = document.getElementById('messagesArea');
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message assistant';
+            wrapper.innerHTML = `
+                <div class="message-avatar">🤖</div>
+                <div class="message-content">
+                    <div class="action-badge research" style="display:none;" data-role="badge">🔍 Researching…</div>
+                    <div class="message-bubble" data-role="bubble"><span class="streaming-caret">▍</span></div>
+                    <div data-role="attachments"></div>
+                </div>
+            `;
+            messagesArea.appendChild(wrapper);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+
+            const bubble = wrapper.querySelector('[data-role="bubble"]');
+            const badge = wrapper.querySelector('[data-role="badge"]');
+            const attachments = wrapper.querySelector('[data-role="attachments"]');
+            let accumulated = '';
+            let finalized = false;
+
+            const renderIncremental = () => {
+                bubble.innerHTML = formatContent(accumulated) + '<span class="streaming-caret">▍</span>';
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            };
+
+            return {
+                appendToken(token) {
+                    accumulated += token;
+                    renderIncremental();
+                },
+                complete(data) {
+                    finalized = true;
+                    bubble.innerHTML = formatContent(data.message || accumulated);
+                    if (data.action_taken === 'research' || data.action_taken === 'use_tools') {
+                        badge.style.display = 'inline-flex';
+                        badge.textContent = '🔍 Researched';
+                    } else if (data.action_taken === 'debate') {
+                        badge.className = 'action-badge debate';
+                        badge.style.display = 'inline-flex';
+                        badge.textContent = '⚖️ Debated';
+                    } else {
+                        badge.remove();
+                    }
+                    attachments.innerHTML = buildResearchAndDebateCards(data);
+                    highlightCodeBlocks();
+                },
+                error(msg) {
+                    bubble.innerHTML = `<span style="color: var(--error);">Error: ${escapeHtml(msg)}</span>`;
+                },
+                finalize() {
+                    if (finalized) return;
+                    bubble.innerHTML = formatContent(accumulated);
+                    highlightCodeBlocks();
+                },
+            };
+        }
+
+        function buildResearchAndDebateCards(data) {
+            let html = '';
+            const results = data.research_results;
+            if (results && (results.papers?.length || results.repositories?.length || results.models?.length)) {
+                const items = [];
+                if (results.papers?.length) {
+                    items.push(`<h5>Papers (${results.papers.length})</h5>`);
+                    results.papers.slice(0, 3).forEach(p => {
+                        items.push(`<div class="research-item"><a href="${escapeHtml(p.url || '#')}" target="_blank">${escapeHtml(p.title)}</a><p>${escapeHtml((p.description || '').substring(0, 100))}...</p></div>`);
+                    });
+                }
+                if (results.repositories?.length) {
+                    items.push(`<h5>Repositories (${results.repositories.length})</h5>`);
+                    results.repositories.slice(0, 3).forEach(r => {
+                        items.push(`<div class="research-item"><a href="${escapeHtml(r.url || '#')}" target="_blank">${escapeHtml(r.title || r.name)}</a><p>${escapeHtml((r.description || '').substring(0, 100))}...</p></div>`);
+                    });
+                }
+                if (results.models?.length) {
+                    items.push(`<h5>Models (${results.models.length})</h5>`);
+                    results.models.slice(0, 3).forEach(m => {
+                        items.push(`<div class="research-item"><a href="${escapeHtml(m.url || '#')}" target="_blank">${escapeHtml(m.title || m.id)}</a></div>`);
+                    });
+                }
+                html += `<div class="research-card">${items.join('')}</div>`;
+            }
+            const debate = data.debate_results;
+            if (debate && (debate.bull_strengths?.length || debate.bear_concerns?.length)) {
+                html += `
+                    <div class="debate-card">
+                        <h5>⚖️ Bull vs Bear Analysis</h5>
+                        <div class="debate-columns">
+                            <div class="debate-col bull"><h6>📈 Strengths</h6><ul>${(debate.bull_strengths||[]).slice(0,3).map(s=>`<li>+ ${escapeHtml(s)}</li>`).join('')}</ul></div>
+                            <div class="debate-col bear"><h6>📉 Concerns</h6><ul>${(debate.bear_concerns||[]).slice(0,3).map(c=>`<li>- ${escapeHtml(c)}</li>`).join('')}</ul></div>
+                        </div>
+                        ${debate.recommendation ? `<div class="debate-recommendation"><h6>💡 Recommendation</h6><p>${escapeHtml(debate.recommendation)}</p></div>` : ''}
+                    </div>`;
+            }
+            return html;
+        }
+
+        function resetThinkingFeed() {
+            const feed = document.getElementById('thinkingFeed');
+            if (feed) feed.innerHTML = '';
+        }
+
+        function appendThinkingStep(stepType, content) {
+            const feed = document.getElementById('thinkingFeed');
+            if (!feed || !content) return;
+            if (feed.querySelector('.thinking-feed-empty')) feed.innerHTML = '';
+            const entry = document.createElement('div');
+            entry.className = 'thinking-entry';
+            entry.innerHTML = `
+                <span class="thinking-step-type ${escapeHtml(stepType)}">${escapeHtml(stepType)}</span>
+                <p></p>
+            `;
+            entry.querySelector('p').textContent = content;
+            feed.appendChild(entry);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function setThinkingStatus(cls, text) {
+            const status = document.getElementById('thinkingStatus');
+            if (!status) return;
+            status.className = 'thinking-sidebar-status' + (cls === 'active' ? ' active' : '');
+            status.textContent = text;
         }
 
         function updateSendButton() {
@@ -1862,29 +2220,35 @@
             if (!content) return '';
 
             try {
-                // Extract math expressions before markdown parsing
-                // (markdown would mangle \frac, _ as emphasis, etc.)
-                const mathBlocks = [];
                 let processed = content;
 
-                // Display math: $$...$$
+                // 1. Extract ```algorithm fenced blocks before markdown mangles them.
+                const algoBlocks = [];
+                processed = processed.replace(/```algorithm\s*\n([\s\S]*?)```/g, (_, body) => {
+                    const idx = algoBlocks.length;
+                    algoBlocks.push(body);
+                    return `%%ALGO_${idx}%%`;
+                });
+
+                // 2. Extract math expressions so markdown doesn't touch them.
+                const mathBlocks = [];
                 processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
                     const idx = mathBlocks.length;
                     mathBlocks.push({ math: math.trim(), display: true });
                     return `%%MATH_${idx}%%`;
                 });
-
-                // Inline math: $...$  (no newlines inside)
                 processed = processed.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
                     const idx = mathBlocks.length;
                     mathBlocks.push({ math: math.trim(), display: false });
                     return `%%MATH_${idx}%%`;
                 });
 
-                // Parse markdown
                 let html = marked.parse(processed);
 
-                // Replace placeholders with KaTeX-rendered HTML
+                html = html.replace(/%%ALGO_(\d+)%%/g, (_, idx) =>
+                    renderAlgorithmBlock(algoBlocks[parseInt(idx)])
+                );
+
                 html = html.replace(/%%MATH_(\d+)%%/g, (_, idx) => {
                     const block = mathBlocks[parseInt(idx)];
                     try {
@@ -1893,7 +2257,6 @@
                             throwOnError: false,
                         });
                     } catch (e) {
-                        // Fallback: show raw LaTeX in a code block
                         const raw = escapeHtml(block.math);
                         return block.display ? `<pre><code>${raw}</code></pre>` : `<code>${raw}</code>`;
                     }
@@ -1904,6 +2267,117 @@
                 console.error('Markdown parsing error:', e);
                 return '<p>' + escapeHtml(content) + '</p>';
             }
+        }
+
+        // IEEE / algorithmic.sty-style renderer for ```algorithm blocks.
+        // Recognised keywords (case-insensitive, LaTeX-prefixed optional):
+        //   \Caption{...}, \Require, \Ensure, \State, \Return,
+        //   \If{...}\Then, \ElsIf{...}\Then, \Else, \EndIf,
+        //   \For{...}\Do, \EndFor, \While{...}\Do, \EndWhile,
+        //   \Repeat, \Until{...}, \Function{Name}{args}, \EndFunction,
+        //   \Comment{...}
+        function renderAlgorithmBlock(body) {
+            const lines = body.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+            let captionHtml = '';
+            const renderedLines = [];
+            let depth = 0;
+
+            const renderMath = (s) => {
+                if (!s) return '';
+                return s.replace(/\$([^\$\n]+?)\$/g, (_, m) => {
+                    try { return katex.renderToString(m, { throwOnError: false }); }
+                    catch { return escapeHtml(m); }
+                });
+            };
+
+            const stripBraces = (s) => s.replace(/^\{|\}$/g, '');
+            const formatBody = (s) => renderMath(s.replace(/\{([^{}]+)\}/g, '$1'));
+
+            for (let raw of lines) {
+                // Normalise leading backslash-free keywords too (e.g. "STATE ...")
+                const mCap = raw.match(/^\\?Caption\s*\{?(.*?)\}?\s*$/i);
+                if (mCap) {
+                    captionHtml = renderMath(stripBraces(mCap[1]));
+                    continue;
+                }
+
+                const classes = ['algo-line'];
+                let kw = '';
+                let rest = '';
+                let outdentFirst = false;
+
+                const match = raw.match(/^\\?([A-Za-z]+)\b\*?\s*(.*)$/);
+                if (match) {
+                    const keyword = match[1].toLowerCase();
+                    rest = match[2];
+
+                    const kwMap = {
+                        require:   { label: 'Require:',   noNumber: true },
+                        input:     { label: 'Input:',     noNumber: true },
+                        ensure:    { label: 'Ensure:',    noNumber: true },
+                        output:    { label: 'Output:',    noNumber: true },
+                        state:     { label: '' },
+                        return:    { label: 'return ' },
+                        if:        { label: 'if ',        block: 'open' },
+                        elsif:     { label: 'else if ',   block: 'mid'  },
+                        elseif:    { label: 'else if ',   block: 'mid'  },
+                        else:      { label: 'else',       block: 'mid'  },
+                        endif:     { label: 'end if',     block: 'close' },
+                        for:       { label: 'for ',       block: 'open' },
+                        forall:    { label: 'for all ',   block: 'open' },
+                        endfor:    { label: 'end for',    block: 'close' },
+                        while:     { label: 'while ',     block: 'open' },
+                        endwhile:  { label: 'end while',  block: 'close' },
+                        repeat:    { label: 'repeat',     block: 'open' },
+                        until:     { label: 'until ',     block: 'close' },
+                        function:  { label: 'function ',  block: 'open' },
+                        endfunction:{label: 'end function', block: 'close'},
+                        procedure: { label: 'procedure ', block: 'open' },
+                        endprocedure:{label: 'end procedure', block: 'close'},
+                        then:      { label: 'then' },
+                        do:        { label: 'do' },
+                        comment:   { label: '▷ ', comment: true },
+                    };
+                    const meta = kwMap[keyword];
+                    if (meta) {
+                        if (meta.block === 'close' || meta.block === 'mid') {
+                            depth = Math.max(0, depth - 1);
+                        }
+                        if (meta.block === 'mid') outdentFirst = true;
+                        if (meta.noNumber) classes.push(`algo-${keyword}`);
+                        if (meta.comment) classes.push('algo-comment');
+                        kw = meta.label;
+                        // strip trailing \Then / \Do markers that come after \If{} or \For{}
+                        rest = rest.replace(/\\(Then|Do)\b\*?/gi, '').trim();
+                        rest = rest.replace(/^\{([\s\S]*)\}$/, '$1');
+
+                        const nestDepth = outdentFirst ? depth : depth;
+                        if (nestDepth > 0) classes.push(`algo-nested-${Math.min(nestDepth, 3)}`);
+
+                        if (meta.block === 'open' || (meta.block === 'mid')) depth += 1;
+                    } else {
+                        // unknown keyword, treat as plain state
+                        rest = raw;
+                    }
+                } else {
+                    rest = raw;
+                }
+
+                const bodyHtml = formatBody(rest);
+                renderedLines.push(
+                    `<div class="${classes.join(' ')}">` +
+                    (kw ? `<span class="algo-kw">${escapeHtml(kw)}</span>` : `<span class="algo-kw"></span>`) +
+                    `<span class="algo-body">${bodyHtml}</span>` +
+                    `</div>`
+                );
+            }
+
+            return (
+                `<div class="algorithm-block">` +
+                (captionHtml ? `<div class="algo-caption">${captionHtml}</div>` : '') +
+                renderedLines.join('') +
+                `</div>`
+            );
         }
 
         function escapeHtml(text) {
@@ -2025,6 +2499,10 @@
         function updateThinkingButton() {
             const btn = document.getElementById('thinkingBtn');
             btn.style.background = settings.showThinking ? 'var(--primary)' : 'transparent';
+            const sidebar = document.getElementById('thinkingSidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('collapsed', !settings.showThinking);
+            }
         }
 
         function toggleThinking() {
@@ -2033,6 +2511,10 @@
             localStorage.setItem('dova_settings', JSON.stringify(settings));
             updateThinkingButton();
             updateSettingsDisplay();
+            const sidebar = document.getElementById('thinkingSidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('collapsed', !settings.showThinking);
+            }
         }
 
         function updateSettingsDisplay() {

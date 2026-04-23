@@ -4,12 +4,14 @@ Chat Endpoints for DOVA API.
 Provides multi-turn conversational interface similar to Claude.ai/ChatGPT.
 """
 
+import asyncio
 import json
 import time
 from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 
 from dova.api.middleware.auth import User, get_current_user
 from dova.api.schemas.chat import (
@@ -293,6 +295,196 @@ async def send_message_with_files(
         orchestrator=orchestrator,
     )
     return await send_message(request, body, current_user)
+
+
+@router.post("/chat/stream")
+async def stream_message(
+    request: Request,
+    body: ChatRequest,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """
+    Stream a chat response via Server-Sent Events.
+
+    Emits these event types:
+      - thinking:       { step_type, content }
+      - stage:          { stage, message, ... }
+      - tool_complete:  { tool, count, items, ... }
+      - log:            { step, status, elapsed_ms, ... }
+      - synthesis_token:{ token }
+      - complete:       full ChatResponse payload
+      - error:          { message }
+    """
+    from dova.agents.base import AgentTask
+
+    settings = getattr(request.app.state, "settings", None)
+    llm_router = getattr(request.app.state, "llm_router", None)
+    mcp_client = getattr(request.app.state, "mcp_client", None)
+    memory_service = getattr(request.app.state, "enhanced_memory_service", None)
+    orchestrator = getattr(request.app.state, "orchestrator", None)
+
+    if not llm_router:
+        raise HTTPException(status_code=503, detail="Chat service not available")
+    if orchestrator is None:
+        raise HTTPException(status_code=503, detail="Streaming requires thinking orchestrator")
+
+    session, session_id, is_new = _get_or_create_session(
+        session_id=body.session_id,
+        user_id=current_user.id,
+        settings=settings,
+        llm_router=llm_router,
+        mcp_client=mcp_client,
+        memory_service=memory_service,
+        orchestrator_type="thinking",
+        orchestrator=orchestrator,
+    )
+    session._research_sources = body.sources
+    session._reasoning_mode = body.reasoning_mode
+    session._auto_debate = body.auto_debate
+    session._enable_two_pass = body.enable_two_pass
+    session.show_thinking = body.show_thinking
+
+    # Record the user turn synchronously so history stays coherent even if
+    # the client disconnects mid-stream.
+    from dova.cli.interact import ConversationTurn, ThoughtStep  # local import to avoid cycles
+
+    session.state.conversation.append(
+        ConversationTurn(role="user", content=body.message)
+    )
+
+    queue: asyncio.Queue = asyncio.Queue()
+    thinking_collected: list[ThoughtStep] = []
+
+    async def progress_cb(event_type: str, data: dict) -> None:
+        if event_type == "thinking":
+            thinking_collected.append(
+                ThoughtStep(
+                    step_type=data.get("step_type", "reasoning"),
+                    content=data.get("content", ""),
+                )
+            )
+        await queue.put((event_type, data))
+
+    async def _runner() -> None:
+        start_time = time.time()
+        try:
+            task = AgentTask(
+                type="query",
+                params={
+                    "query": body.message,
+                    "session_id": session_id,
+                    "sources": body.sources,
+                },
+                user_id=current_user.id,
+            )
+            result = await orchestrator.execute(task, progress=progress_cb)
+
+            if not result.success:
+                await queue.put(("error", {"message": result.error or "Unknown error"}))
+                return
+
+            data = result.data or {}
+            response_text = data.get("response", "")
+            deliberation = data.get("deliberation", {})
+            action_result = data.get("action_result") or {}
+
+            session.state.conversation.append(
+                ConversationTurn(
+                    role="assistant",
+                    content=response_text,
+                    thought_chain=thinking_collected,
+                    action_taken=deliberation.get("action"),
+                    action_result=action_result,
+                )
+            )
+            session.state.context["last_query"] = body.message
+            session.state.context["last_action"] = deliberation.get("action")
+            session.state.context["turn_count"] = (
+                len(session.state.conversation) // 2
+            )
+
+            research_results = None
+            debate_results = None
+            sources_used: list[str] = []
+            action_taken = deliberation.get("action")
+
+            if action_result:
+                if any(
+                    action_result.get(k)
+                    for k in ("papers", "repositories", "models", "web_results")
+                ):
+                    research_results = {
+                        "papers": action_result.get("papers", []),
+                        "repositories": action_result.get("repositories", []),
+                        "models": action_result.get("models", []),
+                        "web_results": action_result.get("web_results", []),
+                        "summary": action_result.get("summary", ""),
+                        "answer": response_text,
+                    }
+                    sources_used = body.sources
+
+            images: list[dict] = []
+            for img in action_result.get("images", []) or []:
+                if isinstance(img, dict):
+                    images.append({
+                        "url": img.get("url", ""),
+                        "prompt": img.get("prompt", ""),
+                        "resolution": img.get("resolution", "1024x1024"),
+                        "seed": img.get("seed", 0),
+                    })
+
+            await queue.put((
+                "complete",
+                {
+                    "session_id": session_id,
+                    "message": response_text,
+                    "thinking": [
+                        {"step_type": t.step_type, "content": t.content}
+                        for t in thinking_collected
+                    ],
+                    "action_taken": action_taken,
+                    "sources_used": sources_used,
+                    "research_results": research_results,
+                    "debate_results": debate_results,
+                    "images": images,
+                    "metadata": {
+                        "is_new_session": is_new,
+                        "execution_time_ms": int((time.time() - start_time) * 1000),
+                        "turn_count": len(session.state.conversation) // 2,
+                    },
+                },
+            ))
+        except Exception as exc:
+            logger.exception("chat_stream_error", error=str(exc))
+            await queue.put(("error", {"message": str(exc)}))
+        finally:
+            await queue.put(None)
+
+    async def event_generator():
+        runner_task = asyncio.create_task(_runner())
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                evt_type, evt_data = item
+                yield (
+                    f"event: {evt_type}\n"
+                    f"data: {json.dumps(evt_data, default=str)}\n\n"
+                )
+        except asyncio.CancelledError:
+            runner_task.cancel()
+            raise
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/chat/sessions", response_model=SessionListResponse)

@@ -298,7 +298,7 @@ class Settings(BaseSettings):
 
     # Application metadata
     app_name: str = Field(default="DOVA", description="Application name")
-    app_version: str = Field(default="1.1.0", description="Application version")
+    app_version: str = Field(default="1.6.0", description="Application version")
     environment: Literal["development", "staging", "production"] = Field(
         default="development", description="Deployment environment"
     )

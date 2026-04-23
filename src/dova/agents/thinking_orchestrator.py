@@ -316,9 +316,11 @@ Critical rules:
                 session_id=session_id,
             )
 
-            # 1. Load user model and conversation context
-            user_model = await self._load_user_model(task.user_id)
-            context = await self._load_conversation_context(session_id, task.user_id)
+            # 1. Load user model and conversation context in parallel
+            user_model, context = await asyncio.gather(
+                self._load_user_model(task.user_id),
+                self._load_conversation_context(session_id, task.user_id),
+            )
 
             # Add user query to context
             context.add_turn(role="user", content=query)
@@ -439,6 +441,28 @@ Critical rules:
                     "action": deliberation.action.value,
                     "tools_planned": tools_planned,
                 })
+                await progress("thinking", {
+                    "step_type": "observation",
+                    "content": deliberation.understanding or query,
+                })
+                if deliberation.reasoning:
+                    await progress("thinking", {
+                        "step_type": "reasoning",
+                        "content": deliberation.reasoning,
+                    })
+                await progress("thinking", {
+                    "step_type": "plan",
+                    "content": (
+                        f"Action: {deliberation.action.value}. Tools: "
+                        + (", ".join(tools_planned) if tools_planned else "none")
+                    ),
+                })
+                for tool in deliberation.tools_to_use:
+                    if tool.would_help and tool.rationale:
+                        await progress("thinking", {
+                            "step_type": "plan",
+                            "content": f"[{tool.tool_name}] {tool.rationale}",
+                        })
 
             # 3. Execute based on deliberation decision
             response: str
@@ -458,9 +482,24 @@ Critical rules:
                 action_result = tool_results
 
                 if progress:
+                    counts = {
+                        "papers": len(tool_results.get("papers") or []),
+                        "repositories": len(tool_results.get("repositories") or []),
+                        "models": len(tool_results.get("models") or []),
+                        "web_results": len(tool_results.get("web_results") or []),
+                    }
+                    summary = ", ".join(f"{v} {k}" for k, v in counts.items() if v)
+                    await progress("thinking", {
+                        "step_type": "action",
+                        "content": f"Retrieved {summary or 'no results'}.",
+                    })
                     await progress("stage", {
                         "stage": "synthesizing",
                         "message": "Synthesizing results...",
+                    })
+                    await progress("thinking", {
+                        "step_type": "reflection",
+                        "content": "Synthesizing a structured answer with LaTeX formulas and IEEE-style algorithms where relevant.",
                     })
 
                     response = await self._synthesize_with_results_stream(
@@ -1786,25 +1825,50 @@ CRITICAL RULES - FOLLOW EXACTLY:
 
 6. COMPREHENSIVE OUTPUT
    - Provide in-depth explanations with detailed analysis
-   - Include mathematical formulas or equations where relevant (use LaTeX notation: $formula$)
    - ALWAYS include source URLs as inline links for every paper, repo, model, or web source you reference
    - Structure the response with clear sections and headers when covering multiple aspects
    - For technical topics, explain key concepts, methods, and their significance
    - For each key finding or recommendation, explain the RATIONALE: why it matters, what problem it solves, or what makes it significant
    - When comparing approaches, explain trade-offs and under what conditions each excels
    - Connect findings to practical implications — who benefits and how
-   - When showing implementation frameworks or algorithmic approaches, use PDL (Program Description Language) style pseudo code instead of Python or any specific programming language. Example PDL format:
+
+7. MATH FORMATTING (LaTeX / KaTeX — MANDATORY when any equation, metric, complexity bound, or quantitative relation appears)
+   - Inline math MUST be wrapped in single dollars: $O(n \\log n)$, $\\mathcal{{L}}(\\theta) = -\\mathbb{{E}}[\\log p_\\theta(x)]$
+   - Display math (one-liners or important equations) MUST be wrapped in double dollars on their own paragraph:
+       $$ \\mathrm{{Attention}}(Q,K,V) = \\mathrm{{softmax}}\\!\\left( \\tfrac{{QK^\\top}}{{\\sqrt{{d_k}}}} \\right) V $$
+   - Use proper LaTeX macros: \\mathbb, \\mathcal, \\mathrm, \\nabla, \\sum, \\int, \\frac, \\sqrt, \\hat, \\tilde, \\bar, \\in, \\subseteq, \\to, \\leftarrow, \\Rightarrow, \\forall, \\exists, \\approx, \\propto, \\sim
+   - Always render loss functions, scaling laws, gradient updates, complexity bounds, probabilities, and any symbol involving subscripts/superscripts as LaTeX — never as plain text like "O(n log n)" or "theta_hat"
+
+8. ALGORITHMS — MANDATORY IEEE-STYLE PSEUDOCODE
+   - Whenever the response describes a procedure, training loop, optimization step, decoding strategy, search method, or any multi-step algorithm, render it as a fenced block with language tag `algorithm` using IEEE / \\usepackage{{algorithmic}} keywords.
+   - Format each line as: KEYWORD <expr or description>. Keywords MUST be UPPERCASE and drawn from:
+       \\Require   (preconditions / inputs)
+       \\Ensure    (postconditions / outputs)
+       \\State     (straight-line step)
+       \\If  ... \\Then   ... \\ElsIf ... \\Then   ... \\Else   ... \\EndIf
+       \\For <i = 1 to N> \\Do   ... \\EndFor
+       \\While <cond> \\Do       ... \\EndWhile
+       \\Repeat    ... \\Until <cond>
+       \\Function <Name>(<args>) ... \\EndFunction
+       \\Return   <expr>
+       \\Comment{{<text>}}
+   - Inline math inside any algorithm line MUST use single-dollar LaTeX: `\\State $\\theta \\gets \\theta - \\eta \\nabla_\\theta \\mathcal{{L}}$`.
+   - Each algorithm block should open with a caption line: `\\Caption{{Algorithm N: <Short Title>}}` (N = 1, 2, ...).
+   - Example:
+     ```algorithm
+     \\Caption{{Algorithm 1: Mini-batch SGD with Momentum}}
+     \\Require dataset $\\mathcal{{D}}$, learning rate $\\eta$, momentum $\\beta$, batch size $B$
+     \\Ensure trained parameters $\\theta$
+     \\State Initialize $\\theta \\leftarrow \\theta_0$,\\; $v \\leftarrow 0$
+     \\For{{$t = 1$ to $T$}}
+         \\State Sample batch $\\mathcal{{B}}_t \\subset \\mathcal{{D}}$ with $|\\mathcal{{B}}_t| = B$
+         \\State $g_t \\gets \\tfrac{{1}}{{B}} \\sum_{{x \\in \\mathcal{{B}}_t}} \\nabla_\\theta \\mathcal{{L}}(\\theta; x)$
+         \\State $v \\gets \\beta\\, v + (1 - \\beta)\\, g_t$
+         \\State $\\theta \\gets \\theta - \\eta\\, v$
+     \\EndFor
+     \\Return $\\theta$
      ```
-     PROCEDURE TrainModel(data, config)
-       preprocessed ← Preprocess(data, config.tokenizer)
-       FOR each epoch IN 1..config.num_epochs DO
-         loss ← ComputeLoss(model, preprocessed)
-         UPDATE model.parameters USING Backprop(loss)
-       END FOR
-       RETURN model
-     END PROCEDURE
-     ```
-   - PDL pseudo code should be language-agnostic, using clear keywords like PROCEDURE, FOR, IF/THEN/ELSE, WHILE, RETURN, CALL, INPUT, OUTPUT
+   - Do NOT use Python, Java, or shell snippets for algorithms — only the `algorithm` fenced block above. Keep runnable code blocks (` ```python `, etc.) strictly for glue/setup examples, never for core methodology.
 
 Response:"""
 
@@ -1826,7 +1890,7 @@ Response:"""
 
         # Code examples
         if user_model.prefers_code_examples:
-            instructions.append("When showing implementation details, use PDL-style pseudo code (not Python or any specific language).")
+            instructions.append("When showing any algorithm or procedure, use IEEE-style pseudocode in a fenced ```algorithm block (with \\State, \\For, \\If, $LaTeX$ math) instead of Python or shell code.")
 
         # Citations
         if user_model.prefers_citations:
