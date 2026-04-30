@@ -30,8 +30,8 @@ class ChatRequest(BaseModel):
         description="Session ID for continuing a conversation (omit for new session)",
     )
     sources: list[str] = Field(
-        default=["arxiv", "github", "huggingface", "web"],
-        description="Sources to search when research is needed",
+        default=["arxiv", "github", "huggingface", "web", "bio"],
+        description="Sources to search when research is needed. Includes 'bio' umbrella (routed to pubmed-bio/clinicaltrials-bio/pubchem-bio)",
     )
     show_thinking: bool = Field(
         default=False,
@@ -44,6 +44,10 @@ class ChatRequest(BaseModel):
     auto_debate: bool = Field(
         default=True,
         description="Auto-detect evaluative queries and trigger debate",
+    )
+    always_debate: bool = Field(
+        default=False,
+        description="Force bull/bear debate on every query (overrides auto-detect)",
     )
     enable_two_pass: bool = Field(
         default=True,
@@ -99,6 +103,10 @@ class ChatResponse(BaseModel):
     images: list[ImageResult] = Field(
         default_factory=list,
         description="Generated images if image action was taken",
+    )
+    intent_weights: dict[str, float] = Field(
+        default_factory=dict,
+        description="Semantic intent distribution across {ai, bio, web}. Sums to 1.0; used to weight result aggregation in synthesis.",
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,

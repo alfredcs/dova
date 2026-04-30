@@ -156,6 +156,65 @@ def search_huggingface_tool(
     }
 
 
+def search_bio_tool(
+    query: str,
+    domain: str = "auto",
+    max_results: int = 10,
+) -> dict[str, Any]:
+    """
+    Search biomedical / pharma sources (PubMed, ClinicalTrials.gov, PubChem).
+
+    Routes the query to the most relevant hosted MCP server based on the
+    `domain` hint (or keyword auto-detection when `domain="auto"`).
+
+    Args:
+        query: Search query string.
+        domain: One of 'literature' (PubMed), 'trials' (ClinicalTrials.gov),
+                'compounds' (PubChem), or 'auto' for keyword-based routing.
+        max_results: Maximum number of results (default 10).
+
+    Returns:
+        Dispatch record with tool_name, mcp_server, and params — the
+        ThinkingOrchestrator performs the actual routing.
+    """
+    domain_map = {
+        "literature": ("pubmed-bio", "pubmed_search_articles"),
+        "pubmed": ("pubmed-bio", "pubmed_search_articles"),
+        "trials": ("clinicaltrials-bio", "clinicaltrials_search_studies"),
+        "clinical": ("clinicaltrials-bio", "clinicaltrials_search_studies"),
+        "compounds": ("pubchem-bio", "pubchem_search_compounds"),
+        "chemicals": ("pubchem-bio", "pubchem_search_compounds"),
+        "drugs": ("pubchem-bio", "pubchem_search_compounds"),
+    }
+
+    if domain == "auto":
+        mcp_server, tool_name = "pubmed-bio", "pubmed_search_articles"
+    else:
+        mcp_server, tool_name = domain_map.get(
+            domain.lower(), ("pubmed-bio", "pubmed_search_articles")
+        )
+
+    logger.info("bio_search", query=query, domain=domain, mcp_server=mcp_server)
+
+    capped = min(max_results, 50)
+    if mcp_server == "pubmed-bio":
+        params: dict[str, Any] = {"query": query, "maxResults": capped}
+    elif mcp_server == "clinicaltrials-bio":
+        params = {"query": query}
+    else:  # pubchem-bio — schema: searchType + identifierType + identifiers[]
+        params = {
+            "searchType": "identifier",
+            "identifierType": "name",
+            "identifiers": [query],
+        }
+
+    return {
+        "tool_name": tool_name,
+        "mcp_server": mcp_server,
+        "params": params,
+    }
+
+
 def web_search_tool(
     query: str,
     search_depth: str = "basic",
@@ -353,6 +412,32 @@ RESEARCH_TOOLS = [
                 "library": {
                     "type": "string",
                     "description": "Library filter (e.g., transformers)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "search_bio",
+        "description": "Search biomedical / pharma data (PubMed literature, ClinicalTrials.gov trials, PubChem compounds)",
+        "function": search_bio_tool,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query",
+                },
+                "domain": {
+                    "type": "string",
+                    "enum": ["auto", "literature", "trials", "compounds"],
+                    "default": "auto",
+                    "description": "Which bio subdomain to target",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of results",
+                    "default": 10,
                 },
             },
             "required": ["query"],

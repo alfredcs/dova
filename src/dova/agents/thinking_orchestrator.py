@@ -25,7 +25,7 @@ import structlog
 from dova.agents.base import AgentResult, AgentTask, BaseAgent
 from dova.agents.conversation_context import ConversationContext, ConversationTurn
 from dova.agents.user_model import ExpertiseLevel, ResponseDepth, UserModel
-from dova.config.mcp_servers import list_mcp_servers
+from dova.config.mcp_servers import BIO_MCP_SERVERS, list_mcp_servers
 from dova.config.providers import LLMRouter, TaskType
 from dova.services.web_search import (
     ParallelWebSearchService,
@@ -48,6 +48,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     "web": "Web search (use for: news, current events, general information, non-technical topics)",
     "image": "Image generation (use for: creating images, visualizations, artwork, illustrations)",
     "awslabs": "AWS services (use for: AWS pricing, documentation, CDK, CloudFormation, Bedrock, etc.)",
+    "bio": "Biomedical / pharma data (use for: PubMed literature, clinical trials, drug/chemical compounds, gene/protein/disease queries)",
 }
 
 
@@ -60,8 +61,9 @@ def get_available_tools() -> dict[str, str]:
     """
     tools: dict[str, str] = {}
 
-    # Always include built-in tools
-    for name in ["arxiv", "github", "huggingface", "web", "image"]:
+    # Always include built-in tools (bio is always available via hosted HTTP
+    # endpoints registered in get_default_registry; no user config needed).
+    for name in ["arxiv", "github", "huggingface", "web", "image", "bio"]:
         tools[name] = TOOL_DESCRIPTIONS.get(name, f"{name} search")
 
     # Load MCP servers from config
@@ -69,6 +71,11 @@ def get_available_tools() -> dict[str, str]:
 
     # Track aggregated prefixes
     aggregated_prefixes: set[str] = set()
+
+    # Bio servers are aggregated under the "bio" umbrella — don't surface
+    # their individual names (pubmed-bio, pubchem-bio, clinicaltrials-bio)
+    # to the deliberation LLM; the orchestrator picks among them by keyword.
+    bio_server_set: set[str] = set(BIO_MCP_SERVERS)
 
     for server_name in mcp_servers.keys():
         # Check if this is a prefixed server (e.g., "awslabs.xyz")
@@ -79,6 +86,9 @@ def get_available_tools() -> dict[str, str]:
                 # Add aggregated tool with description
                 desc = TOOL_DESCRIPTIONS.get(prefix, f"{prefix} services and tools")
                 tools[prefix] = desc
+        elif server_name in bio_server_set:
+            # Already represented by the "bio" umbrella above.
+            continue
         else:
             # Non-prefixed server - add directly if not already present
             if server_name not in tools:
@@ -93,8 +103,15 @@ def get_mcp_servers_for_tool(tool_name: str) -> list[str]:
     Get the list of MCP server names that match a tool.
 
     For aggregated tools like "awslabs", returns all servers starting with "awslabs.".
+    For the "bio" umbrella, returns the curated bio server list.
     For direct tools like "arxiv", returns ["arxiv"].
     """
+    # Bio umbrella — always resolves to the curated list; these servers
+    # are registered by get_default_registry() and may not appear in
+    # list_mcp_servers() (which only reads ~/.dova.json).
+    if tool_name == "bio":
+        return list(BIO_MCP_SERVERS)
+
     mcp_servers = list_mcp_servers()
 
     # Check if this is an aggregated prefix
@@ -116,6 +133,23 @@ def get_mcp_servers_for_tool(tool_name: str) -> list[str]:
         return [aliases[tool_name]]
 
     return [tool_name]  # Return as-is for built-in tools
+
+
+_EVALUATIVE_PATTERNS = [
+    r"\bevaluate\b", r"\bcompare\b", r"\bvs\.?\b", r"\bversus\b",
+    r"\btradeoffs?\b", r"\btrade-offs?\b", r"\bpros?\s+(?:and\s+)?cons?\b",
+    r"\badvantages?\s+(?:and\s+)?disadvantages?\b",
+    r"\bstrengths?\s+(?:and\s+)?weaknesses?\b",
+    r"\bshould\s+(?:i|we)\s+(?:use|choose|pick|adopt)\b",
+    r"\bwhich\s+(?:is|are)\s+(?:better|best)\b",
+    r"\bdebate\b", r"\barguments?\s+(?:for|against)\b",
+]
+
+
+def _is_evaluative_query(query: str) -> bool:
+    """Whether the query asks for an evaluative/debate-style analysis."""
+    q = query.lower()
+    return any(re.search(p, q) for p in _EVALUATIVE_PATTERNS)
 
 
 _RECENCY_PATTERN = re.compile(
@@ -174,6 +208,155 @@ class Deliberation:
     reasoning: str = ""
     clarification_needed: str = ""
     inferred_entity: str = ""  # What we inferred from ambiguous user input (e.g., typo correction)
+    # Semantic intent weights across the three top-level groups. Sum to 1.0.
+    # Used downstream to weight result aggregation in synthesis, not execution.
+    intent_weights: dict[str, float] = field(default_factory=dict)
+
+
+# --- Intent scoring vocabulary -------------------------------------------
+# These compact keyword lists score how strongly a query leans toward the
+# AI / Bio / Web groups. The scorer is intentionally lightweight (no LLM
+# round-trip) so it runs cheaply on every query. The bio list is aligned
+# with _select_bio_servers so routing and weighting stay consistent.
+
+_AI_INTENT_KEYWORDS: tuple[str, ...] = (
+    "neural network", "transformer", "llm", "large language model",
+    "reinforcement learning", "rlhf", "dpo", "ppo", "fine-tuning",
+    "pretraining", "pre-training", "distillation", "lora", "qlora",
+    "attention", "embedding", "tokenizer", "moe", "mixture-of-experts",
+    "diffusion model", "gan", "vae", "autoencoder", "foundation model",
+    "cnn", "rnn", "lstm", "gradient", "backprop",
+    "huggingface", "pytorch", "tensorflow", "jax",
+    "arxiv", "benchmark", "sota", "state-of-the-art",
+    "agent", "orchestration", "tool use", "tool-use", "react loop",
+    "inference", "quantization", "speculative decoding", "kv cache",
+    "scaling law", "chinchilla",
+    "algorithm", "architecture", "implementation", "open-source",
+    "repository", "repo ", "python", "codebase",
+)
+
+_BIO_INTENT_KEYWORDS: tuple[str, ...] = (
+    # Clinical trials
+    "clinical trial", "trial", "nct", "phase i", "phase ii", "phase iii",
+    "phase iv", "randomized", "placebo", "enrollment", "recruiting",
+    "eligibility", "ind-enabling", "primary endpoint",
+    # Compounds / pharmacology
+    "compound", "molecule", "small molecule", "smiles", "inchi", "pubchem",
+    "cid", "bioassay", "admet", "herg", "cyp", "logp",
+    "pharmacokinetic", "pharmacodynamic", "drug-drug interaction", "ddi",
+    "hepatotoxicity", "retrosynthesis",
+    # Biomedical / genomics / protein
+    "protein", "peptide", "antibody", "antigen", "epitope", "binder",
+    "binding affinity", "rfdiffusion", "alphafold", "af2", "af3",
+    "docking", "cryptic site", "enzyme", "directed evolution",
+    "gene", "genome", "genomic", "gwas", "variant", "mutation", "allele",
+    "transcriptom", "proteomic", "metabolomic", "single-cell", "scrna",
+    "crispr", "gene editing", "base editing", "prime editing", "aav", "lnp",
+    "cancer", "oncolog", "tumor", "tumour", "melanoma", "leukemia",
+    "lymphoma", "diabetes", "alzheimer", "parkinson", "hepatitis",
+    "hiv", "sars-cov", "covid",
+    "pubmed", "pmid", "mesh", "medline", "biomedical", "biotech",
+    "pharma", "pharmaceutical", "biomarker", "therapeutic",
+    "histopathology", "radiology", "ehr", "real-world evidence",
+)
+
+_WEB_INTENT_KEYWORDS: tuple[str, ...] = (
+    "news", "announced", "nominated", "election", "stock", "earnings",
+    "released", "launched", "today", "this week", "this month",
+    "price", "pricing", "cost", "market", "regulation", "policy",
+    "country", "company", "ceo", "founder", "startup",
+    "blog", "twitter", "reddit", "wikipedia",
+)
+
+
+def compute_intent_weights(
+    query: str,
+    allowed_groups: set[str] | None = None,
+    web_floor: float = 0.10,
+    group_floor: float = 0.05,
+) -> dict[str, float]:
+    """
+    Score a query's intent distribution across {ai, bio, web}.
+
+    Returns weights in [0, 1] that sum to 1.0. The scorer is keyword-based
+    and intentionally simple — its output is used only to weight result
+    aggregation during synthesis, not execution. Every allowed group
+    receives at least `group_floor`, and web receives at least `web_floor`
+    when it's allowed (because general-purpose context usually helps).
+
+    Args:
+        query: User query string.
+        allowed_groups: Subset of {"ai","bio","web"} the UI selected.
+                        None = all three allowed.
+        web_floor: Minimum weight for web when allowed.
+        group_floor: Minimum weight for any other allowed group that has
+                     zero keyword hits (prevents zero-sum exclusion).
+    """
+    q = query.lower()
+    if allowed_groups is None:
+        allowed_groups = {"ai", "bio", "web"}
+
+    def _count(kws: tuple[str, ...]) -> int:
+        return sum(1 for kw in kws if kw in q)
+
+    raw: dict[str, float] = {}
+    if "ai" in allowed_groups:
+        raw["ai"] = float(_count(_AI_INTENT_KEYWORDS))
+    if "bio" in allowed_groups:
+        raw["bio"] = float(_count(_BIO_INTENT_KEYWORDS))
+    if "web" in allowed_groups:
+        raw["web"] = float(_count(_WEB_INTENT_KEYWORDS))
+
+    # Normalise raw counts into a distribution. If everything is zero
+    # (e.g., a very generic query), split evenly across allowed groups.
+    total = sum(raw.values())
+    if total <= 0:
+        share = 1.0 / max(len(raw), 1)
+        weights = {g: share for g in raw}
+    else:
+        weights = {g: v / total for g, v in raw.items()}
+
+    # Enforce floors by redistributing excess weight from over-funded groups.
+    # After this block, min weights hold exactly and the distribution still
+    # sums to 1.0 — no post-hoc normalisation needed.
+    def _floors() -> dict[str, float]:
+        floors: dict[str, float] = {}
+        for g in weights:
+            floors[g] = web_floor if g == "web" else group_floor
+        # If floors can't all be satisfied (e.g., a single allowed group),
+        # scale the floors down proportionally so they still sum to <= 1.
+        f_total = sum(floors.values())
+        if f_total > 1.0:
+            scale = 1.0 / f_total
+            floors = {g: v * scale for g, v in floors.items()}
+        return floors
+
+    floors = _floors()
+    # Amount we need to "raise" each under-floor group to its floor.
+    deficits = {g: max(0.0, floors[g] - weights[g]) for g in weights}
+    total_deficit = sum(deficits.values())
+    if total_deficit > 0:
+        # Pool of "excess" above-floor weight we can donate from.
+        excesses = {
+            g: max(0.0, weights[g] - floors[g]) for g in weights
+        }
+        excess_total = sum(excesses.values())
+        if excess_total > 0:
+            # Each over-floor group contributes proportionally to its excess.
+            for g in weights:
+                donation = excesses[g] / excess_total * total_deficit
+                weights[g] -= donation
+            for g in weights:
+                weights[g] += deficits[g]
+
+    # Round for log/UI readability — keeps 2 decimals and still sums to 1.0.
+    rounded = {g: round(v, 2) for g, v in weights.items()}
+    drift = round(1.0 - sum(rounded.values()), 2)
+    if rounded and abs(drift) >= 0.01:
+        # Put the rounding residue on the largest group.
+        top = max(rounded, key=rounded.get)
+        rounded[top] = round(rounded[top] + drift, 2)
+    return rounded
 
 
 # Deliberation prompt template - {available_tools} is filled dynamically
@@ -357,6 +540,29 @@ Critical rules:
                     query, user_model, context, allowed_sources=allowed_sources,
                 )
 
+            # Compute semantic intent weights across {ai, bio, web}. Used in
+            # synthesis for proportional aggregation — not for execution.
+            # Map the user's source list to the 3 top-level groups.
+            allowed_groups: set[str] | None = None
+            if allowed_sources is not None:
+                allowed_groups = set()
+                ai_sources = {"arxiv", "github", "huggingface", "hugging-face"}
+                for s in allowed_sources:
+                    if s in ai_sources:
+                        allowed_groups.add("ai")
+                    elif s == "web":
+                        allowed_groups.add("web")
+                    elif s == "bio":
+                        allowed_groups.add("bio")
+            deliberation.intent_weights = compute_intent_weights(
+                query, allowed_groups=allowed_groups,
+            )
+            self._logger.info(
+                "intent_weights_computed",
+                weights=deliberation.intent_weights,
+                allowed_groups=sorted(allowed_groups) if allowed_groups else None,
+            )
+
             # Override: if the query implies recency, force tool usage
             if (
                 deliberation.action == ActionDecision.RESPOND_DIRECTLY
@@ -440,7 +646,18 @@ Critical rules:
                     "message": f"Decided to {'search ' + ', '.join(tools_planned) if deliberation.action == ActionDecision.USE_TOOLS else 'respond directly'}",
                     "action": deliberation.action.value,
                     "tools_planned": tools_planned,
+                    "intent_weights": deliberation.intent_weights,
                 })
+                if deliberation.intent_weights:
+                    weights_text = ", ".join(
+                        f"{int(v * 100)}% {k.upper()}"
+                        for k, v in deliberation.intent_weights.items()
+                        if v > 0
+                    )
+                    await progress("thinking", {
+                        "step_type": "deliberation",
+                        "content": f"Semantic intent: {weights_text}",
+                    })
                 await progress("thinking", {
                     "step_type": "observation",
                     "content": deliberation.understanding or query,
@@ -513,6 +730,43 @@ Critical rules:
                 response = deliberation.clarification_needed
                 context.last_assistant_question = response
 
+            # 3b. Optional debate pass for evaluative queries. Triggered when:
+            #   (a) `force_debate` is set in task.params (user explicitly asked
+            #       for collaborative/deep reasoning mode), OR
+            #   (b) `auto_debate` is set AND the query matches evaluative
+            #       patterns (compare / vs / tradeoffs / pros-and-cons / ...).
+            # Produces bull / bear / recommendation packaged into action_result.
+            auto_debate = task.params.get("auto_debate", False)
+            force_debate = task.params.get("force_debate", False)
+            should_debate = force_debate or (
+                auto_debate and _is_evaluative_query(query)
+            )
+            if (
+                should_debate
+                and deliberation.action != ActionDecision.CLARIFY
+                and "debate" in self.agents
+            ):
+                if progress:
+                    await progress("stage", {
+                        "stage": "debating",
+                        "message": "Running bull/bear debate...",
+                    })
+                debate_out = await self._run_debate(
+                    query, deliberation, action_result, response
+                )
+                if debate_out:
+                    if action_result is None:
+                        action_result = {}
+                    action_result.update(debate_out)
+                    if progress:
+                        await progress("thinking", {
+                            "step_type": "reflection",
+                            "content": (
+                                f"Debate: {len(debate_out.get('bull_strengths', []))} strengths, "
+                                f"{len(debate_out.get('bear_concerns', []))} concerns"
+                            ),
+                        })
+
             # 4. Update context with assistant response
             context.add_turn(
                 role="assistant",
@@ -540,6 +794,7 @@ Critical rules:
                         "action": deliberation.action.value,
                         "reasoning": deliberation.reasoning,
                         "tools_used": tools_used,
+                        "intent_weights": deliberation.intent_weights,
                     },
                     "action_result": action_result,
                 },
@@ -938,11 +1193,68 @@ Response:"""
 
         return results
 
+    async def _run_debate(
+        self,
+        query: str,
+        deliberation: Deliberation,
+        tool_results: dict[str, Any] | None,
+        synthesized_answer: str,
+    ) -> dict[str, Any] | None:
+        """Invoke the registered DebateAgent on an evaluative query.
+
+        Packages the research output and the orchestrator's synthesized
+        answer as context for the bull/bear debate, and flattens the result
+        into the same keys the API expects (bull_strengths, bear_concerns,
+        recommendation, debate_history).
+        """
+        from dova.agents.base import AgentTask as _AgentTask
+
+        debate_agent = self.agents.get("debate")
+        if debate_agent is None:
+            return None
+
+        ctx: dict[str, Any] = {"orchestrator_answer": synthesized_answer}
+        if tool_results:
+            # Keep the context compact — the DebateAgent only needs a
+            # summary of the evidence, not every raw field.
+            ctx["papers"] = (tool_results.get("papers") or [])[:5]
+            ctx["repositories"] = (tool_results.get("repositories") or [])[:5]
+            ctx["models"] = (tool_results.get("models") or [])[:5]
+            ctx["web_results"] = (tool_results.get("web_results") or [])[:5]
+
+        try:
+            result = await debate_agent.execute(
+                _AgentTask(type="debate", params={"topic": query, "context": ctx})
+            )
+        except Exception as e:
+            self._logger.warning("debate_execution_error", error=str(e))
+            return None
+
+        if not result.success or not result.data:
+            self._logger.warning(
+                "debate_failed",
+                error=result.error if not result.success else "empty_data",
+            )
+            return None
+
+        d = result.data
+        return {
+            "bull_strengths": d.get("bull_strengths", []),
+            "bear_concerns": d.get("bear_concerns", []),
+            "balanced_assessment": d.get("balanced_assessment", ""),
+            "recommendation": d.get("recommendation", ""),
+            "confidence_score": d.get("confidence_score", 0.0),
+            "debate_summary": d.get("summary", ""),
+        }
+
     async def _execute_mcp_tool(self, tool_name: str, query: str) -> list[dict[str, Any]]:
         """
         Execute an MCP tool by name.
 
         For aggregated tools like "awslabs", selects the best matching server.
+        For the "bio" umbrella, may fan out to multiple sub-servers in parallel
+        when the query has keyword signals across multiple biomed domains
+        (e.g., "phase-III sofosbuvir trials" → both trials + chemical compound).
         """
         results: list[dict[str, Any]] = []
 
@@ -953,7 +1265,66 @@ Response:"""
             self._logger.warning("no_mcp_servers_for_tool", tool=tool_name)
             return results
 
-        # Select the best server based on the query
+        # Semantic multi-select for the bio umbrella: run every sub-server
+        # whose keyword score is positive, so cross-domain biomed queries
+        # get literature + trial + compound context simultaneously.
+        if tool_name == "bio":
+            selected = self._select_bio_servers(servers, query)
+            self._logger.info(
+                "executing_bio_fanout",
+                tool=tool_name,
+                servers=selected,
+                query=query,
+            )
+            async def _run(name: str) -> dict[str, Any] | None:
+                call = self._get_mcp_tool_for_query(name, query)
+                params = self._get_mcp_tool_params(name, call, query)
+                self._logger.info(
+                    "bio_server_call_starting",
+                    server=name,
+                    tool=call,
+                    params_keys=list(params.keys()),
+                )
+                try:
+                    r = await self.call_tool(name, call, params)
+                    if r.success and r.data:
+                        # Report size so operators can see the call really fired.
+                        if isinstance(r.data, str):
+                            data_size = f"{len(r.data)} chars"
+                        elif isinstance(r.data, list):
+                            data_size = f"{len(r.data)} items"
+                        elif isinstance(r.data, dict):
+                            data_size = f"dict keys={list(r.data.keys())[:5]}"
+                        else:
+                            data_size = type(r.data).__name__
+                        self._logger.info(
+                            "bio_server_call_complete",
+                            server=name,
+                            tool=call,
+                            success=True,
+                            data=data_size,
+                        )
+                        return {"source": name, "tool": call, "data": r.data}
+                    self._logger.warning(
+                        "bio_server_call_empty",
+                        server=name,
+                        tool=call,
+                        success=r.success,
+                        error=r.error,
+                    )
+                except Exception as e:
+                    self._logger.warning(
+                        "bio_server_call_exception",
+                        server=name,
+                        tool=call,
+                        error=str(e),
+                    )
+                return None
+
+            fan_results = await asyncio.gather(*[_run(s) for s in selected])
+            return [r for r in fan_results if r is not None]
+
+        # Single-best selection for non-bio aggregates (e.g., awslabs).
         server_name = await self._select_best_mcp_server(servers, query)
 
         self._logger.info(
@@ -998,6 +1369,77 @@ Response:"""
 
         return results
 
+    def _select_bio_servers(self, servers: list[str], query: str) -> list[str]:
+        """
+        Semantic multi-select for the bio umbrella.
+
+        Returns every bio sub-server whose keyword signal is positive, so a
+        multi-domain query (e.g., "phase-III sofosbuvir trials for hepatitis")
+        hits PubMed + ClinicalTrials + PubChem in parallel. If no keywords
+        match at all, returns the default literature server only.
+        """
+        query_lower = query.lower()
+        bio_keywords: dict[str, list[str]] = {
+            "clinicaltrials-bio": [
+                # ClinicalTrials.gov-specific signals
+                "clinical trial", "clinicaltrials", "nct", "trial",
+                "recruiting", "enrollment", "phase i", "phase ii",
+                "phase iii", "phase iv", "randomized", "placebo", "cohort",
+                "double-blind", "eligibility", "primary endpoint",
+                "secondary endpoint", "adaptive design", "ind-enabling",
+                "ind enabling", "investigational new drug",
+            ],
+            "pubchem-bio": [
+                # Small-molecule / cheminformatics signals
+                "compound", "molecule", "small molecule", "drug structure",
+                "smiles", "inchi", "chemical formula", "pubchem", "cid",
+                "bioassay", "ghs hazard", "substructure", "superstructure",
+                "cheminformatics", "admet", "logp", "herg", "cyp",
+                "pharmacokinetic", "pharmacodynamic", "drug-drug interaction",
+                "ddi", "hepatotoxicity", "retrosynthesis",
+            ],
+            "pubmed-bio": [
+                # Literature / biomedical research signals — broad so most
+                # biotech/pharma questions pick up PubMed as at least one
+                # of the servers to call.
+                "pubmed", "pmid", "pmc", "mesh", "biomedical literature",
+                "medline", "clinical study", "systematic review",
+                "meta-analysis", "case report", "cohort study",
+                "article abstract", "citation",
+                # General biomed vocabulary — proteins, genes, targets, diseases
+                "protein", "peptide", "antibody", "antigen", "epitope",
+                "binder", "binding affinity", "affinity", "kinetics",
+                "structure-based", "cryptic site", "docking", "alphafold",
+                "af2", "rfdiffusion", "de novo design", "protein design",
+                "enzyme", "catalysis", "directed evolution",
+                "gene", "genome", "genomic", "gwas", "variant",
+                "mutation", "allele", "expression", "transcriptom",
+                "proteomic", "metabolomic", "single-cell", "scrna",
+                "crispr", "gene editing", "base editing", "prime editing",
+                "aav", "lnp", "vector",
+                "cancer", "oncolog", "tumor", "tumour", "melanoma",
+                "leukemia", "lymphoma", "diabetes", "alzheimer",
+                "parkinson", "hepatitis", "hiv", "sars-cov", "covid",
+                "rare disease", "therapeutic", "biomarker",
+                "drug discovery", "lead optimization", "hit rate",
+                "off-target", "target discovery", "mechanism of action",
+                "ehr", "real-world evidence", "rwe", "clinical note",
+                "pathology", "histopathology", "radiology",
+            ],
+        }
+
+        hits: list[str] = [
+            s for s in servers
+            if any(kw in query_lower for kw in bio_keywords.get(s, []))
+        ]
+        if hits:
+            return hits
+
+        # No explicit keywords — fall back to literature (broadest entry point).
+        if "pubmed-bio" in servers:
+            return ["pubmed-bio"]
+        return servers[:1]
+
     async def _select_best_mcp_server(self, servers: list[str], query: str) -> str:
         """Select the best MCP server for a query from a list of candidates."""
         if len(servers) == 1:
@@ -1020,6 +1462,22 @@ Response:"""
             "awslabs.iam-mcp-server": ["iam", "permission", "role", "policy", "access"],
             "awslabs.cfn-mcp-server": ["cloudformation", "cfn", "stack", "template"],
             "awslabs.terraform-mcp-server": ["terraform", "tf", "hcl"],
+            # Bio umbrella — keyword routing to the most specific server.
+            "clinicaltrials-bio": [
+                "clinical trial", "clinicaltrials", "nct", "trial", "recruiting",
+                "enrollment", "phase i", "phase ii", "phase iii", "phase iv",
+                "randomized", "placebo", "cohort", "double-blind", "eligibility",
+            ],
+            "pubchem-bio": [
+                "compound", "molecule", "drug structure", "smiles", "inchi",
+                "chemical formula", "pubchem", "cid", "bioassay", "ghs hazard",
+                "substructure", "superstructure", "cheminformatics",
+            ],
+            "pubmed-bio": [
+                "pubmed", "pmid", "pmc", "mesh", "biomedical literature",
+                "medline", "clinical study", "systematic review", "meta-analysis",
+                "case report", "cohort study", "article abstract", "citation",
+            ],
         }
 
         # Score each server
@@ -1036,6 +1494,11 @@ Response:"""
         # Default to docs server for general AWS queries if no specific match
         if best_score == 0 and "awslabs.aws-documentation-mcp-server" in servers:
             return "awslabs.aws-documentation-mcp-server"
+
+        # Default to PubMed for general biomedical queries if no specific match.
+        # Literature search is the broadest starting point across the bio umbrella.
+        if best_score == 0 and "pubmed-bio" in servers:
+            return "pubmed-bio"
 
         return best_server
 
@@ -1055,6 +1518,10 @@ Response:"""
             "awslabs.dynamodb-mcp-server": "dynamodb_data_modeling",
             "awslabs.s3-tables-mcp-server": "list_tables",
             "awslabs.iam-mcp-server": "list_roles",
+            # Bio servers — primary search tool for each
+            "pubmed-bio": "pubmed_search_articles",
+            "clinicaltrials-bio": "clinicaltrials_search_studies",
+            "pubchem-bio": "pubchem_search_compounds",
         }
 
         return tool_mapping.get(server_name, "search")
@@ -1107,6 +1574,22 @@ Response:"""
         # Terraform docs - uses query
         if server_name == "awslabs.terraform-mcp-server":
             return {"query": query}
+
+        # Bio servers — each has its own schema (verified against live endpoints).
+        if server_name == "pubmed-bio":
+            # pubmed_search_articles: {query, maxResults, ...}
+            return {"query": query, "maxResults": 10}
+        if server_name == "clinicaltrials-bio":
+            # clinicaltrials_search_studies: free-text `query`, no max_results in schema.
+            return {"query": query}
+        if server_name == "pubchem-bio":
+            # pubchem_search_compounds: searchType + identifierType + identifiers[].
+            # Default to name-based lookup — best fit for free-text biomed queries.
+            return {
+                "searchType": "identifier",
+                "identifierType": "name",
+                "identifiers": [query],
+            }
 
         # Default fallback - try common parameter names
         return {"query": query}
@@ -1683,11 +2166,43 @@ Return ONLY the enhanced prompt, nothing else."""
         context: ConversationContext,
         deliberation: Deliberation,
     ) -> str:
-        """Build the synthesis prompt. Shared by streaming and non-streaming paths."""
+        """Build the synthesis prompt. Shared by streaming and non-streaming paths.
+
+        Result aggregation is weighted by the deliberation's semantic intent
+        distribution across {ai, bio, web}. A fixed budget of ~15 slots is
+        divided proportionally so a 60% AI / 30% Bio / 10% Web query surfaces
+        roughly 9 AI items (split across papers/repos/models), 5 bio items,
+        and 2 web items to the synthesis LLM. Every allocated group gets a
+        minimum of 2 items when it has any results, so no group is starved.
+        """
         result_parts = []
 
+        weights = deliberation.intent_weights or {"ai": 0.5, "bio": 0.2, "web": 0.3}
+        total_budget = 15
+
+        def _slots(weight: float) -> int:
+            return max(2, round(weight * total_budget))
+
+        ai_slots = _slots(weights.get("ai", 0.0))
+        bio_slots = _slots(weights.get("bio", 0.0))
+        web_slots = _slots(weights.get("web", 0.0))
+
+        # AI group is split across papers/repos/models. Divide as evenly
+        # as possible but give papers the remainder (they're usually richer).
+        num_ai_channels = sum(
+            1 for k in ("papers", "repositories", "models") if results.get(k)
+        ) or 1
+        per_channel = max(2, ai_slots // num_ai_channels)
+
+        papers_cap = per_channel if results.get("papers") else 0
+        repos_cap = per_channel if results.get("repositories") else 0
+        models_cap = per_channel if results.get("models") else 0
+        # Award any remainder to papers.
         if results.get("papers"):
-            papers = results["papers"][:5]
+            papers_cap += ai_slots - per_channel * num_ai_channels
+
+        if results.get("papers") and papers_cap > 0:
+            papers = results["papers"][:papers_cap]
             paper_lines = []
             for p in papers:
                 title = p.get('title', 'Unknown')
@@ -1706,10 +2221,14 @@ Return ONLY the enhanced prompt, nothing else."""
                 if abstract:
                     line += f"\n  Abstract: {abstract}"
                 paper_lines.append(line)
-            result_parts.append(f"**Papers Found ({len(results['papers'])}):**\n" + "\n".join(paper_lines))
+            result_parts.append(
+                f"**Papers Found ({len(results['papers'])}, showing {len(papers)} "
+                f"per {int(weights.get('ai', 0) * 100)}% AI weight):**\n"
+                + "\n".join(paper_lines)
+            )
 
-        if results.get("repositories"):
-            repos = results["repositories"][:5]
+        if results.get("repositories") and repos_cap > 0:
+            repos = results["repositories"][:repos_cap]
             repo_lines = []
             for r in repos:
                 name = r.get('name', r.get('full_name', 'Unknown'))
@@ -1721,10 +2240,13 @@ Return ONLY the enhanced prompt, nothing else."""
                 if url:
                     line += f"\n  URL: {url}"
                 repo_lines.append(line)
-            result_parts.append(f"**Repositories Found ({len(results['repositories'])}):**\n" + "\n".join(repo_lines))
+            result_parts.append(
+                f"**Repositories Found ({len(results['repositories'])}, showing {len(repos)}):**\n"
+                + "\n".join(repo_lines)
+            )
 
-        if results.get("models"):
-            models = results["models"][:5]
+        if results.get("models") and models_cap > 0:
+            models = results["models"][:models_cap]
             model_lines = []
             for m in models:
                 mid = m.get('id', m.get('title', 'Unknown'))
@@ -1742,10 +2264,13 @@ Return ONLY the enhanced prompt, nothing else."""
                 if url:
                     line += f"\n  URL: {url}"
                 model_lines.append(line)
-            result_parts.append(f"**Models Found ({len(results['models'])}):**\n" + "\n".join(model_lines))
+            result_parts.append(
+                f"**Models Found ({len(results['models'])}, showing {len(models)}):**\n"
+                + "\n".join(model_lines)
+            )
 
-        if results.get("web_results"):
-            web = results["web_results"][:5]
+        if results.get("web_results") and web_slots > 0:
+            web = results["web_results"][:web_slots]
             web_lines = []
             for w in web:
                 title = w.get('title', 'Unknown')
@@ -1755,13 +2280,21 @@ Return ONLY the enhanced prompt, nothing else."""
                 if url:
                     line += f"\n  URL: {url}"
                 web_lines.append(line)
-            result_parts.append(f"**Web Results ({len(results['web_results'])}):**\n" + "\n".join(web_lines))
+            result_parts.append(
+                f"**Web Results ({len(results['web_results'])}, showing {len(web)} "
+                f"per {int(weights.get('web', 0) * 100)}% Web weight):**\n"
+                + "\n".join(web_lines)
+            )
 
         if results.get("images"):
             images = results["images"]
             result_parts.append(f"**Images Generated ({len(images)}):** Images have been created based on your request.")
 
         if results.get("mcp_results"):
+            # Truncate each bio source's payload proportionally to the bio
+            # weight. A 10% bio query gets ~400 chars per server; a 60% bio
+            # query gets ~2000 chars so the synthesis LLM sees full context.
+            bio_budget_chars = max(400, int(2500 * weights.get("bio", 0.2)))
             for mcp_result in results["mcp_results"]:
                 source = mcp_result.get("source", "unknown")
                 data = mcp_result.get("data", {})
@@ -1770,13 +2303,19 @@ Return ONLY the enhanced prompt, nothing else."""
                     if fuzzy_result:
                         result_parts.append(fuzzy_result)
                         continue
+                is_bio = source in ("pubmed-bio", "clinicaltrials-bio", "pubchem-bio")
+                cap = bio_budget_chars if is_bio else 500
                 if isinstance(data, dict):
-                    summary = json.dumps(data, indent=2)[:500]
+                    summary = json.dumps(data, indent=2)[:cap]
                 elif isinstance(data, list):
                     summary = f"{len(data)} items returned"
                 else:
-                    summary = str(data)[:500]
-                result_parts.append(f"**{source}:**\n{summary}")
+                    summary = str(data)[:cap]
+                header = f"**{source}"
+                if is_bio:
+                    header += f" ({int(weights.get('bio', 0) * 100)}% Bio weight)"
+                header += ":**"
+                result_parts.append(f"{header}\n{summary}")
 
         style_instructions = self._get_style_instructions(user_model)
 
@@ -1784,12 +2323,21 @@ Return ONLY the enhanced prompt, nothing else."""
         if hasattr(deliberation, 'inferred_entity') and deliberation.inferred_entity:
             inferred_context = f"\nNote: User likely meant '{deliberation.inferred_entity}' - adjust response accordingly.\n"
 
+        # Human-readable intent distribution for the synthesis LLM.
+        weights_str = ", ".join(
+            f"{int(v * 100)}% {k.upper()}" for k, v in weights.items() if v > 0
+        ) or "balanced"
+
         return f"""Synthesize these search results into a helpful response.
 
 TODAY'S DATE: {_current_date_str()}
 
 User Question: {query}
 Understanding: {deliberation.understanding}
+Semantic intent distribution: {weights_str}
+(Weight the depth and prominence of each section in your answer accordingly —
+a higher-weighted group should dominate the narrative; lower-weighted groups
+provide corroborating context.)
 {inferred_context}
 Search Results:
 {chr(10).join(result_parts) if result_parts else "No results found."}

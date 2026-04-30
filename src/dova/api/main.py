@@ -333,13 +333,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    # Root route serves the frontend UI
+    # Root route serves the frontend UI. Disable caching on the HTML so
+    # users always get the latest source-selection chips and JS after a
+    # deploy (the file is ~100 KB — no-cache is fine).
     @app.get("/", include_in_schema=False)
     async def root():
         """Serve the frontend UI."""
         index_file = static_dir / "index.html"
         if index_file.exists():
-            return FileResponse(str(index_file))
+            return FileResponse(
+                str(index_file),
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+            )
         return {"message": "DOVA API", "docs": "/docs", "version": settings.app_version}
 
     return app

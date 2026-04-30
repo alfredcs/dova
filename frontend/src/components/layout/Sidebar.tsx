@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, User, History, Lightbulb, Brain, Database } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
+import { SOURCE_GROUPS } from '@/components/search/SearchFilters'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -11,12 +12,6 @@ const navItems = [
   { to: '/sources', icon: Database, label: 'Sources' },
 ]
 
-const sources = [
-  { id: 'arxiv', label: 'ArXiv' },
-  { id: 'github', label: 'GitHub' },
-  { id: 'huggingface', label: 'HuggingFace' },
-]
-
 interface SidebarProps {
   selectedSources?: string[]
   onSourceToggle?: (source: string) => void
@@ -24,7 +19,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  selectedSources = ['arxiv', 'github', 'huggingface'],
+  // Stores group IDs ('ai' | 'web' | 'bio'). Matches Dashboard state.
+  selectedSources = ['ai', 'web', 'bio'],
   onSourceToggle,
   recommendations = [],
 }: SidebarProps) {
@@ -56,22 +52,23 @@ export default function Sidebar({
           </NavLink>
         ))}
 
-        {/* Source Filters */}
+        {/* Source Filters — grouped: AI / Web / Bio */}
         <div className="mt-6 border-t pt-4">
           <h3 className="mb-3 px-3 text-xs font-semibold uppercase text-muted-foreground">
             Sources
           </h3>
           <div className="space-y-2">
-            {sources.map((source) => (
+            {SOURCE_GROUPS.map((group) => (
               <label
-                key={source.id}
+                key={group.id}
                 className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
+                title={group.description}
               >
                 <Checkbox
-                  checked={selectedSources.includes(source.id)}
-                  onCheckedChange={() => onSourceToggle?.(source.id)}
+                  checked={selectedSources.includes(group.id)}
+                  onCheckedChange={() => onSourceToggle?.(group.id)}
                 />
-                <span>{source.label}</span>
+                <span className={`font-medium ${group.color}`}>{group.label}</span>
               </label>
             ))}
           </div>

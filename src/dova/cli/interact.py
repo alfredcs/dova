@@ -356,13 +356,17 @@ class InteractiveSession:
         self.state.conversation.append(user_turn)
 
         try:
-            # Build task for orchestrator
+            # Build task for orchestrator. Pass through auto_debate /
+            # force_debate so the orchestrator can run bull/bear analysis
+            # either on evaluative-matching queries or unconditionally.
             task = AgentTask(
                 type="query",
                 params={
                     "query": user_input,
                     "session_id": self.state.session_id,
                     "sources": getattr(self, "_research_sources", ["arxiv", "github", "huggingface", "web"]),
+                    "auto_debate": getattr(self, "_auto_debate", True),
+                    "force_debate": getattr(self, "_force_debate", False),
                 },
                 user_id=self.user_id,
             )
@@ -381,6 +385,13 @@ class InteractiveSession:
             # Show deliberation reasoning if thinking is enabled
             if self.show_thinking:
                 self._print_thought("Understanding", deliberation.get("reasoning", ""))
+                weights = deliberation.get("intent_weights") or {}
+                if weights:
+                    weights_str = ", ".join(
+                        f"{int(v * 100)}% {k.upper()}"
+                        for k, v in weights.items() if v > 0
+                    )
+                    self._print_thought("Intent", weights_str)
                 tools_used = deliberation.get("tools_used", [])
                 if tools_used:
                     self._print_thought("Tools", f"Used: {', '.join(tools_used)}")
@@ -394,6 +405,14 @@ class InteractiveSession:
             if deliberation.get("tools_used"):
                 thought_chain.append(ThoughtStep("action", f"Tools: {deliberation['tools_used']}"))
 
+            # Stash intent_weights on action_result so downstream consumers
+            # (API non-stream handler, ConversationTurn readers) can surface
+            # them without needing a separate field on ConversationTurn.
+            if action_result is not None and deliberation.get("intent_weights"):
+                action_result = {
+                    **action_result,
+                    "intent_weights": deliberation["intent_weights"],
+                }
             assistant_turn = ConversationTurn(
                 role="assistant",
                 content=response,

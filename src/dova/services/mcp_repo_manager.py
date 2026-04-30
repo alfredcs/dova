@@ -127,10 +127,36 @@ class MCPRepoManager:
         return True
 
     async def _update_repo(self, config: MCPRepoConfig) -> bool:
-        """Update an existing repository."""
+        """Update an existing repository.
+
+        The clone is treated as a managed dependency, not user work. Our own
+        `_install_deps` step regenerates files like ``uv.lock``, which would
+        make ``git pull --ff-only`` fail with "unstaged changes" on the next
+        startup. We therefore discard local modifications before pulling.
+        """
         self._logger.info("updating_repo", name=config.name)
 
-        # Fetch and pull
+        # 1. Reset any local modifications to the tracked files. Files that
+        #    were created by our install step (e.g., build artifacts) are
+        #    usually gitignored, but uv.lock is tracked upstream and gets
+        #    touched by `uv pip install -e`, so without this reset every
+        #    restart after the first would fail to update.
+        reset = await asyncio.create_subprocess_exec(
+            "git", "-C", str(config.local_path),
+            "reset", "--hard", "HEAD",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, reset_err = await reset.communicate()
+        if reset.returncode != 0:
+            self._logger.warning(
+                "reset_failed_before_pull",
+                name=config.name,
+                stderr=reset_err.decode() if reset_err else "",
+            )
+            # Continue anyway — pull may still succeed on a clean tree.
+
+        # 2. Fetch and fast-forward.
         process = await asyncio.create_subprocess_exec(
             "git", "-C", str(config.local_path), "pull", "--ff-only",
             stdout=asyncio.subprocess.PIPE,
@@ -147,10 +173,9 @@ class MCPRepoManager:
             )
             return False
 
-        # Check if there were actual changes
+        # 3. Reinstall deps if upstream changed anything.
         output = stdout.decode() if stdout else ""
         if "Already up to date" not in output:
-            # Changes detected, reinstall deps
             if (config.local_path / "pyproject.toml").exists():
                 await self._install_deps(config)
 

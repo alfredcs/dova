@@ -340,6 +340,18 @@ def format_research_results(data: dict | None) -> str:
         data.get("web_results"),
     ])
 
+    # Show the semantic intent distribution so users see how the
+    # orchestrator framed the query across AI / Bio / Web.
+    deliberation = data.get("deliberation") or {}
+    weights = deliberation.get("intent_weights") or {}
+    if weights:
+        weights_str = ", ".join(
+            f"{int(v * 100)}% {k.upper()}"
+            for k, v in weights.items() if v > 0
+        )
+        lines.append(f"Intent: {weights_str}")
+        lines.append("")
+
     # Show the LLM-synthesized answer prominently first — this is the same
     # synthesis produced by ThinkingOrchestrator that the web UI displays.
     answer = data.get("summary", "")

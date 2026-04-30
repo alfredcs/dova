@@ -1,20 +1,60 @@
-import { useQuery } from '@tanstack/react-query'
 import { Checkbox } from '@/components/ui/checkbox'
-import { getMCPServers } from '@/api/mcp'
 
-// Core sources that are always shown (with or without API)
-const coreSources = [
-  { id: 'arxiv', label: 'ArXiv Papers', color: 'text-red-600' },
-  { id: 'github', label: 'GitHub Repos', color: 'text-gray-700' },
-  { id: 'huggingface', label: 'HuggingFace', color: 'text-yellow-600' },
-  { id: 'web', label: 'Web Search', color: 'text-blue-600' },
-  { id: 'awslabs.aws-documentation-mcp-server', label: 'AWS Docs', color: 'text-orange-600' },
-  { id: 'awslabs.bedrock-kb-retrieval-mcp-server', label: 'Bedrock KB', color: 'text-purple-600' },
+// Three top-level source groups — these IDs are what the UI stores in
+// selection state and what downstream code toggles. Before hitting the
+// API, `expandSourceGroups` maps them to concrete backend source names
+// (AI → arxiv/github/huggingface). The orchestrator then performs
+// deliberation-first selection across the expanded set and semantic
+// fan-out within groups like `bio`.
+export type SourceGroupId = 'ai' | 'web' | 'bio'
+
+export const SOURCE_GROUPS: {
+  id: SourceGroupId
+  label: string
+  color: string
+  description: string
+  sources: string[]
+}[] = [
+  {
+    id: 'ai',
+    label: 'AI',
+    color: 'text-indigo-600',
+    description:
+      'AI / ML research: ArXiv papers, GitHub repos, HuggingFace models and datasets',
+    sources: ['arxiv', 'github', 'huggingface'],
+  },
+  {
+    id: 'web',
+    label: 'Web',
+    color: 'text-blue-600',
+    description: 'General web search across Brave, Perplexity, Tavily, DuckDuckGo',
+    sources: ['web'],
+  },
+  {
+    id: 'bio',
+    label: 'Bio',
+    color: 'text-emerald-600',
+    description:
+      'Biotech / pharma: PubMed literature, ClinicalTrials.gov, PubChem compounds (routed by the orchestrator)',
+    sources: ['bio'],
+  },
 ]
 
-// Aliases to handle different naming conventions
-const sourceAliases: Record<string, string> = {
-  'hugging-face': 'huggingface',
+/**
+ * Expand group IDs ('ai', 'web', 'bio') into the concrete backend source
+ * names the API and orchestrator understand. Unknown IDs pass through.
+ */
+export function expandSourceGroups(groupIds: string[]): string[] {
+  const out = new Set<string>()
+  for (const id of groupIds) {
+    const group = SOURCE_GROUPS.find((g) => g.id === id)
+    if (group) {
+      group.sources.forEach((s) => out.add(s))
+    } else {
+      out.add(id)
+    }
+  }
+  return Array.from(out)
 }
 
 const orchestrators = [
@@ -23,8 +63,10 @@ const orchestrators = [
 ]
 
 interface SearchFiltersProps {
+  /** Currently-selected group IDs (e.g. ['ai', 'web', 'bio']). */
   selectedSources: string[]
-  onToggle: (source: string) => void
+  /** Called with the group ID being toggled. */
+  onToggle: (groupId: string) => void
   orchestrator?: 'standard' | 'thinking'
   onOrchestratorChange?: (orchestrator: 'standard' | 'thinking') => void
 }
@@ -35,56 +77,21 @@ export default function SearchFilters({
   orchestrator = 'thinking',
   onOrchestratorChange,
 }: SearchFiltersProps) {
-  // Optionally fetch API to check which servers are actually available
-  // But we always show core sources regardless
-  const { data } = useQuery({
-    queryKey: ['mcp-servers'],
-    queryFn: () => getMCPServers(false),
-    staleTime: 5 * 60 * 1000,
-    retry: false, // Don't retry on failure
-  })
-
-  // Build the list of sources to display
-  // Start with core sources, then add any additional from API
-  const coreIds = new Set(coreSources.map(s => s.id))
-  const additionalSources = data?.servers
-    .filter(s => s.enabled && !coreIds.has(s.name) && !coreIds.has(sourceAliases[s.name] || ''))
-    .slice(0, 4) // Limit additional sources shown
-    .map(s => ({
-      id: s.name,
-      label: s.name.replace('awslabs.', '').replace(/-mcp-server$/, '').split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-      color: s.name.startsWith('awslabs.') ? 'text-orange-500' : 'text-gray-600',
-    })) || []
-
-  const allSources = [...coreSources, ...additionalSources]
-
-  // Check if a source is selected (handle aliases)
-  const isSelected = (sourceId: string) => {
-    if (selectedSources.includes(sourceId)) return true
-    const alias = sourceAliases[sourceId]
-    if (alias && selectedSources.includes(alias)) return true
-    // Check reverse alias
-    for (const [key, val] of Object.entries(sourceAliases)) {
-      if (val === sourceId && selectedSources.includes(key)) return true
-    }
-    return false
-  }
-
   return (
     <div className="flex flex-wrap items-center gap-6">
       <div className="flex flex-wrap items-center gap-4">
         <span className="text-sm text-muted-foreground">Sources:</span>
-        {allSources.map((source) => (
+        {SOURCE_GROUPS.map((group) => (
           <label
-            key={source.id}
+            key={group.id}
             className="flex cursor-pointer items-center gap-2"
-            title={source.id}
+            title={group.description}
           >
             <Checkbox
-              checked={isSelected(source.id)}
-              onCheckedChange={() => onToggle(source.id)}
+              checked={selectedSources.includes(group.id)}
+              onCheckedChange={() => onToggle(group.id)}
             />
-            <span className={`text-sm ${source.color}`}>{source.label}</span>
+            <span className={`text-sm font-medium ${group.color}`}>{group.label}</span>
           </label>
         ))}
       </div>

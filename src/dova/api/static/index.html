@@ -1365,10 +1365,9 @@
                     </div>
                     <div class="file-chips" id="fileChips"></div>
                     <div class="input-options">
-                        <span class="option-chip active" data-source="arxiv" onclick="toggleSource(this)">ArXiv</span>
-                        <span class="option-chip active" data-source="github" onclick="toggleSource(this)">GitHub</span>
-                        <span class="option-chip active" data-source="huggingface" onclick="toggleSource(this)">HuggingFace</span>
-                        <span class="option-chip active" data-source="web" onclick="toggleSource(this)">Web</span>
+                        <span class="option-chip active" data-group="ai" title="ArXiv papers, GitHub repos, HuggingFace models & datasets" onclick="toggleSource(this)">AI</span>
+                        <span class="option-chip active" data-group="web" title="General web search (Brave, Perplexity, Tavily, DuckDuckGo)" onclick="toggleSource(this)">Web</span>
+                        <span class="option-chip active" data-group="bio" title="Biotech / pharma: PubMed literature, ClinicalTrials.gov, PubChem compounds" onclick="toggleSource(this)">Bio</span>
                         <span style="color: var(--text-dim); margin-left: 0.5rem;">|</span>
                         <div id="currentSettings" class="current-settings" style="display: inline-flex;"></div>
                     </div>
@@ -1459,6 +1458,16 @@
                     </div>
                     <div class="toggle-row">
                         <div class="toggle-info">
+                            <div class="toggle-label">Always run bull/bear debate</div>
+                            <div class="toggle-desc">Force bull vs bear analysis on every query (overrides auto-detect)</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="alwaysDebate">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="toggle-row">
+                        <div class="toggle-info">
                             <div class="toggle-label">Show thinking process</div>
                             <div class="toggle-desc">Display chain-of-thought reasoning steps</div>
                         </div>
@@ -1497,6 +1506,7 @@
         let settings = {
             reasoningMode: 'standard',
             autoDebate: true,
+            alwaysDebate: false,
             showThinking: false,
             twoPassInsights: true
         };
@@ -1588,6 +1598,107 @@
                 category: 'Model Training',
                 query: 'Training data quality matters more than quantity, but current filtering (perplexity-based, dedup) is crude. How can learned data selection models or influence-function-based scoring identify the highest-value training subsets for a given capability target?'
             },
+            // Biomedical / pharma — routes via the Bio group (PubMed, ClinicalTrials.gov, PubChem)
+            {
+                category: 'Drug Discovery',
+                query: 'Structure-based drug design with AlphaFold-predicted targets often fails in wet-lab assays because confidence-weighted pockets do not reflect induced-fit dynamics. How can ensemble docking, MD-refined conformers, or cryptic-site detection close the virtual-to-experimental hit rate gap?'
+            },
+            {
+                category: 'Drug Discovery',
+                query: 'Generative models (diffusion, flow-matching) propose novel small molecules with high predicted affinity but poor synthetic accessibility and off-target liabilities. What multi-objective scoring and retrosynthesis-aware generation methods can yield candidates that reach IND-enabling studies?'
+            },
+            {
+                category: 'Clinical Trials',
+                query: 'Oncology phase III trials fail ~60% of the time despite promising phase II signals. How can Bayesian adaptive designs, biomarker-enriched cohorts, and real-world control arms reduce this attrition and shorten time-to-decision?'
+            },
+            {
+                category: 'Clinical Trials',
+                query: 'Recruitment for rare-disease trials is the dominant timeline risk. How can federated patient-matching across EHR systems, synthetic control arms, and decentralized trial designs raise enrollment rates by 3-5x without compromising data quality?'
+            },
+            {
+                category: 'Genomics & Precision Medicine',
+                query: 'Variant-to-function mapping for non-coding GWAS hits remains the bottleneck for therapeutic target discovery. How can massively parallel reporter assays combined with chromatin-state foundation models prioritize causal variants with mechanistic confidence?'
+            },
+            {
+                category: 'Genomics & Precision Medicine',
+                query: 'CRISPR base and prime editors achieve high on-target efficiency in vitro but suffer from tissue-specific delivery and bystander edits in vivo. What LNP formulations, tissue-tropic AAV capsids, or guide-RNA chemistries can make somatic gene correction a clinical reality for more than a handful of diseases?'
+            },
+            {
+                category: 'Protein Design',
+                query: 'RFdiffusion and related diffusion models design de novo binders to arbitrary epitopes, but experimental hit rates are still 0.1-1% with weak affinities. How can AF2-Multimer filtering, in-silico directed evolution, and energy-based refinement push hit rates above 10% at nanomolar affinity?'
+            },
+            {
+                category: 'Protein Design',
+                query: 'Designing enzymes for novel chemistries requires simultaneous optimization of activity, stability, and selectivity — a combinatorial problem that current active-learning pipelines do not solve efficiently. What experimental-design strategies and sequence-activity models can reach catalytic efficiencies rivaling natural enzymes within a few hundred assays?'
+            },
+            {
+                category: 'ML for Medicine',
+                query: 'Medical LLMs like Med-PaLM score high on USMLE but exhibit distributional shift on real clinical notes and hallucinate on under-represented conditions. How can retrieval-augmented generation grounded in curated evidence bases (UpToDate, Cochrane) produce citations that clinicians actually trust?'
+            },
+            {
+                category: 'ML for Medicine',
+                query: 'Foundation models for histopathology (UNI, Virchow) outperform task-specific CNNs but are trained on H&E images that do not capture molecular-level signals. How can paired spatial-transcriptomics and multi-modal pretraining yield pan-cancer models that predict treatment response at the tissue level?'
+            },
+            {
+                category: 'Pharmacology',
+                query: 'ADMET prediction models trained on public ChEMBL data generalize poorly to novel scaffolds because of assay-specific biases. How can uncertainty-aware multi-task learning and domain adaptation deliver calibrated predictions for hepatotoxicity, hERG inhibition, and CYP interaction in early lead optimization?'
+            },
+            {
+                category: 'Pharmacology',
+                query: 'Drug-drug interaction prediction for polypharmacy patients remains brittle when evidence is scattered across PubMed, FDA labels, and SIDER. What knowledge-graph and LLM approaches can produce mechanism-grounded DDI alerts that reduce clinician alert fatigue while catching the serious interactions?'
+            },
+            // Cross-field: AI × Bio — these deliberately mix ML methodology
+            // with biomedical application, so the weighted deliberation
+            // should produce a balanced AI-lean distribution (≈60% AI /
+            // 30% Bio / 10% Web) and fan out across both source groups.
+            {
+                category: 'AI × Drug Discovery',
+                query: 'How can transformer-based molecular foundation models (MolBERT, ChemBERTa, Uni-Mol) be fine-tuned with active learning loops over ChEMBL bioactivity data to close the gap between virtual screening hits and wet-lab validated leads? What pairing of pretraining objective, uncertainty estimator, and acquisition function most reduces cycles-to-lead?'
+            },
+            {
+                category: 'AI × Drug Discovery',
+                query: 'Diffusion and flow-matching generative models can propose novel small molecules in 3D pocket context, but candidates often fail on ADMET or synthetic accessibility. How can we co-train a generator with differentiable ADMET predictors and retrosynthesis models so samples satisfy drug-like constraints by construction rather than post-hoc filtering?'
+            },
+            {
+                category: 'AI × Protein Folding',
+                query: 'AlphaFold2/3 and ESMFold deliver near-experimental single-chain structures, but predicting multi-chain complexes, conformational ensembles, and cryptic pocket dynamics remains open. What combinations of MSA augmentation, coevolutionary pretraining, and SE(3)-equivariant diffusion give reliable ensembles for druggable interfaces?'
+            },
+            {
+                category: 'AI × Protein Folding',
+                query: 'RFdiffusion produces de novo backbones that are experimentally successful at ~1% hit rate. How can AF2-Multimer refinement, physics-based relaxation, and LLM-style sequence models trained on UniRef be composed into a design-build-test pipeline that raises this to >10% nanomolar binders across arbitrary epitopes?'
+            },
+            {
+                category: 'AI × Bioinformatics',
+                query: 'Genomic foundation models (Nucleotide Transformer, HyenaDNA, Evo) promise variant-to-function inference but underperform on tissue-specific regulatory effects. How can chromatin-state aware pretraining on ENCODE/Roadmap paired with MPRA fine-tuning prioritize causal non-coding GWAS variants with mechanistic interpretability?'
+            },
+            {
+                category: 'AI × Bioinformatics',
+                query: 'Single-cell foundation models (scGPT, Geneformer, scFoundation) capture transcriptional state but integrate poorly across platforms and modalities. What multimodal pretraining — pairing scRNA with ATAC, spatial transcriptomics, and CITE-seq — yields a unified cell atlas model that transfers to unseen perturbations?'
+            },
+            {
+                category: 'AI × Clinical Trials',
+                query: 'LLMs can parse inclusion/exclusion criteria from ClinicalTrials.gov, but patient-to-trial matching at the EHR scale requires reconciling unstructured notes, ICD/SNOMED codes, and longitudinal labs. How can retrieval-augmented reasoning plus federated patient representations reach >90% recall on eligible-cohort identification without leaking PHI?'
+            },
+            {
+                category: 'AI × Clinical Trials',
+                query: 'Synthetic control arms built from RWE reduce trial size and ethical burden but introduce confounding bias. What combination of propensity scoring, causal forests, and LLM-extracted structured covariates from clinical notes produces synthetic controls that regulators (FDA, EMA) will accept alongside randomized data?'
+            },
+            {
+                category: 'AI × Precision Medicine',
+                query: 'Foundation models for histopathology (UNI, Virchow, CONCH) predict molecular subtypes from H&E tiles, but treatment-response prediction still lags. How can multimodal fusion of WSI, spatial transcriptomics, and LLM-summarized clinical narratives improve pan-cancer treatment-response forecasts at the patient level?'
+            },
+            {
+                category: 'AI × Precision Medicine',
+                query: 'Polygenic risk scores trained on European cohorts transfer poorly to African and Asian ancestries, amplifying health disparities. How can transfer-learning foundation models on trans-ancestry biobanks (UKB, All of Us, Biobank Japan) combined with rare-variant architectures deliver calibrated risk across populations?'
+            },
+            {
+                category: 'AI × Target Discovery',
+                query: 'Knowledge-graph embeddings over PubMed, STRING, and OpenTargets surface candidate drug targets, but most fail translation. What graph-reasoning architectures combined with LLM-extracted causal evidence and CRISPR screen priors can rank therapeutic targets with >30% phase-II success correlation?'
+            },
+            {
+                category: 'AI × Biomarker Discovery',
+                query: 'Multi-omics integration (proteomics, metabolomics, transcriptomics) for biomarker discovery is bottlenecked by batch effects and low-n cohorts. How can self-supervised foundation models pretrained on UK Biobank plasma proteomics transfer to disease-specific biomarker panels with LOD-appropriate calibration for clinical assays?'
+            },
         ];
 
         function pickRandomSuggestions(n = 4) {
@@ -1637,7 +1748,7 @@
         function buildWelcomeHtml() {
             return `<div class="welcome-screen" id="welcomeScreen">
                 <h2>Welcome to DOVA</h2>
-                <p>Your AI research assistant. Ask questions, explore papers, compare technologies, and get insights from ArXiv, GitHub, HuggingFace, and the web.</p>
+                <p>Your AI research assistant. Ask questions, explore papers, compare technologies, and get insights from ArXiv, GitHub, HuggingFace, the web, and biomedical sources (PubMed, ClinicalTrials.gov, PubChem).</p>
                 <div class="suggestions">
                     ${buildSuggestionsHtml()}
                 </div>
@@ -1704,9 +1815,25 @@
         }
 
         // Messaging
+        // Source groups expand to concrete backend source names. The
+        // orchestrator sees them together during deliberation and routes
+        // bio-specific queries to pubmed-bio / clinicaltrials-bio / pubchem-bio
+        // via semantic fan-out.
+        const SOURCE_GROUP_MAP = {
+            ai: ['arxiv', 'github', 'huggingface'],
+            web: ['web'],
+            bio: ['bio'],
+        };
+
         function getSources() {
-            return Array.from(document.querySelectorAll('.option-chip.active'))
-                .map(chip => chip.dataset.source);
+            const groups = Array.from(document.querySelectorAll('.option-chip.active'))
+                .map(chip => chip.dataset.group)
+                .filter(Boolean);
+            const out = new Set();
+            for (const g of groups) {
+                (SOURCE_GROUP_MAP[g] || [g]).forEach(s => out.add(s));
+            }
+            return Array.from(out);
         }
 
         function toggleSource(chip) {
@@ -1796,6 +1923,7 @@
                     formData.append('show_thinking', settings.showThinking);
                     formData.append('reasoning_mode', settings.reasoningMode);
                     formData.append('auto_debate', settings.autoDebate);
+                    formData.append('always_debate', settings.alwaysDebate);
                     formData.append('enable_two_pass', settings.twoPassInsights);
                     formData.append('orchestrator', 'thinking');
                     for (const file of attachedFiles) {
@@ -1840,6 +1968,7 @@
                     show_thinking: true,
                     reasoning_mode: settings.reasoningMode,
                     auto_debate: settings.autoDebate,
+                    always_debate: settings.alwaysDebate,
                     enable_two_pass: settings.twoPassInsights,
                     orchestrator: 'thinking',
                 }),
@@ -1948,7 +2077,8 @@
                     } else {
                         badge.remove();
                     }
-                    attachments.innerHTML = buildResearchAndDebateCards(data);
+                    attachments.innerHTML = buildIntentWeightsCard(data.intent_weights)
+                        + buildResearchAndDebateCards(data);
                     highlightCodeBlocks();
                 },
                 error(msg) {
@@ -1962,25 +2092,41 @@
             };
         }
 
+        function buildIntentWeightsCard(weights) {
+            if (!weights || typeof weights !== 'object') return '';
+            const entries = Object.entries(weights)
+                .filter(([, v]) => v > 0)
+                .sort(([, a], [, b]) => b - a);
+            if (entries.length === 0) return '';
+            const colors = { ai: '#818cf8', bio: '#10b981', web: '#3b82f6' };
+            const segments = entries.map(([k, v]) =>
+                `<span style="background: ${colors[k] || '#64748b'}; color: white; padding: 0.15rem 0.5rem; border-radius: 0.25rem; font-size: 0.7rem;">${escapeHtml(k.toUpperCase())} ${Math.round(v * 100)}%</span>`
+            ).join(' ');
+            return `<div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;"><span style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">Intent:</span>${segments}</div>`;
+        }
+
         function buildResearchAndDebateCards(data) {
             let html = '';
             const results = data.research_results;
             if (results && (results.papers?.length || results.repositories?.length || results.models?.length)) {
                 const items = [];
                 if (results.papers?.length) {
-                    items.push(`<h5>Papers (${results.papers.length})</h5>`);
+                    const shownP = Math.min(3, results.papers.length);
+                    items.push(`<h5>Papers (${results.papers.length} found, showing ${shownP})</h5>`);
                     results.papers.slice(0, 3).forEach(p => {
                         items.push(`<div class="research-item"><a href="${escapeHtml(p.url || '#')}" target="_blank">${escapeHtml(p.title)}</a><p>${escapeHtml((p.description || '').substring(0, 100))}...</p></div>`);
                     });
                 }
                 if (results.repositories?.length) {
-                    items.push(`<h5>Repositories (${results.repositories.length})</h5>`);
+                    const shownR = Math.min(3, results.repositories.length);
+                    items.push(`<h5>Repositories (${results.repositories.length} found, showing ${shownR})</h5>`);
                     results.repositories.slice(0, 3).forEach(r => {
                         items.push(`<div class="research-item"><a href="${escapeHtml(r.url || '#')}" target="_blank">${escapeHtml(r.title || r.name)}</a><p>${escapeHtml((r.description || '').substring(0, 100))}...</p></div>`);
                     });
                 }
                 if (results.models?.length) {
-                    items.push(`<h5>Models (${results.models.length})</h5>`);
+                    const shownM = Math.min(3, results.models.length);
+                    items.push(`<h5>Models (${results.models.length} found, showing ${shownM})</h5>`);
                     results.models.slice(0, 3).forEach(m => {
                         items.push(`<div class="research-item"><a href="${escapeHtml(m.url || '#')}" target="_blank">${escapeHtml(m.title || m.id)}</a></div>`);
                     });
@@ -2068,7 +2214,8 @@
                 let items = [];
 
                 if (results.papers?.length) {
-                    items.push(`<h5>Papers (${results.papers.length})</h5>`);
+                    const shownP = Math.min(3, results.papers.length);
+                    items.push(`<h5>Papers (${results.papers.length} found, showing ${shownP})</h5>`);
                     results.papers.slice(0, 3).forEach(p => {
                         items.push(`
                             <div class="research-item">
@@ -2080,7 +2227,8 @@
                 }
 
                 if (results.repositories?.length) {
-                    items.push(`<h5>Repositories (${results.repositories.length})</h5>`);
+                    const shownR = Math.min(3, results.repositories.length);
+                    items.push(`<h5>Repositories (${results.repositories.length} found, showing ${shownR})</h5>`);
                     results.repositories.slice(0, 3).forEach(r => {
                         items.push(`
                             <div class="research-item">
@@ -2092,7 +2240,8 @@
                 }
 
                 if (results.models?.length) {
-                    items.push(`<h5>Models (${results.models.length})</h5>`);
+                    const shownM = Math.min(3, results.models.length);
+                    items.push(`<h5>Models (${results.models.length} found, showing ${shownM})</h5>`);
                     results.models.slice(0, 3).forEach(m => {
                         items.push(`
                             <div class="research-item">
@@ -2216,6 +2365,45 @@
             }
         });
 
+        // Heuristic: detect lines that are bare LaTeX (LLM forgot to wrap
+        // in $$...$$). Wraps them as display math so KaTeX can render them.
+        // Conservative — only fires when a line starts with a backslash
+        // command and contains at least one more LaTeX token, and is not
+        // already inside a code fence or math delimiter.
+        function autoWrapBareLatex(text) {
+            const LATEX_LINE_START = /^\s*\\(?:mathbb|mathcal|mathrm|mathbf|hat|bar|tilde|widetilde|widehat|sum|prod|int|oint|frac|sqrt|partial|nabla|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|vartheta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|forall|exists|in|notin|subset|supset|subseteq|supseteq|cup|cap|emptyset|infty|to|rightarrow|leftarrow|mapsto|gets|implies|iff|approx|equiv|sim|propto|leq|geq|neq|pm|mp|cdot|cdots|ldots|vdots|ddots|langle|rangle|left|right|begin|end|operatorname|text|bm|boldsymbol|displaystyle|textstyle|scriptstyle)\b/;
+            const HAS_LATEX_TOKEN = /\\[A-Za-z]+|[_^]\{|\\{|\\}/;
+
+            // Don't touch content inside fenced code blocks.
+            const parts = text.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/);
+            for (let i = 0; i < parts.length; i++) {
+                if (i % 2 === 1) continue; // skip fenced blocks
+                const lines = parts[i].split('\n');
+                const out = [];
+                for (let line of lines) {
+                    const trimmed = line.trim();
+                    // Skip empty, already-delimited, code-indented, or inline-math
+                    const alreadyWrapped =
+                        trimmed.startsWith('$$') ||
+                        trimmed.endsWith('$$') ||
+                        (trimmed.startsWith('$') && trimmed.endsWith('$') && trimmed.length > 2) ||
+                        trimmed.startsWith('    '); // markdown code indent
+                    if (!trimmed || alreadyWrapped) {
+                        out.push(line);
+                        continue;
+                    }
+                    if (LATEX_LINE_START.test(trimmed) && HAS_LATEX_TOKEN.test(trimmed)) {
+                        // Strip a trailing period that breaks math parsing.
+                        out.push(`$$${trimmed.replace(/\.$/, '')}$$`);
+                    } else {
+                        out.push(line);
+                    }
+                }
+                parts[i] = out.join('\n');
+            }
+            return parts.join('');
+        }
+
         function formatContent(content) {
             if (!content) return '';
 
@@ -2229,6 +2417,13 @@
                     algoBlocks.push(body);
                     return `%%ALGO_${idx}%%`;
                 });
+
+                // 1b. Auto-wrap bare LaTeX lines that the LLM emitted without
+                //     $ / $$ delimiters. A "bare LaTeX line" is a non-empty
+                //     line outside code fences that starts with \<command>
+                //     (e.g. \mathbb, \sum, \frac) or is mostly LaTeX-symbol
+                //     dense (= \{ }_^ etc. with a backslash command).
+                processed = autoWrapBareLatex(processed);
 
                 // 2. Extract math expressions so markdown doesn't touch them.
                 const mathBlocks = [];
@@ -2413,12 +2608,14 @@
             // Get values from modal
             const reasoningMode = document.querySelector('input[name="reasoning_mode"]:checked')?.value || 'standard';
             const autoDebate = document.getElementById('autoDebate').checked;
+            const alwaysDebate = document.getElementById('alwaysDebate').checked;
             const showThinkingVal = document.getElementById('showThinkingToggle').checked;
             const twoPassInsights = document.getElementById('twoPassInsights').checked;
 
             settings = {
                 reasoningMode,
                 autoDebate,
+                alwaysDebate,
                 showThinking: showThinkingVal,
                 twoPassInsights
             };
@@ -2438,6 +2635,7 @@
             settings = {
                 reasoningMode: 'standard',
                 autoDebate: true,
+                alwaysDebate: false,
                 showThinking: false,
                 twoPassInsights: true
             };
@@ -2445,6 +2643,7 @@
             // Update modal UI
             document.querySelector('input[name="reasoning_mode"][value="standard"]').checked = true;
             document.getElementById('autoDebate').checked = true;
+            document.getElementById('alwaysDebate').checked = false;
             document.getElementById('showThinkingToggle').checked = false;
             document.getElementById('twoPassInsights').checked = true;
 
@@ -2459,6 +2658,7 @@
             const reasoningRadio = document.querySelector(`input[name="reasoning_mode"][value="${settings.reasoningMode}"]`);
             if (reasoningRadio) reasoningRadio.checked = true;
             document.getElementById('autoDebate').checked = settings.autoDebate;
+            document.getElementById('alwaysDebate').checked = settings.alwaysDebate || false;
             document.getElementById('showThinkingToggle').checked = settings.showThinking;
             document.getElementById('twoPassInsights').checked = settings.twoPassInsights;
 

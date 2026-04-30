@@ -280,6 +280,138 @@ HUGGINGFACE_MCP = MCPServerConfig(
 )
 
 
+# =====================================================================
+# Bio / Pharma MCP servers (cyanheads hosted instances — zero-install)
+# =====================================================================
+# These three HTTP Streamable-MCP endpoints are publicly hosted by
+# @cyanheads and verified reachable at registration time. They expose
+# well-typed tool sets for biomedical literature, clinical trials, and
+# chemical compounds — complementing arXiv/GitHub/HuggingFace which
+# focus on CS/ML research.
+#
+# Validation (2026-04-29):
+#   - pubmed.caseyjhand.com/mcp       (Apache-2.0, 88⭐ source)
+#   - clinicaltrials.caseyjhand.com/mcp (Apache-2.0, 67⭐ source)
+#   - pubchem.caseyjhand.com/mcp      (Apache-2.0, 8⭐ source)
+# All three endpoints returned HTTP 200 on HEAD.
+
+BIO_PUBMED_MCP = MCPServerConfig(
+    name="pubmed-bio",
+    description="Biomedical literature search via PubMed / PMC (cyanheads hosted)",
+    transport=MCPTransport.HTTP,
+    url="https://pubmed.caseyjhand.com/mcp",
+    priority=2,
+    tools=[
+        MCPTool(
+            name="pubmed_search_articles",
+            description="Search PubMed articles with field-specific filters and date ranges",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "max_results": {"type": "integer", "default": 10},
+                },
+                "required": ["query"],
+            },
+            capabilities=[MCPCapability.SEARCH],
+        ),
+        MCPTool(
+            name="pubmed_fetch_articles",
+            description="Fetch full article metadata by PMIDs",
+            input_schema={
+                "type": "object",
+                "properties": {"pmids": {"type": "array", "items": {"type": "string"}}},
+                "required": ["pmids"],
+            },
+            capabilities=[MCPCapability.FETCH],
+        ),
+    ],
+    rate_limit_rpm=60,
+    timeout_seconds=30,
+)
+
+
+BIO_CLINICALTRIALS_MCP = MCPServerConfig(
+    name="clinicaltrials-bio",
+    description="ClinicalTrials.gov v2 API — trial search and details (cyanheads hosted)",
+    transport=MCPTransport.HTTP,
+    url="https://clinicaltrials.caseyjhand.com/mcp",
+    priority=2,
+    tools=[
+        MCPTool(
+            name="clinicaltrials_search_studies",
+            description="Search clinical trial studies with filters and pagination",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "max_results": {"type": "integer", "default": 10},
+                },
+                "required": ["query"],
+            },
+            capabilities=[MCPCapability.SEARCH],
+        ),
+        MCPTool(
+            name="clinicaltrials_get_study_record",
+            description="Fetch a single clinical trial by NCT ID",
+            input_schema={
+                "type": "object",
+                "properties": {"nct_id": {"type": "string"}},
+                "required": ["nct_id"],
+            },
+            capabilities=[MCPCapability.FETCH],
+        ),
+    ],
+    rate_limit_rpm=60,
+    timeout_seconds=30,
+)
+
+
+BIO_PUBCHEM_MCP = MCPServerConfig(
+    name="pubchem-bio",
+    description="PubChem chemical compound search and properties (cyanheads hosted)",
+    transport=MCPTransport.HTTP,
+    url="https://pubchem.caseyjhand.com/mcp",
+    priority=2,
+    tools=[
+        MCPTool(
+            name="pubchem_search_compounds",
+            description="Search compounds by name, SMILES, InChIKey, formula, or structure similarity",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "max_results": {"type": "integer", "default": 10},
+                },
+                "required": ["query"],
+            },
+            capabilities=[MCPCapability.SEARCH],
+        ),
+        MCPTool(
+            name="pubchem_get_compound_details",
+            description="Get physicochemical properties, synonyms, and classification by CID",
+            input_schema={
+                "type": "object",
+                "properties": {"cid": {"type": "string"}},
+                "required": ["cid"],
+            },
+            capabilities=[MCPCapability.FETCH],
+        ),
+    ],
+    rate_limit_rpm=60,
+    timeout_seconds=30,
+)
+
+
+# Canonical list of bio-prefixed server names used by the orchestrator
+# for keyword-based sub-routing within the `bio` umbrella tool.
+BIO_MCP_SERVERS: list[str] = [
+    "pubmed-bio",
+    "clinicaltrials-bio",
+    "pubchem-bio",
+]
+
+
 # AWS Documentation MCP Server (for AWS best practices)
 AWS_DOCS_MCP = MCPServerConfig(
     name="aws_docs",
@@ -399,6 +531,12 @@ def get_default_registry() -> MCPRegistry:
         # Don't override user config
         if name not in registry.servers:
             registry.register_server(config)
+
+    # Register built-in bio/pharma HTTP endpoints (zero-install).
+    # User config in ~/.dova.json takes precedence if they override the name.
+    for bio_config in (BIO_PUBMED_MCP, BIO_CLINICALTRIALS_MCP, BIO_PUBCHEM_MCP):
+        if bio_config.name not in registry.servers:
+            registry.register_server(bio_config)
 
     return registry
 

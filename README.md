@@ -1,21 +1,24 @@
 # DOVA - Deep Orchestrated Versatile Agent Platform
 
-DOVA is an enterprise-grade, multi-agent research automation system built on AWS Strands Agents SDK and Amazon Bedrock AgentCore. It aggregates knowledge from ArXiv, GitHub, HuggingFace, and the web through the Model Context Protocol (MCP).
+DOVA is an enterprise-grade, multi-agent research automation system built on AWS Strands Agents SDK and Amazon Bedrock AgentCore. It aggregates knowledge from ArXiv, GitHub, HuggingFace, biomedical sources (PubMed / ClinicalTrials.gov / PubChem), and the web through the Model Context Protocol (MCP).
 
-**Latest: v1.5** - Introducing ThinkingOrchestrator with deliberation-first orchestration that reasons before acting!
+**Latest: v1.7** — Semantic intent weighting across AI / Bio / Web, biotech-pharma MCP servers (PubMed, ClinicalTrials.gov, PubChem), grouped UI source selector, and unified orchestrator across `dova interact`, `dova research`, and `dova serve`. See [release notes](docs/release_notes_v1.7.md).
 
 ## Features
 
 ### Core Capabilities
-- **ThinkingOrchestrator** *(New in v1.5)*: Deliberation-first orchestration that reasons about user needs before deciding which tools to use
+- **Weighted Intent Deliberation** *(New in v1.7)*: Every query is scored across {AI, Bio, Web} into a percentage distribution (e.g. `60% AI / 30% Bio / 10% Web`). Weights drive result aggregation in synthesis without zero-summing any group — a 10% web floor guarantees general-purpose context on every query.
+- **Biotech / Pharma Sources** *(New in v1.6→1.7)*: `bio` umbrella routes to hosted PubMed, ClinicalTrials.gov, and PubChem MCP endpoints; orchestrator performs semantic multi-server fan-out based on keywords (literature / trials / compounds).
+- **ThinkingOrchestrator** *(Since v1.5)*: Deliberation-first orchestration that reasons about user needs before deciding which tools to use; shared by `dova interact`, `dova research`, and the `dova serve` chat endpoints.
 - **Interactive CLI Mode**: Claude Code-like experience with `dova interact` - chain-of-thought reasoning, memory integration, and automatic tool selection
 - **Browser-Based Research UI**: Modern dark-theme interface at `http://localhost:8081/`
 - **Multi-Agent Architecture**: Specialized agents for research, profiling, validation, synthesis, and debate
 - **Agentic Reasoning**: ReAct-style reasoning loops, self-reflection, and working memory for smarter agents
 - **Collaborative Intelligence**: Blackboard, ensemble, iterative refinement, and tool-augmented patterns for synergistic multi-agent reasoning (1+1>2)
 - **Proactive Tool Discovery**: Automatic task analysis and tool selection from MCP servers, sandbox, and internal services
-- **MCP Integration**: Unified protocol for ArXiv, GitHub, HuggingFace, and web search
+- **MCP Integration**: Unified protocol for ArXiv, GitHub, HuggingFace, web search, and biomedical sources (PubMed, ClinicalTrials.gov, PubChem — via the `bio` source with keyword-based semantic fan-out to the best server)
 - **Multi-Provider Web Search**: Brave, Perplexity, Tavily, and DuckDuckGo with auto-selection and fallback
+- **Grouped Source Selector** *(v1.7)*: Three top-level groups — **AI** (ArXiv + GitHub + HuggingFace), **Web**, **Bio** (PubMed + ClinicalTrials.gov + PubChem). Ticking a group expands to the concrete sources at request time.
 - **Intelligent Source Selection**: Automatic source filtering based on query type (news vs technical)
 - **Multi-Provider LLM**: AWS Bedrock, Anthropic, OpenAI with automatic fallback
 - **Model Tiering**: Cost-optimized model selection (Basic/Standard/Advanced/Reasoning)

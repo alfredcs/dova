@@ -136,6 +136,10 @@ async def send_message(
         session._research_sources = body.sources
         session._reasoning_mode = body.reasoning_mode
         session._auto_debate = body.auto_debate
+        session._force_debate = (
+            body.always_debate
+            or body.reasoning_mode in ("collaborative", "deep")
+        )
         session._enable_two_pass = body.enable_two_pass
         session.show_thinking = body.show_thinking
 
@@ -158,6 +162,7 @@ async def send_message(
         debate_results = None
         images: list[ImageResult] = []
         sources_used = []
+        intent_weights: dict[str, float] = {}
 
         if session.state and session.state.conversation:
             last_turn = session.state.conversation[-1]
@@ -165,6 +170,18 @@ async def send_message(
                 action_taken = last_turn.action_taken
                 if last_turn.action_result:
                     result = last_turn.action_result
+                    intent_weights = result.get("intent_weights") or {}
+                    # ThinkingOrchestrator packs debate output into the same
+                    # action_result dict as research, even when action_taken
+                    # is "use_tools". Surface it whenever present.
+                    if result.get("bull_strengths") or result.get("bear_concerns"):
+                        debate_results = {
+                            "summary": result.get("debate_summary", "") or result.get("summary", ""),
+                            "bull_strengths": result.get("bull_strengths", []),
+                            "bear_concerns": result.get("bear_concerns", []),
+                            "recommendation": result.get("recommendation", ""),
+                            "confidence": result.get("confidence_score", result.get("confidence", 0)),
+                        }
                     if action_taken == "research":
                         research_results = {
                             "papers": result.get("papers", []),
@@ -225,6 +242,7 @@ async def send_message(
             research_results=research_results,
             debate_results=debate_results,
             images=images,
+            intent_weights=intent_weights,
             metadata={
                 "is_new_session": is_new,
                 "execution_time_ms": int(execution_time * 1000),
@@ -244,10 +262,11 @@ async def send_message_with_files(
     request: Request,
     message: str = Form(...),
     session_id: str | None = Form(default=None),
-    sources: str = Form(default='["arxiv","github","huggingface","web"]'),
+    sources: str = Form(default='["arxiv","github","huggingface","web","bio"]'),
     show_thinking: bool = Form(default=False),
     reasoning_mode: str = Form(default="standard"),
     auto_debate: bool = Form(default=True),
+    always_debate: bool = Form(default=False),
     enable_two_pass: bool = Form(default=True),
     orchestrator: str = Form(default="standard"),
     files: list[UploadFile] = File(default=[]),
@@ -271,7 +290,7 @@ async def send_message_with_files(
     try:
         parsed_sources = json.loads(sources)
     except (json.JSONDecodeError, TypeError):
-        parsed_sources = ["arxiv", "github", "huggingface", "web"]
+        parsed_sources = ["arxiv", "github", "huggingface", "web", "bio"]
 
     # Process attached files and combine with message
     combined_message = message
@@ -291,6 +310,7 @@ async def send_message_with_files(
         show_thinking=show_thinking,
         reasoning_mode=reasoning_mode,
         auto_debate=auto_debate,
+        always_debate=always_debate,
         enable_two_pass=enable_two_pass,
         orchestrator=orchestrator,
     )
@@ -338,6 +358,14 @@ async def stream_message(
         orchestrator_type="thinking",
         orchestrator=orchestrator,
     )
+    # Log exactly what the client sent so we can diagnose UI regressions
+    # (e.g., stale cached HTML dropping sources silently).
+    logger.info(
+        "chat_stream_request",
+        sources_from_client=list(body.sources),
+        reasoning_mode=body.reasoning_mode,
+        orchestrator=body.orchestrator,
+    )
     session._research_sources = body.sources
     session._reasoning_mode = body.reasoning_mode
     session._auto_debate = body.auto_debate
@@ -368,12 +396,21 @@ async def stream_message(
     async def _runner() -> None:
         start_time = time.time()
         try:
+            # Force bull/bear debate when:
+            #   - user toggled "Always run bull/bear debate" in settings, OR
+            #   - reasoning mode is "collaborative" or "deep" (both imply it).
+            force_debate = (
+                body.always_debate
+                or body.reasoning_mode in ("collaborative", "deep")
+            )
             task = AgentTask(
                 type="query",
                 params={
                     "query": body.message,
                     "session_id": session_id,
                     "sources": body.sources,
+                    "auto_debate": body.auto_debate,
+                    "force_debate": force_debate,
                 },
                 user_id=current_user.id,
             )
@@ -422,6 +459,15 @@ async def stream_message(
                         "answer": response_text,
                     }
                     sources_used = body.sources
+                # Debate output (when ThinkingOrchestrator ran bull/bear pass).
+                if action_result.get("bull_strengths") or action_result.get("bear_concerns"):
+                    debate_results = {
+                        "summary": action_result.get("debate_summary", ""),
+                        "bull_strengths": action_result.get("bull_strengths", []),
+                        "bear_concerns": action_result.get("bear_concerns", []),
+                        "recommendation": action_result.get("recommendation", ""),
+                        "confidence": action_result.get("confidence_score", 0),
+                    }
 
             images: list[dict] = []
             for img in action_result.get("images", []) or []:
@@ -447,6 +493,9 @@ async def stream_message(
                     "research_results": research_results,
                     "debate_results": debate_results,
                     "images": images,
+                    # Expose the weighted intent distribution so the UI can
+                    # show users how the orchestrator framed their question.
+                    "intent_weights": deliberation.get("intent_weights", {}),
                     "metadata": {
                         "is_new_session": is_new,
                         "execution_time_ms": int((time.time() - start_time) * 1000),

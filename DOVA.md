@@ -786,7 +786,35 @@ The orchestrator automatically selects appropriate sources based on query analys
 | News/Current Events | "latest", "news", "nominated", "announced" | `web` |
 | Technical/Research | "architecture", "implementation", "paper" | `arxiv`, `github` |
 | ML Models | "model", "transformer", "training" | `huggingface`, `arxiv` |
+| Biomedical / Pharma | "PubMed", "clinical trial", "NCT", "compound", "SMILES", "MeSH", gene/drug names | `bio` (routes to pubmed-bio / clinicaltrials-bio / pubchem-bio) |
 | Mixed | Combination of indicators | Multiple sources |
+
+### Weighted Intent Deliberation *(v1.7)*
+
+In addition to picking sources, the orchestrator scores each query across the
+three top-level groups `{ai, bio, web}` into a **percentage distribution** that
+sums to 1.0. The distribution flows into the synthesis prompt and steers how
+many items from each group feed the LLM.
+
+```text
+Query: "comparison of LLMs and protein transformer models for drug discovery"
+→ intent_weights = {"ai": 0.60, "bio": 0.30, "web": 0.10}
+```
+
+Rules:
+
+- **Web floor 10%** whenever the user allows the Web group — general-purpose
+  context usually helps even for deeply technical queries.
+- **Group floor 5%** for every other allowed group that has no keyword hits —
+  prevents zero-sum exclusion of a domain the user ticked.
+- When the user restricts sources (e.g. Bio-only), floors only apply to the
+  *allowed* set; a single-group selection yields `{group: 1.0}`.
+
+Weights surface in:
+- SSE `stage` + `thinking` events (for the live Thinking sidebar).
+- The `complete` SSE payload and the non-streaming `ChatResponse.intent_weights` field.
+- The `dova interact --verbose` thought stream and `dova research` text header.
+- A coloured chip row in the web UI below each answer (AI indigo, Bio green, Web blue).
 
 **Implementation:**
 ```python

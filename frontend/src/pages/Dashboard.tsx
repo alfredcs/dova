@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import SearchBar from '@/components/search/SearchBar'
-import SearchFilters from '@/components/search/SearchFilters'
+import SearchFilters, { expandSourceGroups } from '@/components/search/SearchFilters'
 import ResultsPanel from '@/components/results/ResultsPanel'
 import ProgressTimeline from '@/components/results/ProgressTimeline'
 import RecommendationsPanel from '@/components/recommendations/RecommendationsPanel'
@@ -9,11 +9,14 @@ import { useRecommendations } from '@/hooks/useRecommendations'
 import type { Recommendation, ResearchResponse } from '@/api/types'
 
 export default function Dashboard() {
-  const [selectedSources, setSelectedSources] = useState([
-    'arxiv',
-    'github',
-    'huggingface',
+  // Group IDs (ai / web / bio). All three are enabled by default so the
+  // orchestrator considers every pool during deliberation. Groups expand
+  // to concrete source names (arxiv, github, huggingface, ...) at the
+  // API boundary via `expandSourceGroups`.
+  const [selectedSources, setSelectedSources] = useState<string[]>([
+    'ai',
     'web',
+    'bio',
   ])
   const [orchestrator, setOrchestrator] = useState<'standard' | 'thinking'>('thinking')
 
@@ -59,7 +62,7 @@ export default function Dashboard() {
   const handleSearch = (query: string, files: File[] = []) => {
     search({
       query,
-      sources: selectedSources,
+      sources: expandSourceGroups(selectedSources),
       max_results: 10,
       orchestrator,
       files: files.length > 0 ? files : undefined,
