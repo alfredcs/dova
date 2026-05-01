@@ -686,6 +686,18 @@ Critical rules:
             tools_used: list[str] = []
             action_result: dict[str, Any] | None = None
 
+            # Debate trigger (evaluated once; used in both USE_TOOLS and
+            # RESPOND_DIRECTLY branches). Triggered when:
+            #   (a) `force_debate` is set in task.params, OR
+            #   (b) `auto_debate` is set AND the query is evaluative
+            #       (compare / vs / tradeoffs / pros-and-cons / ...).
+            auto_debate = task.params.get("auto_debate", False)
+            force_debate = task.params.get("force_debate", False)
+            should_debate = force_debate or (
+                auto_debate and _is_evaluative_query(query)
+            )
+            debate_available = should_debate and "debate" in self.agents
+
             if deliberation.action == ActionDecision.RESPOND_DIRECTLY:
                 response = await self._respond_from_context(
                     query, deliberation, user_model, context
@@ -710,62 +722,95 @@ Critical rules:
                         "step_type": "action",
                         "content": f"Retrieved {summary or 'no results'}.",
                     })
+
+                # 3a. Multi-round bull/bear debate on the EVIDENCE (not a
+                # synthesized answer). Runs before synthesis so the debate's
+                # strengths/concerns can inform the final response rather
+                # than sitting as post-hoc side-car metadata.
+                debate_out: dict[str, Any] | None = None
+                if debate_available:
+                    if progress:
+                        await progress("stage", {
+                            "stage": "debating",
+                            "message": "Running bull/bear debate on research evidence...",
+                        })
+                    debate_out = await self._run_debate(
+                        query, deliberation, action_result, synthesized_answer=None,
+                    )
+                    if debate_out:
+                        action_result.update(debate_out)
+                        if progress:
+                            await progress("thinking", {
+                                "step_type": "reflection",
+                                "content": (
+                                    f"Debate: {len(debate_out.get('bull_strengths', []))} strengths, "
+                                    f"{len(debate_out.get('bear_concerns', []))} concerns, "
+                                    f"confidence {debate_out.get('confidence_score', 0.0):.2f}"
+                                ),
+                            })
+
+                # 3b. Synthesis — now informed by debate output when present.
+                if progress:
                     await progress("stage", {
                         "stage": "synthesizing",
                         "message": "Synthesizing results...",
                     })
                     await progress("thinking", {
                         "step_type": "reflection",
-                        "content": "Synthesizing a structured answer with LaTeX formulas and IEEE-style algorithms where relevant.",
+                        "content": (
+                            "Synthesizing a debate-informed answer that weighs bull strengths against bear concerns."
+                            if debate_out
+                            else "Synthesizing a structured answer with LaTeX formulas and IEEE-style algorithms where relevant."
+                        ),
                     })
-
                     response = await self._synthesize_with_results_stream(
-                        query, tool_results, user_model, context, deliberation, progress
+                        query, tool_results, user_model, context, deliberation,
+                        progress, debate_output=debate_out,
                     )
                 else:
                     response = await self._synthesize_with_results(
-                        query, tool_results, user_model, context, deliberation
+                        query, tool_results, user_model, context, deliberation,
+                        debate_output=debate_out,
                     )
+
+                # 3c. Optional refinement pass. When the debate's confidence
+                # is low, re-synthesize once to explicitly address bear
+                # concerns. Controllable via task.params["refine"] (default
+                # True) and task.params["refine_threshold"] (default 0.7).
+                if debate_out and task.params.get("refine", True):
+                    threshold = float(task.params.get("refine_threshold", 0.7))
+                    confidence = float(debate_out.get("confidence_score", 0.0))
+                    if confidence < threshold:
+                        if progress:
+                            await progress("stage", {
+                                "stage": "refining",
+                                "message": (
+                                    f"Refining (debate confidence {confidence:.2f} "
+                                    f"< {threshold:.2f})..."
+                                ),
+                            })
+                        # If refinement LLM call fails, keep the first draft
+                        # rather than failing the whole query — a good draft
+                        # is strictly better than an error response.
+                        try:
+                            response = await self._refine_synthesis(
+                                query, response, debate_out,
+                            )
+                            action_result["refined"] = True
+                            action_result["refine_reason"] = (
+                                f"debate confidence {confidence:.2f} below threshold {threshold:.2f}"
+                            )
+                        except Exception as e:
+                            self._logger.warning(
+                                "refinement_failed_kept_draft",
+                                error=str(e),
+                                confidence=confidence,
+                            )
+                            action_result["refined"] = False
+                            action_result["refine_error"] = str(e)
             else:  # CLARIFY
                 response = deliberation.clarification_needed
                 context.last_assistant_question = response
-
-            # 3b. Optional debate pass for evaluative queries. Triggered when:
-            #   (a) `force_debate` is set in task.params (user explicitly asked
-            #       for collaborative/deep reasoning mode), OR
-            #   (b) `auto_debate` is set AND the query matches evaluative
-            #       patterns (compare / vs / tradeoffs / pros-and-cons / ...).
-            # Produces bull / bear / recommendation packaged into action_result.
-            auto_debate = task.params.get("auto_debate", False)
-            force_debate = task.params.get("force_debate", False)
-            should_debate = force_debate or (
-                auto_debate and _is_evaluative_query(query)
-            )
-            if (
-                should_debate
-                and deliberation.action != ActionDecision.CLARIFY
-                and "debate" in self.agents
-            ):
-                if progress:
-                    await progress("stage", {
-                        "stage": "debating",
-                        "message": "Running bull/bear debate...",
-                    })
-                debate_out = await self._run_debate(
-                    query, deliberation, action_result, response
-                )
-                if debate_out:
-                    if action_result is None:
-                        action_result = {}
-                    action_result.update(debate_out)
-                    if progress:
-                        await progress("thinking", {
-                            "step_type": "reflection",
-                            "content": (
-                                f"Debate: {len(debate_out.get('bull_strengths', []))} strengths, "
-                                f"{len(debate_out.get('bear_concerns', []))} concerns"
-                            ),
-                        })
 
             # 4. Update context with assistant response
             context.add_turn(
@@ -1198,14 +1243,18 @@ Response:"""
         query: str,
         deliberation: Deliberation,
         tool_results: dict[str, Any] | None,
-        synthesized_answer: str,
+        synthesized_answer: str | None = None,
     ) -> dict[str, Any] | None:
         """Invoke the registered DebateAgent on an evaluative query.
 
-        Packages the research output and the orchestrator's synthesized
-        answer as context for the bull/bear debate, and flattens the result
-        into the same keys the API expects (bull_strengths, bear_concerns,
+        Packages the research output (and optionally a synthesized answer)
+        as context for the bull/bear debate, and flattens the result into
+        the keys the API expects (bull_strengths, bear_concerns,
         recommendation, debate_history).
+
+        When `synthesized_answer` is None, the debate runs on raw research
+        evidence — this is the pre-synthesis path where the debate's output
+        will feed into synthesis rather than commenting on it.
         """
         from dova.agents.base import AgentTask as _AgentTask
 
@@ -1213,7 +1262,9 @@ Response:"""
         if debate_agent is None:
             return None
 
-        ctx: dict[str, Any] = {"orchestrator_answer": synthesized_answer}
+        ctx: dict[str, Any] = {}
+        if synthesized_answer:
+            ctx["orchestrator_answer"] = synthesized_answer
         if tool_results:
             # Keep the context compact — the DebateAgent only needs a
             # summary of the evidence, not every raw field.
@@ -2118,9 +2169,13 @@ Return ONLY the enhanced prompt, nothing else."""
         user_model: UserModel,
         context: ConversationContext,
         deliberation: Deliberation,
+        debate_output: dict[str, Any] | None = None,
     ) -> str:
         """Synthesize results into a personalized response."""
-        prompt = self._build_synthesis_prompt(query, results, user_model, context, deliberation)
+        prompt = self._build_synthesis_prompt(
+            query, results, user_model, context, deliberation,
+            debate_output=debate_output,
+        )
         return await self.think(
             prompt,
             task_type=TaskType.SUMMARIZATION,
@@ -2135,6 +2190,7 @@ Return ONLY the enhanced prompt, nothing else."""
         context: ConversationContext,
         deliberation: Deliberation,
         progress: Any,
+        debate_output: dict[str, Any] | None = None,
     ) -> str:
         """Synthesize results with token streaming via progress callback.
 
@@ -2142,10 +2198,10 @@ Return ONLY the enhanced prompt, nothing else."""
         as synthesis_token events so the frontend can display them incrementally.
         Returns the full response string.
         """
-        # Build the prompt by calling the non-streaming method's prompt logic.
-        # We duplicate the prompt construction to avoid refactoring the
-        # existing method, keeping the change minimal.
-        prompt = self._build_synthesis_prompt(query, results, user_model, context, deliberation)
+        prompt = self._build_synthesis_prompt(
+            query, results, user_model, context, deliberation,
+            debate_output=debate_output,
+        )
 
         chunks: list[str] = []
         async for token in self.think_stream(
@@ -2158,6 +2214,67 @@ Return ONLY the enhanced prompt, nothing else."""
 
         return "".join(chunks)
 
+    async def _refine_synthesis(
+        self,
+        query: str,
+        initial_response: str,
+        debate_output: dict[str, Any],
+    ) -> str:
+        """One-pass refinement that addresses bear concerns explicitly.
+
+        Triggered when the debate's confidence_score is below the refinement
+        threshold. The refinement prompt shows the initial draft alongside
+        the bear concerns and asks for a revised answer that either
+        incorporates the concerns as caveats or rebuts them with evidence.
+        """
+        bull = debate_output.get("bull_strengths", []) or []
+        bear = debate_output.get("bear_concerns", []) or []
+        balanced = debate_output.get("balanced_assessment", "") or ""
+        recommendation = debate_output.get("recommendation", "") or ""
+
+        bull_text = "\n".join(f"  - {s}" for s in bull) or "  (none recorded)"
+        bear_text = "\n".join(f"  - {c}" for c in bear) or "  (none recorded)"
+
+        refine_prompt = f"""Revise your previous answer to directly address the adversarial critique below.
+
+Original user question: {query}
+
+YOUR PREVIOUS DRAFT:
+{initial_response}
+
+ADVERSARIAL CRITIQUE (Bull vs Bear debate):
+
+Bull strengths (points the draft should preserve):
+{bull_text}
+
+Bear concerns (weaknesses the draft must address — either rebut with evidence or acknowledge as caveats):
+{bear_text}
+
+Balanced assessment from moderator:
+{balanced}
+
+Moderator recommendation:
+{recommendation}
+
+REFINEMENT RULES:
+1. Keep the draft's correct content and structure.
+2. For EACH bear concern, either:
+   (a) rebut it using evidence from the original research results, OR
+   (b) acknowledge it explicitly as a caveat / limitation in the answer.
+3. Do not fabricate new sources. Use only what the draft already cited.
+4. Preserve formatting: headings, LaTeX math, algorithm blocks, inline source URLs.
+5. The revised answer should read as a single coherent response — do NOT include
+   meta-commentary like "In response to the critique" or "Addressing concerns".
+6. Keep length comparable to the original draft (do not bloat).
+
+Return ONLY the revised answer."""
+
+        return await self.think(
+            refine_prompt,
+            task_type=TaskType.SUMMARIZATION,
+            temperature=0.4,
+        )
+
     def _build_synthesis_prompt(
         self,
         query: str,
@@ -2165,6 +2282,7 @@ Return ONLY the enhanced prompt, nothing else."""
         user_model: UserModel,
         context: ConversationContext,
         deliberation: Deliberation,
+        debate_output: dict[str, Any] | None = None,
     ) -> str:
         """Build the synthesis prompt. Shared by streaming and non-streaming paths.
 
@@ -2174,6 +2292,10 @@ Return ONLY the enhanced prompt, nothing else."""
         roughly 9 AI items (split across papers/repos/models), 5 bio items,
         and 2 web items to the synthesis LLM. Every allocated group gets a
         minimum of 2 items when it has any results, so no group is starved.
+
+        When `debate_output` is provided, an "Adversarial Analysis" section
+        is injected into the prompt so the synthesis LLM weighs bull
+        strengths against bear concerns when producing the final answer.
         """
         result_parts = []
 
@@ -2328,6 +2450,49 @@ Return ONLY the enhanced prompt, nothing else."""
             f"{int(v * 100)}% {k.upper()}" for k, v in weights.items() if v > 0
         ) or "balanced"
 
+        # Adversarial analysis block — injected only when a bull/bear debate
+        # has already run on the evidence. Formatted as compact bullets so it
+        # adds minimal tokens while still steering the synthesis LLM toward a
+        # balanced answer that both leverages strengths and addresses concerns.
+        debate_block = ""
+        if debate_output:
+            bull = debate_output.get("bull_strengths", []) or []
+            bear = debate_output.get("bear_concerns", []) or []
+            balanced = debate_output.get("balanced_assessment", "") or ""
+            recommendation = debate_output.get("recommendation", "") or ""
+            confidence = debate_output.get("confidence_score", 0.0)
+
+            bull_text = "\n".join(f"  - {s}" for s in bull) if bull else "  (none)"
+            bear_text = "\n".join(f"  - {c}" for c in bear) if bear else "  (none)"
+
+            debate_block = f"""
+Adversarial Analysis (Bull vs Bear multi-round debate on the evidence above):
+
+Bull strengths (use these to support claims in your answer):
+{bull_text}
+
+Bear concerns (address EVERY concern — rebut with evidence if possible, otherwise acknowledge as a caveat):
+{bear_text}
+
+Moderator balanced assessment:
+{balanced or "  (none provided)"}
+
+Moderator recommendation:
+{recommendation or "  (none provided)"}
+
+Debate confidence: {confidence:.2f}
+
+DEBATE INTEGRATION RULES:
+- Your answer MUST weigh strengths against concerns, not ignore either side.
+- For each bear concern relevant to the question, explicitly acknowledge it
+  (e.g., as a "limitation", "caveat", "open question", or "risk") OR rebut it
+  with specific evidence from the search results.
+- Do NOT include meta-commentary like "the bull says X and the bear says Y" —
+  the debate informs the answer but is not the subject of the answer.
+- If the moderator's recommendation conflicts with the raw evidence, trust the
+  evidence and note the conflict.
+"""
+
         return f"""Synthesize these search results into a helpful response.
 
 TODAY'S DATE: {_current_date_str()}
@@ -2341,7 +2506,7 @@ provide corroborating context.)
 {inferred_context}
 Search Results:
 {chr(10).join(result_parts) if result_parts else "No results found."}
-
+{debate_block}
 {style_instructions}
 
 CRITICAL RULES - FOLLOW EXACTLY:

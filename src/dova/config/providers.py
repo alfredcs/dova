@@ -203,6 +203,13 @@ class LLMProvider(ABC):
         return self.config.models[task_type]
 
 
+def _model_rejects_temperature(model_id: str) -> bool:
+    """Anthropic reasoning models (Opus 4.6+) reject the `temperature` field."""
+    # Normalize for substring checks like "global.anthropic.claude-opus-4-6-v1".
+    normalized = model_id.lower()
+    return "opus-4-6" in normalized or "opus-4-7" in normalized
+
+
 class BedrockProvider(LLMProvider):
     """AWS Bedrock LLM provider."""
 
@@ -220,23 +227,25 @@ class BedrockProvider(LLMProvider):
             self._client = boto3.client("bedrock-runtime", region_name=self.region)
         return self._client
 
+    def _build_body(self, request: LLMRequest, model_config: ModelConfig) -> dict:
+        body: dict[str, Any] = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": request.max_tokens or model_config.max_tokens,
+            "messages": request.messages,
+        }
+        if not _model_rejects_temperature(model_config.model_id):
+            body["temperature"] = request.temperature or model_config.temperature
+        if request.system_prompt:
+            body["system"] = request.system_prompt
+        return body
+
     async def complete(self, request: LLMRequest) -> LLMResponse:
         """Generate completion using Bedrock."""
         import json
         import time
 
         model_config = self.get_model_config(request.task_type)
-
-        body = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": request.max_tokens or model_config.max_tokens,
-            "temperature": request.temperature or model_config.temperature,
-            "messages": request.messages,
-        }
-
-        # System prompt must be a top-level parameter, not a message
-        if request.system_prompt:
-            body["system"] = request.system_prompt
+        body = self._build_body(request, model_config)
 
         start_time = time.time()
         loop = asyncio.get_event_loop()
@@ -269,17 +278,7 @@ class BedrockProvider(LLMProvider):
         import json
 
         model_config = self.get_model_config(request.task_type)
-
-        body = {
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": request.max_tokens or model_config.max_tokens,
-            "temperature": request.temperature or model_config.temperature,
-            "messages": request.messages,
-        }
-
-        # System prompt must be a top-level parameter, not a message
-        if request.system_prompt:
-            body["system"] = request.system_prompt
+        body = self._build_body(request, model_config)
 
         response = self.client.invoke_model_with_response_stream(
             modelId=model_config.model_id,
@@ -347,41 +346,52 @@ class AnthropicProvider(LLMProvider):
         return self._client
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
-        """Generate completion using Anthropic API."""
+        """Generate completion using Anthropic API.
+
+        Uses server-side streaming under the hood to avoid the SDK's pre-flight
+        ``ValueError`` for long non-streaming requests (triggered when
+        ``max_tokens`` implies >10 min processing). The caller still gets a
+        single accumulated ``LLMResponse``.
+        """
         import time
 
         model_config = self.get_model_config(request.task_type)
+        kwargs: dict[str, Any] = {
+            "model": model_config.model_id,
+            "max_tokens": request.max_tokens or model_config.max_tokens,
+            "system": request.system_prompt or "",
+            "messages": request.messages,
+        }
+        if not _model_rejects_temperature(model_config.model_id):
+            kwargs["temperature"] = request.temperature or model_config.temperature
 
         start_time = time.time()
-        response = await self.client.messages.create(
-            model=model_config.model_id,
-            max_tokens=request.max_tokens or model_config.max_tokens,
-            temperature=request.temperature or model_config.temperature,
-            system=request.system_prompt or "",
-            messages=request.messages,
-        )
+        async with self.client.messages.stream(**kwargs) as stream:
+            final_message = await stream.get_final_message()
         latency_ms = (time.time() - start_time) * 1000
 
         return LLMResponse(
-            content=response.content[0].text,
+            content=final_message.content[0].text,
             provider=self.name,
             model=model_config.model_id,
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
+            input_tokens=final_message.usage.input_tokens,
+            output_tokens=final_message.usage.output_tokens,
             latency_ms=latency_ms,
         )
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[str]:
         """Stream completion using Anthropic API."""
         model_config = self.get_model_config(request.task_type)
+        kwargs: dict[str, Any] = {
+            "model": model_config.model_id,
+            "max_tokens": request.max_tokens or model_config.max_tokens,
+            "system": request.system_prompt or "",
+            "messages": request.messages,
+        }
+        if not _model_rejects_temperature(model_config.model_id):
+            kwargs["temperature"] = request.temperature or model_config.temperature
 
-        async with self.client.messages.stream(
-            model=model_config.model_id,
-            max_tokens=request.max_tokens or model_config.max_tokens,
-            temperature=request.temperature or model_config.temperature,
-            system=request.system_prompt or "",
-            messages=request.messages,
-        ) as stream:
+        async with self.client.messages.stream(**kwargs) as stream:
             async for text in stream.text_stream:
                 yield text
 

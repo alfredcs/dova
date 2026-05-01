@@ -325,3 +325,431 @@ class TestStyleInstructions:
         instructions = orchestrator._get_style_instructions(user)
 
         assert "code" in instructions.lower()
+
+
+class TestDebateFirstFlow:
+    """Tests for the debate-before-synthesis architecture.
+
+    The debate runs on research evidence BEFORE synthesis, and the debate's
+    bull/bear output is injected into the synthesis prompt so the final
+    answer reflects both sides. Low-confidence debates trigger one extra
+    refinement pass that explicitly addresses bear concerns.
+    """
+
+    @pytest.fixture
+    def debate_out_high_conf(self):
+        return {
+            "bull_strengths": ["strong community", "fast inference"],
+            "bear_concerns": ["limited multilingual support"],
+            "balanced_assessment": "Net positive for English-only use cases.",
+            "recommendation": "Adopt with English-only caveat.",
+            "confidence_score": 0.85,
+            "debate_summary": "Strong bull case, minor bear concerns.",
+        }
+
+    @pytest.fixture
+    def debate_out_low_conf(self):
+        return {
+            "bull_strengths": ["permissive license"],
+            "bear_concerns": [
+                "unproven at scale",
+                "limited benchmark coverage",
+            ],
+            "balanced_assessment": "Evidence is thin on both sides.",
+            "recommendation": "Pilot before adopting.",
+            "confidence_score": 0.45,
+            "debate_summary": "Low-confidence outcome.",
+        }
+
+    @pytest.fixture
+    def sample_results(self):
+        return {
+            "papers": [{"title": "A paper", "url": "https://arxiv.org/abs/1", "description": "x"}],
+            "repositories": [],
+            "models": [],
+            "web_results": [],
+        }
+
+    @pytest.fixture
+    def default_deliberation(self):
+        return Deliberation(
+            understanding="compare X and Y",
+            can_answer_from_context=False,
+            action=ActionDecision.USE_TOOLS,
+            tools_to_use=[
+                ToolConsideration(
+                    tool_name="arxiv", would_help=True,
+                    rationale="search", search_query="q",
+                )
+            ],
+            intent_weights={"ai": 0.7, "bio": 0.1, "web": 0.2},
+        )
+
+    def test_build_prompt_without_debate_omits_block(
+        self, orchestrator, sample_results, default_deliberation,
+    ):
+        """No debate output → synthesis prompt has no Adversarial Analysis."""
+        user = UserModel(user_id="u")
+        context = ConversationContext(session_id="s", user_id="u")
+        prompt = orchestrator._build_synthesis_prompt(
+            "q", sample_results, user, context, default_deliberation,
+            debate_output=None,
+        )
+        assert "Adversarial Analysis" not in prompt
+        assert "Bull strengths" not in prompt
+        assert "Bear concerns" not in prompt
+
+    def test_build_prompt_with_debate_injects_block(
+        self, orchestrator, sample_results, default_deliberation,
+        debate_out_high_conf,
+    ):
+        """Debate output → synthesis prompt includes bull/bear sections."""
+        user = UserModel(user_id="u")
+        context = ConversationContext(session_id="s", user_id="u")
+        prompt = orchestrator._build_synthesis_prompt(
+            "q", sample_results, user, context, default_deliberation,
+            debate_output=debate_out_high_conf,
+        )
+        assert "Adversarial Analysis" in prompt
+        assert "strong community" in prompt
+        assert "limited multilingual support" in prompt
+        assert "Moderator recommendation" in prompt
+        assert "DEBATE INTEGRATION RULES" in prompt
+        # Synthesis LLM must be told to address every bear concern.
+        assert "address EVERY concern" in prompt
+
+    @pytest.mark.asyncio
+    async def test_debate_runs_before_synthesis(
+        self, orchestrator, sample_results, debate_out_high_conf,
+    ):
+        """End-to-end call order: research → debate → synthesis (not the other way)."""
+        call_order: list[str] = []
+
+        async def fake_tools(*_a, **_kw):
+            call_order.append("research")
+            return sample_results
+
+        async def fake_run_debate(*_a, **_kw):
+            call_order.append("debate")
+            return debate_out_high_conf
+
+        async def fake_synth(_query, _results, _user, _ctx, _delib, debate_output=None):
+            call_order.append("synthesis")
+            assert debate_output is debate_out_high_conf, (
+                "synthesis must receive debate_output so the final answer "
+                "reflects bull/bear conclusions"
+            )
+            return "final answer"
+
+        orchestrator._execute_selected_tools = AsyncMock(side_effect=fake_tools)
+        orchestrator._run_debate = AsyncMock(side_effect=fake_run_debate)
+        orchestrator._synthesize_with_results = AsyncMock(side_effect=fake_synth)
+        orchestrator._deliberate = AsyncMock(
+            return_value=Deliberation(
+                understanding="compare",
+                can_answer_from_context=False,
+                action=ActionDecision.USE_TOOLS,
+                tools_to_use=[
+                    ToolConsideration(
+                        tool_name="arxiv", would_help=True,
+                        rationale="r", search_query="q",
+                    )
+                ],
+                intent_weights={"ai": 1.0, "bio": 0.0, "web": 0.0},
+            )
+        )
+        orchestrator.agents["debate"] = MagicMock()
+
+        task = AgentTask(
+            type="query",
+            user_id="u",
+            params={"query": "compare X and Y", "auto_debate": True},
+        )
+        result = await orchestrator.execute(task)
+
+        assert result.success
+        assert call_order == ["research", "debate", "synthesis"], (
+            f"Expected research → debate → synthesis, got {call_order}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_debate_preserves_single_synthesis_path(
+        self, orchestrator, sample_results,
+    ):
+        """When debate disabled, synthesis is called once with debate_output=None."""
+        call_order: list[str] = []
+
+        async def fake_tools(*_a, **_kw):
+            call_order.append("research")
+            return sample_results
+
+        async def fake_synth(_query, _results, _user, _ctx, _delib, debate_output=None):
+            call_order.append("synthesis")
+            assert debate_output is None
+            return "final"
+
+        orchestrator._execute_selected_tools = AsyncMock(side_effect=fake_tools)
+        orchestrator._run_debate = AsyncMock(
+            side_effect=AssertionError("debate must not run when auto_debate=False")
+        )
+        orchestrator._synthesize_with_results = AsyncMock(side_effect=fake_synth)
+        orchestrator._deliberate = AsyncMock(
+            return_value=Deliberation(
+                understanding="q",
+                can_answer_from_context=False,
+                action=ActionDecision.USE_TOOLS,
+                tools_to_use=[
+                    ToolConsideration(
+                        tool_name="arxiv", would_help=True,
+                        rationale="r", search_query="q",
+                    )
+                ],
+                intent_weights={"ai": 1.0, "bio": 0.0, "web": 0.0},
+            )
+        )
+        orchestrator.agents["debate"] = MagicMock()
+
+        task = AgentTask(
+            type="query", user_id="u",
+            params={"query": "what is a transformer", "auto_debate": False},
+        )
+        result = await orchestrator.execute(task)
+
+        assert result.success
+        assert call_order == ["research", "synthesis"]
+
+    @pytest.mark.asyncio
+    async def test_non_evaluative_query_skips_debate(
+        self, orchestrator, sample_results,
+    ):
+        """auto_debate=True + non-evaluative query → debate still skipped."""
+        synth_calls = []
+        orchestrator._execute_selected_tools = AsyncMock(return_value=sample_results)
+        orchestrator._run_debate = AsyncMock(
+            side_effect=AssertionError("should not debate non-evaluative queries")
+        )
+
+        async def fake_synth(_query, _results, _user, _ctx, _delib, debate_output=None):
+            synth_calls.append(debate_output)
+            return "final"
+
+        orchestrator._synthesize_with_results = AsyncMock(side_effect=fake_synth)
+        orchestrator._deliberate = AsyncMock(
+            return_value=Deliberation(
+                understanding="q",
+                can_answer_from_context=False,
+                action=ActionDecision.USE_TOOLS,
+                tools_to_use=[
+                    ToolConsideration(
+                        tool_name="arxiv", would_help=True,
+                        rationale="r", search_query="q",
+                    )
+                ],
+                intent_weights={"ai": 1.0, "bio": 0.0, "web": 0.0},
+            )
+        )
+        orchestrator.agents["debate"] = MagicMock()
+
+        task = AgentTask(
+            type="query", user_id="u",
+            # "explain" is not an evaluative pattern
+            params={"query": "explain transformers", "auto_debate": True},
+        )
+        result = await orchestrator.execute(task)
+        assert result.success
+        assert synth_calls == [None]
+
+    @pytest.mark.asyncio
+    async def test_force_debate_overrides_evaluative_check(
+        self, orchestrator, sample_results, debate_out_high_conf,
+    ):
+        """force_debate=True runs debate even for non-evaluative queries."""
+        debate_ran = []
+
+        async def fake_run_debate(*_a, **_kw):
+            debate_ran.append(True)
+            return debate_out_high_conf
+
+        orchestrator._execute_selected_tools = AsyncMock(return_value=sample_results)
+        orchestrator._run_debate = AsyncMock(side_effect=fake_run_debate)
+        orchestrator._synthesize_with_results = AsyncMock(return_value="final")
+        orchestrator._deliberate = AsyncMock(
+            return_value=Deliberation(
+                understanding="q",
+                can_answer_from_context=False,
+                action=ActionDecision.USE_TOOLS,
+                tools_to_use=[
+                    ToolConsideration(
+                        tool_name="arxiv", would_help=True,
+                        rationale="r", search_query="q",
+                    )
+                ],
+                intent_weights={"ai": 1.0, "bio": 0.0, "web": 0.0},
+            )
+        )
+        orchestrator.agents["debate"] = MagicMock()
+
+        task = AgentTask(
+            type="query", user_id="u",
+            params={
+                "query": "explain transformers",  # not evaluative
+                "auto_debate": False,
+                "force_debate": True,
+            },
+        )
+        await orchestrator.execute(task)
+        assert debate_ran == [True]
+
+    @pytest.mark.asyncio
+    async def test_refinement_triggers_on_low_confidence(
+        self, orchestrator, sample_results, debate_out_low_conf,
+    ):
+        """Debate confidence < threshold → _refine_synthesis runs once."""
+        orchestrator._execute_selected_tools = AsyncMock(return_value=sample_results)
+        orchestrator._run_debate = AsyncMock(return_value=debate_out_low_conf)
+        orchestrator._synthesize_with_results = AsyncMock(return_value="first draft")
+        orchestrator._refine_synthesis = AsyncMock(return_value="refined answer")
+        orchestrator._deliberate = AsyncMock(
+            return_value=Deliberation(
+                understanding="compare",
+                can_answer_from_context=False,
+                action=ActionDecision.USE_TOOLS,
+                tools_to_use=[
+                    ToolConsideration(
+                        tool_name="arxiv", would_help=True,
+                        rationale="r", search_query="q",
+                    )
+                ],
+                intent_weights={"ai": 1.0, "bio": 0.0, "web": 0.0},
+            )
+        )
+        orchestrator.agents["debate"] = MagicMock()
+
+        task = AgentTask(
+            type="query", user_id="u",
+            params={
+                "query": "compare X vs Y",
+                "auto_debate": True,
+                "refine_threshold": 0.7,
+            },
+        )
+        result = await orchestrator.execute(task)
+
+        assert result.success
+        assert result.data["response"] == "refined answer"
+        orchestrator._refine_synthesis.assert_called_once()
+        # action_result should flag the refinement
+        assert result.data["action_result"]["refined"] is True
+        assert "0.45" in result.data["action_result"]["refine_reason"]
+
+    @pytest.mark.asyncio
+    async def test_high_confidence_skips_refinement(
+        self, orchestrator, sample_results, debate_out_high_conf,
+    ):
+        """Debate confidence >= threshold → no refinement, original synthesis wins."""
+        orchestrator._execute_selected_tools = AsyncMock(return_value=sample_results)
+        orchestrator._run_debate = AsyncMock(return_value=debate_out_high_conf)
+        orchestrator._synthesize_with_results = AsyncMock(return_value="confident answer")
+        orchestrator._refine_synthesis = AsyncMock(
+            side_effect=AssertionError("refinement must not run at high confidence")
+        )
+        orchestrator._deliberate = AsyncMock(
+            return_value=Deliberation(
+                understanding="compare",
+                can_answer_from_context=False,
+                action=ActionDecision.USE_TOOLS,
+                tools_to_use=[
+                    ToolConsideration(
+                        tool_name="arxiv", would_help=True,
+                        rationale="r", search_query="q",
+                    )
+                ],
+                intent_weights={"ai": 1.0, "bio": 0.0, "web": 0.0},
+            )
+        )
+        orchestrator.agents["debate"] = MagicMock()
+
+        task = AgentTask(
+            type="query", user_id="u",
+            params={"query": "compare X vs Y", "auto_debate": True},
+        )
+        result = await orchestrator.execute(task)
+
+        assert result.success
+        assert result.data["response"] == "confident answer"
+        assert result.data["action_result"].get("refined") is None
+
+    @pytest.mark.asyncio
+    async def test_refinement_can_be_disabled(
+        self, orchestrator, sample_results, debate_out_low_conf,
+    ):
+        """refine=False in task.params disables refinement even on low confidence."""
+        orchestrator._execute_selected_tools = AsyncMock(return_value=sample_results)
+        orchestrator._run_debate = AsyncMock(return_value=debate_out_low_conf)
+        orchestrator._synthesize_with_results = AsyncMock(return_value="draft only")
+        orchestrator._refine_synthesis = AsyncMock(
+            side_effect=AssertionError("refinement must be disabled")
+        )
+        orchestrator._deliberate = AsyncMock(
+            return_value=Deliberation(
+                understanding="compare",
+                can_answer_from_context=False,
+                action=ActionDecision.USE_TOOLS,
+                tools_to_use=[
+                    ToolConsideration(
+                        tool_name="arxiv", would_help=True,
+                        rationale="r", search_query="q",
+                    )
+                ],
+                intent_weights={"ai": 1.0, "bio": 0.0, "web": 0.0},
+            )
+        )
+        orchestrator.agents["debate"] = MagicMock()
+
+        task = AgentTask(
+            type="query", user_id="u",
+            params={
+                "query": "compare X vs Y",
+                "auto_debate": True,
+                "refine": False,
+            },
+        )
+        result = await orchestrator.execute(task)
+        assert result.success
+        assert result.data["response"] == "draft only"
+
+    @pytest.mark.asyncio
+    async def test_run_debate_accepts_no_synthesized_answer(
+        self, orchestrator, sample_results, debate_out_high_conf,
+    ):
+        """_run_debate works with synthesized_answer=None (pre-synthesis path)."""
+        # Capture the context the debate agent receives.
+        captured: dict = {}
+
+        mock_debate_agent = MagicMock()
+
+        async def capture_execute(agent_task):
+            captured["params"] = agent_task.params
+            # Return a successful AgentResult with debate-shaped data.
+            r = MagicMock()
+            r.success = True
+            r.data = debate_out_high_conf
+            return r
+
+        mock_debate_agent.execute = AsyncMock(side_effect=capture_execute)
+        orchestrator.agents["debate"] = mock_debate_agent
+
+        deliberation = Deliberation(
+            understanding="compare",
+            can_answer_from_context=False,
+            action=ActionDecision.USE_TOOLS,
+        )
+        out = await orchestrator._run_debate(
+            "compare X vs Y", deliberation, sample_results,
+            synthesized_answer=None,
+        )
+        assert out is not None
+        # Without a synthesized answer, the context must NOT include orchestrator_answer
+        assert "orchestrator_answer" not in captured["params"]["context"]
+        # It SHOULD include the evidence
+        assert "papers" in captured["params"]["context"]
