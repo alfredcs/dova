@@ -236,7 +236,7 @@ The setup command automatically creates:
 
 ## Architecture
 
-![DOVA Architecture](docs/assets/dova_arch_2.png)
+![DOVA Architecture](docs/assets/dova_arch_3.png)
 
 <details>
 <summary>Text-based Architecture Diagram</summary>
