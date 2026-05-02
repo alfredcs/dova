@@ -161,7 +161,7 @@ def interact(ctx: click.Context, no_thinking: bool, verbose: bool, orchestrator:
     default=["arxiv", "github", "huggingface", "web"],
     help="Sources to search (arxiv, github, huggingface, web)",
 )
-@click.option("--max-results", "-n", default=10, help="Maximum results per source")
+@click.option("--max-results", "-n", default=20, help="Maximum results per source")
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 @click.option("--format", "-f", type=click.Choice(["json", "text"]), default="text")
 @click.option(
@@ -819,18 +819,50 @@ def mcp() -> None:
     help="Transport protocol (stdio for Claude Code, http for development)",
 )
 @click.option("--port", default=8080, type=int, help="Port for HTTP transport")
-def mcp_serve(transport: str, port: int) -> None:
+@click.option(
+    "--allowed-host",
+    multiple=True,
+    help="Additional host (with optional port) to allow for HTTP transport. "
+    "Supports wildcards, e.g. 'mcp1.cavatar.info:*'. Repeatable.",
+)
+@click.option(
+    "--allowed-origin",
+    multiple=True,
+    help="Additional origin to allow for HTTP transport, e.g. 'https://mcp1.cavatar.info'. Repeatable.",
+)
+@click.option(
+    "--no-dns-rebinding-protection",
+    is_flag=True,
+    default=False,
+    help="Disable DNS rebinding protection (allow any Host/Origin). Use only in trusted networks.",
+)
+def mcp_serve(
+    transport: str,
+    port: int,
+    allowed_host: tuple[str, ...],
+    allowed_origin: tuple[str, ...],
+    no_dns_rebinding_protection: bool,
+) -> None:
     """Start Dova as an MCP server for Claude Code.
 
     Examples:
         dova mcp serve                    # stdio (default, for Claude Code)
         dova mcp serve --transport http   # HTTP mode for development
+        dova mcp serve --transport http --port 8083 \\
+            --allowed-host 'mcp1.cavatar.info:*'
     """
     from dova.mcp_server import mcp as mcp_app
 
     if transport == "http":
         mcp_app.settings.host = "0.0.0.0"
         mcp_app.settings.port = port
+        security = mcp_app.settings.transport_security
+        if no_dns_rebinding_protection:
+            security.enable_dns_rebinding_protection = False
+        if allowed_host:
+            security.allowed_hosts = list(security.allowed_hosts) + list(allowed_host)
+        if allowed_origin:
+            security.allowed_origins = list(security.allowed_origins) + list(allowed_origin)
         mcp_app.run(transport="streamable-http")
     else:
         mcp_app.run(transport="stdio")

@@ -129,6 +129,10 @@ async def execute_research(
 
         deliberation = data.get("deliberation", {})
         papers = data.get("papers", [])
+        pubmed_papers = data.get("pubmed_papers", [])
+        top_papers = data.get("top_papers", [])
+        cross_domain_bridges = data.get("cross_domain_bridges", [])
+        drug_story = data.get("drug_story")
         repositories = data.get("repositories", [])
         models = data.get("models", [])
         datasets = data.get("datasets", [])
@@ -184,6 +188,10 @@ async def execute_research(
             answer=answer,
             summary=summary,
             papers=papers,
+            top_papers=top_papers,
+            pubmed_papers=pubmed_papers,
+            cross_domain_bridges=cross_domain_bridges,
+            drug_story=drug_story,
             repositories=repositories,
             models=models,
             datasets=datasets,
@@ -200,6 +208,7 @@ async def execute_research(
                 "sources_searched": body.sources,
                 "orchestrator": body.orchestrator,
                 "deliberation_action": deliberation.get("action", ""),
+                "intent_weights": deliberation.get("intent_weights", {}),
                 "tools_used": tools_used,
             },
         )
@@ -365,6 +374,10 @@ async def _do_research(
                 "answer": data.get("response", ""),
                 "summary": summary,
                 "papers": papers,
+                "top_papers": data.get("top_papers", []),
+                "pubmed_papers": data.get("pubmed_papers", []),
+                "cross_domain_bridges": data.get("cross_domain_bridges", []),
+                "drug_story": data.get("drug_story"),
                 "repositories": repositories,
                 "models": models,
                 "datasets": datasets,

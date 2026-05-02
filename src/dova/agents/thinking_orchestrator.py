@@ -178,6 +178,101 @@ def _enrich_query_with_date(query: str) -> str:
     return query
 
 
+# Stopwords and filler phrases that cause PubMed's NLM parser to yield 0 hits
+# when embedded in long natural-language queries. These aren't medical terms,
+# so dropping them preserves intent while improving recall.
+_PUBMED_STOPWORDS: frozenset[str] = frozenset({
+    "a", "an", "the", "and", "or", "of", "for", "in", "on", "to", "with",
+    "is", "are", "was", "were", "be", "been", "being", "at", "by", "from",
+    "as", "about", "into", "over", "under",
+    "latest", "newest", "recent", "new", "current", "modern", "emerging",
+    "state-of-the-art", "cutting-edge", "novel",
+    "trending", "now", "today", "this year", "last year", "next year",
+    "review", "overview", "summary", "comparison", "study",
+})
+
+
+"""Curated bio→AI mechanism analogues.
+
+When a query uses biological vocabulary (left side) we hint the synthesis
+LLM to consider the paired AI construct (right side). Cheap prompt-level
+lever — no new LLM call, no new tool.
+
+Keep entries mechanistic, not metaphorical — each pairing should have a
+documented engineering precedent.
+"""
+_BIO_TO_AI_REFRAMES: dict[str, str] = {
+    "olfactory": "sparse distributed representations, mixture-of-experts routing, locality-sensitive hashing (fly olfactory circuit → Dasgupta et al. 2017)",
+    "immune": "clonal selection, negative selection, affinity maturation (artificial immune systems), adversarial critics with diverse exemplars",
+    "antibody": "high-dimensional nearest-neighbor search, contrastive learning with negative mining",
+    "t-cell": "gated routing with co-stimulation signals, multi-signal authorization in agent tool-use",
+    "neural adaptation": "layer normalization, short-term plasticity in RNNs, adaptive learning rates",
+    "synaptic plasticity": "STDP-inspired local learning, Hebbian updates, meta-learning",
+    "glial": "modulatory gating, learning-rate scheduling, value-based credit assignment",
+    "predictive coding": "hierarchical top-down generative models, error-driven training, free-energy formulations",
+    "cortical column": "shared-weight cortical micro-circuits, capsule networks",
+    "dopamine": "temporal-difference reward signals, RLHF reward modeling",
+    "memory consolidation": "experience replay, complementary learning systems (hippocampal → cortical)",
+    "hippocampus": "episodic memory buffer, retrieval-augmented models, episodic control",
+    "place cell": "grid-cell analogues, spatial embeddings, position encoding",
+    "evolution": "evolutionary strategies, neuroevolution, novelty search, quality-diversity algorithms",
+    "mutation": "random search, perturbation-based exploration",
+    "homeostasis": "intrinsic normalization, target-entropy control, homeostatic plasticity",
+    "attention": "transformer self-attention (explicit analog of selective attention literature)",
+    "pathway": "computational graph with gated subnetworks",
+    "biomarker": "feature-importance ranking, causal discovery, signature learning",
+    "metabolic": "budget-aware inference, early-exit, cascaded models",
+    "gene regulatory network": "gated graph neural networks, Boolean network dynamics",
+    "protein folding": "geometric deep learning, equivariant networks, diffusion-based structure generation",
+    "enzyme": "catalytic functions as differentiable modules, retrosynthesis planning",
+    "epigenetic": "context-conditional modulation, fast weights, adapters",
+}
+
+
+def _select_bio_to_ai_reframes(query: str, bio_keywords_hit: list[str] | None = None) -> list[str]:
+    """Return curated bio→AI analogue lines matching the query's vocabulary.
+
+    At most 3 reframes are returned — more crowds the prompt.
+    """
+    q = query.lower()
+    hits: list[str] = []
+    seen: set[str] = set()
+    for bio_term, ai_analog in _BIO_TO_AI_REFRAMES.items():
+        if bio_term in q and bio_term not in seen:
+            seen.add(bio_term)
+            hits.append(f"- {bio_term} → {ai_analog}")
+        if len(hits) >= 3:
+            break
+    return hits
+
+
+def _distill_pubmed_query(query: str, max_terms: int = 8) -> str:
+    """Reduce a natural-language query to a PubMed-friendly keyword phrase.
+
+    PubMed's parser ANDs every token together, so long conjunctive queries
+    return zero hits. Strip years, commas, stopwords and quantifier phrases;
+    keep at most *max_terms* meaningful tokens.
+    """
+    q = query.lower()
+    # Remove 4-digit years and year ranges.
+    q = re.sub(r"\b(19|20)\d{2}\b(?:-\d{2,4})?", " ", q)
+    # Remove punctuation that confuses the parser.
+    q = re.sub(r"[,:;\?\!\"\(\)\[\]]", " ", q)
+    # Tokenise and filter.
+    kept: list[str] = []
+    for tok in q.split():
+        if len(tok) <= 1:
+            continue
+        if tok in _PUBMED_STOPWORDS:
+            continue
+        if tok.isdigit():
+            continue
+        kept.append(tok)
+        if len(kept) >= max_terms:
+            break
+    return " ".join(kept) if kept else query.strip()
+
+
 class ActionDecision(Enum):
     """Decisions the orchestrator can make after deliberation."""
 
@@ -723,6 +818,31 @@ Critical rules:
                         "content": f"Retrieved {summary or 'no results'}.",
                     })
 
+                # 3a'. Cross-domain bridge analysis (Axis 1 #1). Only fires when
+                # the query spans AI and Bio meaningfully AND both groups
+                # returned evidence. Produces structured candidate bridges
+                # (ai_method ↔ bio_target) that are rendered in the synthesis
+                # prompt and critiqued by the debate step that follows.
+                bridges = await self._analyze_cross_domain(
+                    query, deliberation, tool_results, progress=progress,
+                )
+                if bridges:
+                    action_result["cross_domain_bridges"] = bridges
+
+                # 3a''. Drug-story chaining (Axis 1 #3). No LLM call — pure
+                # string processing over pubchem/pubmed/trials MCP payloads.
+                drug_story = self._extract_drug_story(
+                    tool_results.get("mcp_results") or [], query,
+                )
+                if drug_story:
+                    action_result["drug_story"] = drug_story
+                    self._logger.info(
+                        "drug_story_chained",
+                        compound=drug_story.get("compound"),
+                        pmids=len(drug_story.get("mechanism_pmids", [])),
+                        ncts=len(drug_story.get("trial_nct_ids", [])),
+                    )
+
                 # 3a. Multi-round bull/bear debate on the EVIDENCE (not a
                 # synthesized answer). Runs before synthesis so the debate's
                 # strengths/concerns can inform the final response rather
@@ -1238,6 +1358,180 @@ Response:"""
 
         return results
 
+    async def _analyze_cross_domain(
+        self,
+        query: str,
+        deliberation: Deliberation,
+        tool_results: dict[str, Any],
+        progress: ProgressCallback = None,
+    ) -> list[dict[str, Any]]:
+        """Bridge AI methods ↔ Bio problems into candidate cross-applications.
+
+        Runs a single LLM call that inspects the top AI evidence (arxiv
+        papers, repos, HF models) alongside the top Bio evidence
+        (pubmed_papers extracted from mcp_results, plus trials/compounds)
+        and emits structured bridges:
+
+        ``{ai_method, bio_target, mechanism, novelty, feasibility, testable_prediction}``
+
+        Gating:
+          * both ``ai_weight`` and ``bio_weight`` must be ≥ 0.1
+          * need at least 1 AI item AND 1 bio signal (pubmed, trials, compounds)
+
+        A parse failure returns [] rather than raising — bridges are an
+        additive signal; the synthesis still runs without them.
+        """
+        weights = deliberation.intent_weights or {}
+        if weights.get("ai", 0.0) < 0.1 or weights.get("bio", 0.0) < 0.1:
+            return []
+
+        papers = (tool_results.get("papers") or [])[:5]
+        repos = (tool_results.get("repositories") or [])[:3]
+        models = (tool_results.get("models") or [])[:3]
+        pubmed_papers = self._extract_pubmed_papers(tool_results.get("mcp_results") or [])
+        pubmed_top = pubmed_papers[:5]
+
+        has_ai = bool(papers or repos or models)
+        has_bio = bool(pubmed_top) or any(
+            isinstance(r, dict) and r.get("source") in ("clinicaltrials-bio", "pubchem-bio")
+            for r in tool_results.get("mcp_results") or []
+        )
+        if not (has_ai and has_bio):
+            return []
+
+        def _fmt_paper(p: dict) -> str:
+            title = p.get("title", "Untitled")
+            url = p.get("url") or f"https://arxiv.org/abs/{p.get('arxiv_id', '')}"
+            desc = (p.get("description") or p.get("summary") or "")[:200]
+            return f"- {title} ({url}) — {desc}"
+
+        def _fmt_repo(r: dict) -> str:
+            return f"- {r.get('name') or r.get('full_name', '?')} ({r.get('url') or r.get('html_url', '')}): {(r.get('description') or '')[:150]}"
+
+        def _fmt_model(m: dict) -> str:
+            mid = m.get("id") or m.get("title", "?")
+            return f"- {mid} (https://huggingface.co/{mid}): {(m.get('description') or '')[:120]}"
+
+        ai_block = "\n".join(
+            [_fmt_paper(p) for p in papers]
+            + [_fmt_repo(r) for r in repos]
+            + [_fmt_model(m) for m in models]
+        ) or "(no AI evidence)"
+
+        bio_block_parts: list[str] = []
+        for p in pubmed_top:
+            bio_block_parts.append(
+                f"- {p.get('title', 'Untitled')} ({p['url']}) — {(p.get('description') or '')[:200]}"
+            )
+        # Pull a short trials/compounds summary from the raw mcp_results so the
+        # bridge LLM has a chance to reason about them as bio targets.
+        for r in tool_results.get("mcp_results") or []:
+            if not isinstance(r, dict):
+                continue
+            src = r.get("source")
+            if src in ("clinicaltrials-bio", "pubchem-bio"):
+                data = r.get("data")
+                snippet = data[:400] if isinstance(data, str) else json.dumps(data, default=str)[:400]
+                bio_block_parts.append(f"- [{src}] {snippet}")
+        bio_block = "\n".join(bio_block_parts) or "(no Bio evidence)"
+
+        prompt = f"""You are a cross-disciplinary analyst bridging AI methods and biomedical problems.
+
+User query: {query}
+Intent weights: AI={weights.get('ai', 0):.2f}, Bio={weights.get('bio', 0):.2f}, Web={weights.get('web', 0):.2f}
+
+AI evidence (papers, repos, models):
+{ai_block}
+
+Bio evidence (literature, trials, compounds):
+{bio_block}
+
+Task: Identify 2–4 concrete BRIDGES where a specific AI method could be applied to a specific biomedical problem (or vice versa). Each bridge must reference real items from the evidence above — do NOT invent papers or tools.
+
+Return a JSON array. Each element MUST have these keys exactly:
+  "ai_method"       – short phrase + URL (from AI evidence)
+  "bio_target"      – short phrase + URL (from Bio evidence)
+  "mechanism"       – one sentence explaining why this bridge is plausible
+  "novelty"         – float 0.0–1.0 (higher = less obvious pairing)
+  "feasibility"     – float 0.0–1.0 (higher = easier to prototype)
+  "testable_prediction" – one sentence describing a concrete experiment that could falsify the bridge
+
+Return ONLY the JSON array. No prose. No markdown fences."""
+
+        if progress:
+            await progress("stage", {
+                "stage": "bridging",
+                "message": "Analyzing AI↔Bio cross-domain bridges...",
+            })
+
+        try:
+            # 3000 tokens fits up to 4 bridges with full testable_prediction
+            # sentences; 1200 was observed truncating the JSON array.
+            raw = await self.think(
+                prompt,
+                task_type=TaskType.REASONING,
+                temperature=0.4,
+                max_tokens=3000,
+            )
+        except Exception as e:
+            self._logger.warning("cross_domain_analysis_failed", error=str(e))
+            return []
+
+        # Strip code fences if the model added them despite instructions.
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```$", "", cleaned)
+
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Try to salvage the first JSON array substring.
+            m = re.search(r"\[\s*\{.*\}\s*\]", cleaned, re.DOTALL)
+            if not m:
+                self._logger.warning("cross_domain_parse_failed", raw=raw[:200])
+                return []
+            try:
+                parsed = json.loads(m.group(0))
+            except json.JSONDecodeError:
+                self._logger.warning("cross_domain_parse_failed", raw=raw[:200])
+                return []
+
+        if not isinstance(parsed, list):
+            return []
+
+        bridges: list[dict[str, Any]] = []
+        for item in parsed[:4]:
+            if not isinstance(item, dict):
+                continue
+            ai = item.get("ai_method") or item.get("ai")
+            bio = item.get("bio_target") or item.get("bio")
+            mech = item.get("mechanism") or item.get("why")
+            if not (ai and bio and mech):
+                continue
+            bridges.append({
+                "ai_method": str(ai),
+                "bio_target": str(bio),
+                "mechanism": str(mech),
+                "novelty": float(item.get("novelty", 0.5) or 0.5),
+                "feasibility": float(item.get("feasibility", 0.5) or 0.5),
+                "testable_prediction": str(item.get("testable_prediction", "")),
+            })
+
+        self._logger.info(
+            "cross_domain_bridges",
+            count=len(bridges),
+            ai_weight=weights.get("ai", 0),
+            bio_weight=weights.get("bio", 0),
+        )
+        if progress and bridges:
+            await progress("thinking", {
+                "step_type": "reflection",
+                "content": f"Identified {len(bridges)} cross-domain bridge(s) between AI methods and Bio problems.",
+            })
+
+        return bridges
+
     async def _run_debate(
         self,
         query: str,
@@ -1373,7 +1667,46 @@ Response:"""
                 return None
 
             fan_results = await asyncio.gather(*[_run(s) for s in selected])
-            return [r for r in fan_results if r is not None]
+            fan_results = [r for r in fan_results if r is not None]
+
+            # Second pass: if the pubmed-bio search returned just a PMID list
+            # (hosted MCP markdown format), hydrate it with titles + abstracts
+            # via pubmed_fetch_articles so the synthesis LLM has real content.
+            for r in fan_results:
+                if r.get("source") != "pubmed-bio":
+                    continue
+                if r.get("tool") != "pubmed_search_articles":
+                    continue
+                data = r.get("data")
+                if not isinstance(data, str) or "PMID" not in data:
+                    continue
+                pmids = re.findall(r"\b(\d{7,9})\b", data)
+                # Dedup & cap to avoid giant fetches.
+                unique_pmids = list(dict.fromkeys(pmids))[:10]
+                if not unique_pmids:
+                    continue
+                try:
+                    fetched = await self.call_tool(
+                        "pubmed-bio",
+                        "pubmed_fetch_articles",
+                        {"pmids": unique_pmids},
+                    )
+                    if fetched.success and fetched.data:
+                        r["data"] = fetched.data
+                        r["tool"] = "pubmed_fetch_articles"
+                        if isinstance(fetched.data, str):
+                            data_size = f"{len(fetched.data)} chars"
+                        else:
+                            data_size = type(fetched.data).__name__
+                        self._logger.info(
+                            "pubmed_hydrated",
+                            pmids=len(unique_pmids),
+                            data=data_size,
+                        )
+                except Exception as e:
+                    self._logger.warning("pubmed_hydrate_failed", error=str(e))
+
+            return fan_results
 
         # Single-best selection for non-bio aggregates (e.g., awslabs).
         server_name = await self._select_best_mcp_server(servers, query)
@@ -1483,12 +1816,20 @@ Response:"""
             s for s in servers
             if any(kw in query_lower for kw in bio_keywords.get(s, []))
         ]
+
+        # PubMed is literature — it's relevant to virtually any biomedical
+        # question, so include it whenever the bio umbrella is invoked even
+        # if the narrow keyword list didn't fire (e.g., "GLP-1 efficacy" hits
+        # clinicaltrials but not pubmed). This prevents the selector from
+        # silently starving the synthesis of literature context.
+        if "pubmed-bio" in servers and "pubmed-bio" not in hits:
+            hits.append("pubmed-bio")
+
         if hits:
             return hits
 
-        # No explicit keywords — fall back to literature (broadest entry point).
-        if "pubmed-bio" in servers:
-            return ["pubmed-bio"]
+        # No servers matched and pubmed-bio not configured — fall back to the
+        # first available.
         return servers[:1]
 
     async def _select_best_mcp_server(self, servers: list[str], query: str) -> str:
@@ -1629,7 +1970,11 @@ Response:"""
         # Bio servers — each has its own schema (verified against live endpoints).
         if server_name == "pubmed-bio":
             # pubmed_search_articles: {query, maxResults, ...}
-            return {"query": query, "maxResults": 10}
+            # PubMed's parser treats the full string as a conjunction, so long
+            # natural-language queries ("latest clinical trials for ... safety
+            # profile and efficacy 2026") return zero hits. Distill to a short
+            # keyword form: drop stopwords, years, recency/qualifier phrases.
+            return {"query": _distill_pubmed_query(query), "maxResults": 10}
         if server_name == "clinicaltrials-bio":
             # clinicaltrials_search_studies: free-text `query`, no max_results in schema.
             return {"query": query}
@@ -2412,11 +2757,48 @@ Return ONLY the revised answer."""
             images = results["images"]
             result_parts.append(f"**Images Generated ({len(images)}):** Images have been created based on your request.")
 
+        # Cross-domain AI↔Bio bridges produced by _analyze_cross_domain.
+        # Injected as a distinct prompt section so the synthesis LLM weaves
+        # bridges into the narrative instead of treating them as decoration.
+        bridges = results.get("cross_domain_bridges") or []
+        if bridges:
+            bridge_lines = []
+            for i, b in enumerate(bridges, 1):
+                bridge_lines.append(
+                    f"{i}. **{b.get('ai_method', '')}** ⇄ **{b.get('bio_target', '')}**\n"
+                    f"   Mechanism: {b.get('mechanism', '')}\n"
+                    f"   Novelty: {b.get('novelty', 0):.2f} · Feasibility: {b.get('feasibility', 0):.2f}\n"
+                    f"   Testable prediction: {b.get('testable_prediction', '')}"
+                )
+            result_parts.append(
+                "**Cross-Domain Bridges (AI ⇄ Bio):**\n" + "\n\n".join(bridge_lines)
+            )
+
+        # Drug-story chain (PubChem → PubMed → ClinicalTrials). Presented as
+        # a coherent unit so the synthesis LLM treats compound, mechanism,
+        # and evidence as one story instead of three disjoint mcp_results.
+        story = results.get("drug_story")
+        if story:
+            story_lines = [f"- Compound: **{story.get('compound', '?')}**"]
+            if story.get("pubchem_url"):
+                story_lines.append(f"  PubChem: {story['pubchem_url']}")
+            pmid_urls = story.get("mechanism_pmid_urls") or []
+            if pmid_urls:
+                story_lines.append(f"  Mechanism literature: {', '.join(pmid_urls)}")
+            trial_urls = story.get("trial_urls") or []
+            if trial_urls:
+                story_lines.append(f"  Clinical trials: {', '.join(trial_urls)}")
+            result_parts.append(
+                "**Drug Story (PubChem → PubMed → ClinicalTrials):**\n"
+                + "\n".join(story_lines)
+            )
+
         if results.get("mcp_results"):
             # Truncate each bio source's payload proportionally to the bio
-            # weight. A 10% bio query gets ~400 chars per server; a 60% bio
-            # query gets ~2000 chars so the synthesis LLM sees full context.
-            bio_budget_chars = max(400, int(2500 * weights.get("bio", 0.2)))
+            # weight. A 10% bio query gets ~1500 chars per server; a 60% bio
+            # query gets ~9000 chars so the hydrated PubMed / ClinicalTrials
+            # markdown (titles + abstracts) is passed through mostly intact.
+            bio_budget_chars = max(1500, int(12000 * weights.get("bio", 0.2)))
             for mcp_result in results["mcp_results"]:
                 source = mcp_result.get("source", "unknown")
                 data = mcp_result.get("data", {})
@@ -2444,6 +2826,20 @@ Return ONLY the revised answer."""
         inferred_context = ""
         if hasattr(deliberation, 'inferred_entity') and deliberation.inferred_entity:
             inferred_context = f"\nNote: User likely meant '{deliberation.inferred_entity}' - adjust response accordingly.\n"
+
+        # Bio→AI reframe hints (Axis 1 #2). Injected when the query uses
+        # biological vocabulary AND the AI group has meaningful weight, so
+        # the synthesis draws structural analogies rather than just
+        # describing bio findings in isolation. No LLM cost.
+        bio_to_ai_block = ""
+        if weights.get("ai", 0.0) >= 0.3:
+            reframes = _select_bio_to_ai_reframes(query)
+            if reframes:
+                bio_to_ai_block = (
+                    "\nBio→AI mechanism analogues to consider (when relevant to the question):\n"
+                    + "\n".join(reframes)
+                    + "\n"
+                )
 
         # Human-readable intent distribution for the synthesis LLM.
         weights_str = ", ".join(
@@ -2503,7 +2899,7 @@ Semantic intent distribution: {weights_str}
 (Weight the depth and prominence of each section in your answer accordingly —
 a higher-weighted group should dominate the narrative; lower-weighted groups
 provide corroborating context.)
-{inferred_context}
+{inferred_context}{bio_to_ai_block}
 Search Results:
 {chr(10).join(result_parts) if result_parts else "No results found."}
 {debate_block}
@@ -2544,6 +2940,12 @@ CRITICAL RULES - FOLLOW EXACTLY:
    - For each key finding or recommendation, explain the RATIONALE: why it matters, what problem it solves, or what makes it significant
    - When comparing approaches, explain trade-offs and under what conditions each excels
    - Connect findings to practical implications — who benefits and how
+
+6b. CROSS-DOMAIN BRIDGES (when the "Cross-Domain Bridges" section is present)
+   - Weave at least 2 of the listed bridges into the narrative as a dedicated "Cross-Domain Opportunities" (or similarly named) section near the end of the answer.
+   - For each bridge you use: cite BOTH the AI source URL AND the Bio source URL in the same paragraph, explain the mechanism in your own words, and state the testable prediction verbatim.
+   - Prefer bridges with higher combined novelty + feasibility. Flag any bridge with novelty ≥ 0.7 as "speculative but high-reward".
+   - Do NOT invent bridges not in the section; do NOT drop all bridges unless none of them actually bridge AI and Bio.
 
 7. MATH FORMATTING (LaTeX / KaTeX — MANDATORY when any equation, metric, complexity bound, or quantitative relation appears)
    - Inline math MUST be wrapped in single dollars: $O(n \\log n)$, $\\mathcal{{L}}(\\theta) = -\\mathbb{{E}}[\\log p_\\theta(x)]$
@@ -2704,19 +3106,260 @@ Response:"""
                 self._logger.debug("context_save_error", error=str(e))
 
     @staticmethod
+    def _extract_drug_story(
+        mcp_results: list[dict],
+        query: str,
+    ) -> dict[str, Any] | None:
+        """Chain PubChem → PubMed → ClinicalTrials into a coherent drug story.
+
+        Pure string/dict processing — no LLM call. Extracts compound names
+        from PubChem markdown, checks which compounds are mentioned in
+        PubMed titles/abstracts and ClinicalTrials study lists, and emits a
+        single structured summary:
+
+            {compound, pubchem_url, mechanism_pmids, trial_nct_ids, summary}
+
+        Returns None when there's not enough signal to form a story.
+        """
+        if not mcp_results:
+            return None
+
+        pubchem_blob = ""
+        pubmed_blob = ""
+        trials_blob = ""
+        for r in mcp_results:
+            if not isinstance(r, dict):
+                continue
+            data = r.get("data")
+            if not isinstance(data, str):
+                continue
+            src = r.get("source")
+            if src == "pubchem-bio":
+                pubchem_blob += data + "\n"
+            elif src == "pubmed-bio":
+                pubmed_blob += data + "\n"
+            elif src == "clinicaltrials-bio":
+                trials_blob += data + "\n"
+
+        if not pubchem_blob and not trials_blob:
+            return None
+
+        # PubChem markdown usually surfaces "CID: 12345" and a compound name.
+        # Try to pull the top compound name and CID.
+        cid_match = re.search(r"(?:CID|PubChem\s*CID)[:\s]+(\d+)", pubchem_blob, re.IGNORECASE)
+        cid = cid_match.group(1) if cid_match else None
+        # Compound name candidates: look for "Name: X" or a bolded header.
+        name_match = re.search(r"(?:Name|IUPAC|Compound)[:\s]+([A-Za-z][\w\-,\(\) ]{2,80})", pubchem_blob)
+        compound_name: str | None = name_match.group(1).strip() if name_match else None
+        # Fallback: any capitalised token repeated across blobs could be the
+        # subject — use the most prominent query token that looks like a
+        # compound (hyphenated or ≥4 chars alpha) as a last resort.
+        if not compound_name:
+            candidates = re.findall(r"\b[A-Z][a-zA-Z\-]{3,20}\b", query)
+            if candidates:
+                compound_name = candidates[0]
+
+        # Harvest PMIDs / NCT IDs that co-occur with the compound name in the
+        # respective blobs. If we don't have a compound name, still return
+        # the aggregate counts so the story block is useful.
+        pmids = list(dict.fromkeys(re.findall(r"\b(\d{7,9})\b", pubmed_blob)))[:5]
+        ncts = list(dict.fromkeys(re.findall(r"\bNCT\d{7,9}\b", trials_blob, re.IGNORECASE)))[:5]
+
+        if not (compound_name or pmids or ncts):
+            return None
+
+        story = {
+            "compound": compound_name or "(unknown)",
+            "pubchem_cid": cid,
+            "pubchem_url": f"https://pubchem.ncbi.nlm.nih.gov/compound/{cid}" if cid else None,
+            "mechanism_pmids": pmids,
+            "mechanism_pmid_urls": [f"https://pubmed.ncbi.nlm.nih.gov/{p}/" for p in pmids],
+            "trial_nct_ids": ncts,
+            "trial_urls": [f"https://clinicaltrials.gov/study/{n}" for n in ncts],
+        }
+        # Natural-language summary for inline use in answers.
+        parts = [f"Drug story for **{story['compound']}**"]
+        if cid:
+            parts.append(f"(PubChem CID {cid}, {story['pubchem_url']})")
+        if pmids:
+            parts.append(f"literature: {len(pmids)} PubMed article(s) — {', '.join(pmids)}")
+        if ncts:
+            parts.append(f"trials: {len(ncts)} ClinicalTrials study(ies) — {', '.join(ncts)}")
+        story["summary"] = "; ".join(parts) + "."
+        return story
+
+    @staticmethod
+    def _extract_pubmed_papers(mcp_results: list[dict]) -> list[dict]:
+        """Flatten PubMed MCP results into paper-shaped dicts.
+
+        Tries list-of-dicts, {articles: [...]}/{results: [...]}, and finally
+        a PMID regex sweep over any text payload so the caller always gets
+        something usable with a URL field.
+
+        The hosted pubmed.caseyjhand.com MCP returns a Markdown blob like
+        ``**PMIDs:** 38843460, 39114288, ...``, so the string path also
+        recognises that specific shape.
+        """
+        pmid_url_re = re.compile(r"(?:PMID[:\s]+|pubmed\.ncbi\.nlm\.nih\.gov/)(\d{5,9})", re.IGNORECASE)
+        pmid_list_re = re.compile(r"(?i)\bPMIDs?\b\s*[:\*]*\s*([\d,\s]+?)(?:\n|$)")
+        bare_pmid_re = re.compile(r"\b(\d{7,9})\b")  # fallback for `**PMIDs:** 38843460, ...`
+        papers: list[dict] = []
+        seen_pmids: set[str] = set()
+
+        def _emit(pmid: str, title: str = "", description: str = "", authors: list | None = None) -> None:
+            if not pmid or pmid in seen_pmids:
+                return
+            seen_pmids.add(pmid)
+            papers.append({
+                "title": title or f"PubMed PMID:{pmid}",
+                "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                "description": description,
+                "source": "pubmed",
+                "metadata": {"pmid": pmid, "authors": authors or []},
+            })
+
+        def _walk(data: Any) -> None:
+            if isinstance(data, list):
+                for item in data:
+                    _walk(item)
+            elif isinstance(data, dict):
+                pmid = str(data.get("pmid") or data.get("PMID") or data.get("uid") or "").strip()
+                title = data.get("title") or data.get("Title") or data.get("articleTitle") or ""
+                abstract = data.get("abstract") or data.get("Abstract") or data.get("description") or ""
+                authors = data.get("authors") or data.get("Authors") or []
+                if isinstance(authors, list):
+                    author_names = [
+                        a.get("name") if isinstance(a, dict) else str(a)
+                        for a in authors
+                    ]
+                else:
+                    author_names = []
+                if pmid:
+                    _emit(pmid, title, abstract[:400] if isinstance(abstract, str) else "", author_names)
+                # Recurse into nested containers.
+                for k in ("articles", "results", "data", "items", "PubmedArticle", "records"):
+                    if k in data:
+                        _walk(data[k])
+            elif isinstance(data, str):
+                # 1) Hydrated article blocks with titles + PMIDs.
+                #    Shape: "### <title>\n...\n**PMID:** 12345"
+                block_re = re.compile(
+                    r"###\s+(?P<title>[^\n]+?)\s*\n(?P<body>.*?)(?=\n###\s|\Z)",
+                    re.DOTALL,
+                )
+                for m in block_re.finditer(data):
+                    title = m.group("title").strip()
+                    body = m.group("body")
+                    pmid_m = re.search(r"\*\*PMID:\*\*\s*(\d{5,9})", body)
+                    if not pmid_m:
+                        continue
+                    abstract_m = re.search(r"####\s*Abstract\s*\n(.+?)(?=\n####|\n###|\Z)", body, re.DOTALL)
+                    abstract = (abstract_m.group(1).strip() if abstract_m else "")[:400]
+                    _emit(pmid_m.group(1), title=title, description=abstract)
+                # 2) "PMID: 12345" or "pubmed.ncbi.nlm.nih.gov/12345" forms.
+                for m in pmid_url_re.finditer(data):
+                    _emit(m.group(1))
+                # 3) Explicit PMID list line (hosted MCP markdown search format).
+                for m in pmid_list_re.finditer(data):
+                    for bm in bare_pmid_re.finditer(m.group(1)):
+                        _emit(bm.group(1))
+
+        for r in mcp_results:
+            if not isinstance(r, dict):
+                continue
+            if r.get("source") != "pubmed-bio":
+                continue
+            _walk(r.get("data"))
+
+        return papers
+
+    @staticmethod
+    def _allocate_top_papers(
+        arxiv_papers: list[dict],
+        pubmed_papers: list[dict],
+        intent_weights: dict[str, float] | None,
+        cap: int = 10,
+    ) -> list[dict]:
+        """Pick up to `cap` papers, split between arxiv (ai weight) and pubmed (bio weight).
+
+        Falls back to proportional-to-availability when one pool is empty or
+        weights are missing. Always returns up to `cap` items in ai-first order.
+        """
+        weights = intent_weights or {}
+        ai_w = float(weights.get("ai", 0.0))
+        bio_w = float(weights.get("bio", 0.0))
+
+        if not arxiv_papers and not pubmed_papers:
+            return []
+        if not arxiv_papers:
+            return pubmed_papers[:cap]
+        if not pubmed_papers:
+            return arxiv_papers[:cap]
+
+        total = ai_w + bio_w
+        if total <= 0:
+            # No intent signal — 70/30 arxiv/pubmed default.
+            ai_share = 0.7
+            bio_share = 0.3
+        else:
+            ai_share = ai_w / total
+            bio_share = bio_w / total
+
+        ai_slots = round(ai_share * cap)
+        bio_slots = cap - ai_slots
+        # Guarantee at least 1 slot per non-empty pool only when that side
+        # has any weight — respect a hard-0 weight (e.g. bio=1.0 query).
+        if ai_slots == 0 and ai_share > 0:
+            ai_slots, bio_slots = 1, cap - 1
+        elif bio_slots == 0 and bio_share > 0:
+            bio_slots, ai_slots = 1, cap - 1
+
+        ai_cut = arxiv_papers[:ai_slots]
+        bio_cut = pubmed_papers[:bio_slots]
+        # If one pool underfilled its slots, give the leftover to the other.
+        leftover = cap - (len(ai_cut) + len(bio_cut))
+        if leftover > 0:
+            if len(ai_cut) < ai_slots:
+                bio_cut = pubmed_papers[:bio_slots + leftover]
+            else:
+                ai_cut = arxiv_papers[:ai_slots + leftover]
+
+        return ai_cut + bio_cut
+
+    @staticmethod
     def extract_research_data(result_data: dict) -> dict:
-        """Map orchestrator output to flat research arrays for ResearchResponse."""
+        """Map orchestrator output to flat research arrays for ResearchResponse.
+
+        Adds:
+          - `pubmed_papers`: PubMed results flattened to paper-shaped dicts.
+          - `top_papers`: up to 10 paper URLs, split between arxiv and pubmed
+            proportionally to `deliberation.intent_weights` (ai vs bio).
+        """
         action_result = result_data.get("action_result") or {}
+        deliberation = result_data.get("deliberation", {}) or {}
+        arxiv_papers = action_result.get("papers", []) or []
+        mcp_results = action_result.get("mcp_results", []) or []
+        pubmed_papers = ThinkingOrchestrator._extract_pubmed_papers(mcp_results)
+        top_papers = ThinkingOrchestrator._allocate_top_papers(
+            arxiv_papers,
+            pubmed_papers,
+            deliberation.get("intent_weights"),
+            cap=10,
+        )
         return {
             "response": result_data.get("response", ""),
-            "papers": action_result.get("papers", []),
+            "papers": arxiv_papers,
+            "pubmed_papers": pubmed_papers,
+            "top_papers": top_papers,
+            "cross_domain_bridges": action_result.get("cross_domain_bridges", []),
+            "drug_story": action_result.get("drug_story"),
             "repositories": action_result.get("repositories", []),
             "models": action_result.get("models", []),
             "datasets": action_result.get("datasets", []),
             "web_results": action_result.get("web_results", []),
             "images": action_result.get("images", []),
-            "mcp_results": action_result.get("mcp_results", []),
-            "deliberation": result_data.get("deliberation", {}),
+            "mcp_results": mcp_results,
+            "deliberation": deliberation,
         }
 
     def register_agent(self, agent_type: str, agent: BaseAgent) -> None:

@@ -114,18 +114,20 @@ async def test_bio_keyword_routing(orch, query, expected_server):
             "PubMed systematic review of BRAF clinical trials",
             {"pubmed-bio", "clinicaltrials-bio"},
         ),
-        # Cross-domain: compound + trials ("phase III" + "drug structure")
+        # Cross-domain: compound + trials + literature (PubMed is always
+        # included when bio is invoked — clinical/biomedical questions
+        # almost always benefit from literature context).
         (
             "phase III trial of a drug structure containing fluorine",
-            {"clinicaltrials-bio", "pubchem-bio"},
+            {"clinicaltrials-bio", "pubchem-bio", "pubmed-bio"},
         ),
-        # Cross-domain: all three (rare but valid)
+        # All three (literature + trials + compound signals)
         (
             "PubMed MeSH on CID compound in phase III trial",
             {"pubmed-bio", "clinicaltrials-bio", "pubchem-bio"},
         ),
-        # Single-domain remains single
-        ("SMILES of aspirin", {"pubchem-bio"}),
+        # Single compound query still gets PubMed for literature context.
+        ("SMILES of aspirin", {"pubchem-bio", "pubmed-bio"}),
         # "melanoma" is biomed-general so PubMed joins ClinicalTrials.
         ("latest NCT trials for melanoma", {"clinicaltrials-bio", "pubmed-bio"}),
         # No explicit keywords → default fallback to pubmed-bio only

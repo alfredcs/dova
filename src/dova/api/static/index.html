@@ -2108,13 +2108,16 @@
         function buildResearchAndDebateCards(data) {
             let html = '';
             const results = data.research_results;
-            if (results && (results.papers?.length || results.repositories?.length || results.models?.length)) {
+            if (results && (results.papers?.length || results.top_papers?.length || results.repositories?.length || results.models?.length)) {
                 const items = [];
-                if (results.papers?.length) {
-                    const shownP = Math.min(3, results.papers.length);
-                    items.push(`<h5>Papers (${results.papers.length} found, showing ${shownP})</h5>`);
-                    results.papers.slice(0, 3).forEach(p => {
-                        items.push(`<div class="research-item"><a href="${escapeHtml(p.url || '#')}" target="_blank">${escapeHtml(p.title)}</a><p>${escapeHtml((p.description || '').substring(0, 100))}...</p></div>`);
+                const paperList = (results.top_papers?.length ? results.top_papers : results.papers) || [];
+                const totalPapers = (results.papers?.length || 0) + (results.pubmed_papers?.length || 0);
+                if (paperList.length) {
+                    const shownP = Math.min(10, paperList.length);
+                    items.push(`<h5>Papers (${totalPapers || paperList.length} found, showing ${shownP})</h5>`);
+                    paperList.slice(0, 10).forEach(p => {
+                        const badge = p.source === 'pubmed' ? ' <span style="opacity:0.7">[PubMed]</span>' : '';
+                        items.push(`<div class="research-item"><a href="${escapeHtml(p.url || '#')}" target="_blank">${escapeHtml(p.title)}</a>${badge}<p>${escapeHtml((p.description || '').substring(0, 100))}...</p></div>`);
                     });
                 }
                 if (results.repositories?.length) {
@@ -2130,6 +2133,21 @@
                     results.models.slice(0, 3).forEach(m => {
                         items.push(`<div class="research-item"><a href="${escapeHtml(m.url || '#')}" target="_blank">${escapeHtml(m.title || m.id)}</a></div>`);
                     });
+                }
+                if (results.cross_domain_bridges?.length) {
+                    items.push(`<h5>🔗 Cross-Domain Bridges (AI ⇄ Bio, ${results.cross_domain_bridges.length})</h5>`);
+                    results.cross_domain_bridges.slice(0, 4).forEach(b => {
+                        const nov = (b.novelty ?? 0).toFixed(2);
+                        const feas = (b.feasibility ?? 0).toFixed(2);
+                        items.push(`<div class="research-item"><strong>${escapeHtml(b.ai_method || '')}</strong> ⇄ <strong>${escapeHtml(b.bio_target || '')}</strong><p>${escapeHtml(b.mechanism || '')}</p><p style="opacity:0.7;font-size:0.85em">Novelty ${nov} · Feasibility ${feas} · Test: ${escapeHtml(b.testable_prediction || '')}</p></div>`);
+                    });
+                }
+                if (results.drug_story) {
+                    const s = results.drug_story;
+                    const pmidLinks = (s.mechanism_pmid_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/\\d+/) || [''])[0])}</a>`).join(', ');
+                    const trialLinks = (s.trial_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/NCT\\d+/) || [''])[0])}</a>`).join(', ');
+                    items.push(`<h5>💊 Drug Story</h5>`);
+                    items.push(`<div class="research-item"><strong>${escapeHtml(s.compound || '?')}</strong>${s.pubchem_url ? ` — <a href="${escapeHtml(s.pubchem_url)}" target="_blank">PubChem CID ${escapeHtml(s.pubchem_cid || '')}</a>` : ''}<p style="font-size:0.9em">${pmidLinks ? `Literature: ${pmidLinks}. ` : ''}${trialLinks ? `Trials: ${trialLinks}.` : ''}</p></div>`);
                 }
                 html += `<div class="research-card">${items.join('')}</div>`;
             }
@@ -2209,17 +2227,20 @@
             }
 
             let researchCard = '';
-            if (data.research_results && (data.research_results.papers?.length || data.research_results.repositories?.length || data.research_results.models?.length)) {
+            if (data.research_results && (data.research_results.papers?.length || data.research_results.top_papers?.length || data.research_results.repositories?.length || data.research_results.models?.length)) {
                 const results = data.research_results;
                 let items = [];
 
-                if (results.papers?.length) {
-                    const shownP = Math.min(3, results.papers.length);
-                    items.push(`<h5>Papers (${results.papers.length} found, showing ${shownP})</h5>`);
-                    results.papers.slice(0, 3).forEach(p => {
+                const paperList = (results.top_papers?.length ? results.top_papers : results.papers) || [];
+                const totalPapers = (results.papers?.length || 0) + (results.pubmed_papers?.length || 0);
+                if (paperList.length) {
+                    const shownP = Math.min(10, paperList.length);
+                    items.push(`<h5>Papers (${totalPapers || paperList.length} found, showing ${shownP})</h5>`);
+                    paperList.slice(0, 10).forEach(p => {
+                        const badge = p.source === 'pubmed' ? ' <span style="opacity:0.7">[PubMed]</span>' : '';
                         items.push(`
                             <div class="research-item">
-                                <a href="${escapeHtml(p.url || '#')}" target="_blank">${escapeHtml(p.title)}</a>
+                                <a href="${escapeHtml(p.url || '#')}" target="_blank">${escapeHtml(p.title)}</a>${badge}
                                 <p>${escapeHtml((p.description || '').substring(0, 100))}...</p>
                             </div>
                         `);
@@ -2249,6 +2270,34 @@
                             </div>
                         `);
                     });
+                }
+
+                if (results.cross_domain_bridges?.length) {
+                    items.push(`<h5>🔗 Cross-Domain Bridges (AI ⇄ Bio, ${results.cross_domain_bridges.length})</h5>`);
+                    results.cross_domain_bridges.slice(0, 4).forEach(b => {
+                        const nov = (b.novelty ?? 0).toFixed(2);
+                        const feas = (b.feasibility ?? 0).toFixed(2);
+                        items.push(`
+                            <div class="research-item">
+                                <strong>${escapeHtml(b.ai_method || '')}</strong> ⇄ <strong>${escapeHtml(b.bio_target || '')}</strong>
+                                <p>${escapeHtml(b.mechanism || '')}</p>
+                                <p style="opacity:0.7;font-size:0.85em">Novelty ${nov} · Feasibility ${feas} · Test: ${escapeHtml(b.testable_prediction || '')}</p>
+                            </div>
+                        `);
+                    });
+                }
+
+                if (results.drug_story) {
+                    const s = results.drug_story;
+                    const pmidLinks = (s.mechanism_pmid_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/\\d+/) || [''])[0])}</a>`).join(', ');
+                    const trialLinks = (s.trial_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/NCT\\d+/) || [''])[0])}</a>`).join(', ');
+                    items.push(`<h5>💊 Drug Story</h5>`);
+                    items.push(`
+                        <div class="research-item">
+                            <strong>${escapeHtml(s.compound || '?')}</strong>${s.pubchem_url ? ` — <a href="${escapeHtml(s.pubchem_url)}" target="_blank">PubChem CID ${escapeHtml(s.pubchem_cid || '')}</a>` : ''}
+                            <p style="font-size:0.9em">${pmidLinks ? `Literature: ${pmidLinks}. ` : ''}${trialLinks ? `Trials: ${trialLinks}.` : ''}</p>
+                        </div>
+                    `);
                 }
 
                 researchCard = `<div class="research-card">${items.join('')}</div>`;

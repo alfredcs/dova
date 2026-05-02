@@ -72,6 +72,22 @@ class ResearchResponse(BaseModel):
         default_factory=list,
         description="ArXiv papers found",
     )
+    top_papers: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Top 10 paper URLs split between arxiv and pubmed by intent weights",
+    )
+    pubmed_papers: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="PubMed articles (flattened from bio MCP results)",
+    )
+    cross_domain_bridges: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="AI↔Bio bridges produced by the cross-domain analyst (ai_method, bio_target, mechanism, novelty, feasibility, testable_prediction)",
+    )
+    drug_story: dict[str, Any] | None = Field(
+        default=None,
+        description="Coherent compound→mechanism→trial chain linking PubChem, PubMed, and ClinicalTrials evidence",
+    )
     repositories: list[dict[str, Any]] = Field(
         default_factory=list,
         description="GitHub repositories found",

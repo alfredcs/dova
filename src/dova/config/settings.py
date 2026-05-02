@@ -20,9 +20,24 @@ class AWSSettings(BaseSettings):
     access_key_id: str | None = Field(default=None, description="AWS access key ID")
     secret_access_key: str | None = Field(default=None, description="AWS secret access key")
     bedrock_model_id: str = Field(
-        default="global.anthropic.claude-sonnet-4-6",
-        description="Default Bedrock model ID",
+        # Informational only (surfaced in ``dova config`` output). The real
+        # per-tier model IDs live in config/providers.py and are also driven
+        # entirely from the environment (BEDROCK_MODEL_{BASIC,STANDARD,...}).
+        # Defaulting to the STANDARD tier so this field tracks what the
+        # user would see as "the default chat model".
+        default="",
+        description="Default Bedrock model ID (mirrors BEDROCK_MODEL_STANDARD)",
     )
+
+    def __init__(self, **kwargs):
+        import os as _os
+        super().__init__(**kwargs)
+        if not self.bedrock_model_id:
+            # Read the same env var that providers.py reads so ``dova config``
+            # and ``dova serve`` always agree on which model is in use.
+            self.bedrock_model_id = _os.environ.get(
+                "BEDROCK_MODEL_STANDARD", "global.anthropic.claude-sonnet-4-6"
+            )
     agentcore_agent_id: str | None = Field(
         default=None, description="AgentCore deployed agent ID"
     )

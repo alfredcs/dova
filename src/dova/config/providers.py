@@ -55,7 +55,12 @@ TASK_TIER_MAPPING: dict[TaskType, ModelTier] = {
 }
 
 
-# Default models for each provider and tier
+# Default models for each provider and tier. All values are read from
+# environment variables first (set via .env) and only fall back to a literal
+# if the env var is unset — this keeps all model-ID choices in .env so a
+# single config file controls every LLM call dova makes.
+#
+# Tiers:
 # - BASIC: Fast, low-cost tasks (classification, extraction, summarization)
 # - STANDARD: General tasks (chat, research)
 # - ADVANCED: Complex tasks (coding, deep reasoning)
@@ -68,25 +73,55 @@ DEFAULT_BEDROCK_MODELS: dict[ModelTier, str] = {
 }
 
 DEFAULT_ANTHROPIC_MODELS: dict[ModelTier, str] = {
-    ModelTier.BASIC: "claude-haiku-4-5-20251022",
-    ModelTier.STANDARD: "claude-sonnet-4-20250514",
-    ModelTier.ADVANCED: "claude-opus-4-5-20251101",
-    ModelTier.REASONING: "claude-opus-4-5-20251101",
+    ModelTier.BASIC: os.environ.get("ANTHROPIC_MODEL_BASIC", "claude-haiku-4-5-20251022"),
+    ModelTier.STANDARD: os.environ.get("ANTHROPIC_MODEL_STANDARD", "claude-sonnet-4-20250514"),
+    ModelTier.ADVANCED: os.environ.get("ANTHROPIC_MODEL_ADVANCED", "claude-opus-4-5-20251101"),
+    ModelTier.REASONING: os.environ.get("ANTHROPIC_MODEL_REASONING", "claude-opus-4-5-20251101"),
 }
 
 DEFAULT_OPENAI_MODELS: dict[ModelTier, str] = {
-    ModelTier.BASIC: "gpt-5.4-mini",
-    ModelTier.STANDARD: "gpt-5.4",
-    ModelTier.ADVANCED: "gpt-5.4",
-    ModelTier.REASONING: "gpt-5.4",
+    ModelTier.BASIC: os.environ.get("OPENAI_MODEL_BASIC", "gpt-5.4-mini"),
+    ModelTier.STANDARD: os.environ.get("OPENAI_MODEL_STANDARD", "gpt-5.4"),
+    ModelTier.ADVANCED: os.environ.get("OPENAI_MODEL_ADVANCED", "gpt-5.4"),
+    ModelTier.REASONING: os.environ.get("OPENAI_MODEL_REASONING", "gpt-5.4"),
 }
 
-# Max completion tokens per OpenAI model (to avoid invalid_request_error)
+# Embedding models — also env-driven.
+DEFAULT_BEDROCK_EMBEDDING_MODEL: str = os.environ.get(
+    "BEDROCK_EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0"
+)
+DEFAULT_OPENAI_EMBEDDING_MODEL: str = os.environ.get(
+    "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+)
+
+# Max completion tokens per OpenAI model (to avoid invalid_request_error).
+# Defaults are loaded from the env so operators can tune per-model caps
+# without touching source. Format: OPENAI_MAX_TOKENS_<model_id_upper>.
+OPENAI_DEFAULT_MAX_TOKENS: int = int(os.environ.get("OPENAI_DEFAULT_MAX_TOKENS", "16384"))
 OPENAI_MAX_COMPLETION_TOKENS: dict[str, int] = {
-    "gpt-5.4": 16384,
-    "gpt-5.4-mini": 16384,
+    "gpt-5.4": int(os.environ.get("OPENAI_MAX_TOKENS_GPT_5_4", str(OPENAI_DEFAULT_MAX_TOKENS))),
+    "gpt-5.4-mini": int(os.environ.get("OPENAI_MAX_TOKENS_GPT_5_4_MINI", str(OPENAI_DEFAULT_MAX_TOKENS))),
 }
-OPENAI_DEFAULT_MAX_TOKENS = 16384
+
+# Provider priority order (primary, secondary, tertiary). Lower number = higher
+# priority. Comma-separated list drives fallback order in LLMRouter when the
+# primary provider fails. Accepts any subset of {bedrock, anthropic, openai}.
+DEFAULT_PROVIDER_ORDER: list[str] = [
+    p.strip() for p in os.environ.get(
+        "LLM_PROVIDER_ORDER", "bedrock,anthropic,openai"
+    ).split(",") if p.strip()
+]
+
+
+def _provider_priority(name: str) -> int:
+    """Return 1-based priority for a provider per ``LLM_PROVIDER_ORDER``.
+
+    Unknown providers get priority 99 so configured ones always win.
+    """
+    try:
+        return DEFAULT_PROVIDER_ORDER.index(name) + 1
+    except ValueError:
+        return 99
 
 
 class RoutingStrategy(Enum):
@@ -705,15 +740,16 @@ def create_llm_router_from_settings() -> LLMRouter:
                 bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
             elif task_type == TaskType.EMBEDDING:
                 # Use Amazon Titan for embeddings (Claude doesn't support embeddings)
-                embedding_model = os.environ.get("BEDROCK_EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0")
-                bedrock_task_models[task_type] = ModelConfig(model_id=embedding_model, max_tokens=81920)
+                bedrock_task_models[task_type] = ModelConfig(
+                    model_id=DEFAULT_BEDROCK_EMBEDDING_MODEL, max_tokens=81920
+                )
             else:
                 bedrock_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
 
         bedrock_config = ProviderConfig(
             name="bedrock",
             enabled=True,
-            priority=1,
+            priority=_provider_priority("bedrock"),
             models=bedrock_task_models,
         )
         try:
@@ -766,7 +802,7 @@ def create_llm_router_from_settings() -> LLMRouter:
         anthropic_config = ProviderConfig(
             name="anthropic",
             enabled=True,
-            priority=2,
+            priority=_provider_priority("anthropic"),
             models=anthropic_task_models,
         )
         try:
@@ -810,14 +846,14 @@ def create_llm_router_from_settings() -> LLMRouter:
             elif task_type == TaskType.REASONING:
                 openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
             elif task_type == TaskType.EMBEDDING:
-                openai_task_models[task_type] = ModelConfig(model_id="text-embedding-3-small", max_tokens=81920)
+                openai_task_models[task_type] = ModelConfig(model_id=DEFAULT_OPENAI_EMBEDDING_MODEL, max_tokens=81920)
             else:
                 openai_task_models[task_type] = ModelConfig(model_id=model_id, max_tokens=40960, temperature=0.7)
 
         openai_config = ProviderConfig(
             name="openai",
             enabled=True,
-            priority=3,
+            priority=_provider_priority("openai"),
             models=openai_task_models,
         )
         try:

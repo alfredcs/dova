@@ -424,7 +424,7 @@ Return JSON:
             insight_prompt,
             task_type=TaskType.REASONING,
             temperature=0.7,
-            max_tokens=15000,
+            max_tokens=24000,
         )
 
         return self._parse_emergent_insights(response)

@@ -255,6 +255,12 @@ class MCPClient:
             env = {**os.environ, **server_config.env_vars}
 
         # Start process
+        # `limit` bumps asyncio StreamReader's per-line buffer from 64 KiB to
+        # 10 MiB. Arxiv `search_papers` with ~10 full abstracts routinely
+        # exceeds 64 KiB in one JSON-RPC line, tripping
+        # "Separator is not found, and chunk exceed the limit" on
+        # process.stdout.readline(). 10 MiB covers any realistic MCP payload
+        # without being so high we mask a runaway response.
         process = None
         try:
             process = await asyncio.create_subprocess_exec(
@@ -263,6 +269,7 @@ class MCPClient:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                limit=10 * 1024 * 1024,
             )
 
             async def send_and_receive(request: dict, request_id: int) -> dict:

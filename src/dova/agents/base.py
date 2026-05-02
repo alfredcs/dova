@@ -438,7 +438,7 @@ class StrandsAgentMixin:
     def _create_strands_agent(
         self,
         tools: list[Any] | None = None,
-        model_id: str = "anthropic.claude-sonnet-4-20250514-v1:0",
+        model_id: str | None = None,
     ) -> Any:
         """
         Create a Strands Agent instance.
@@ -451,10 +451,14 @@ class StrandsAgentMixin:
             Strands Agent instance
         """
         try:
+            import os as _os
             from strands import Agent
             from strands.models import BedrockModel
 
-            model = BedrockModel(model_id=model_id)
+            resolved_model_id = model_id or _os.environ.get(
+                "BEDROCK_MODEL_STANDARD", "global.anthropic.claude-sonnet-4-6"
+            )
+            model = BedrockModel(model_id=resolved_model_id)
             return Agent(model=model, tools=tools or [])
         except ImportError:
             logger.error("strands_sdk_not_installed")

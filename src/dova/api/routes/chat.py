@@ -182,15 +182,30 @@ async def send_message(
                             "recommendation": result.get("recommendation", ""),
                             "confidence": result.get("confidence_score", result.get("confidence", 0)),
                         }
-                    if action_taken == "research":
-                        research_results = {
-                            "papers": result.get("papers", []),
-                            "repositories": result.get("repositories", []),
-                            "models": result.get("models", []),
-                            "web_results": result.get("web_results", []),
+                    # Derive top_papers + pubmed_papers the same way as the
+                    # streaming path and /api/v1/research so the UI receives a
+                    # consistent shape regardless of which endpoint it called.
+                    from dova.agents.thinking_orchestrator import ThinkingOrchestrator
+                    research_data = ThinkingOrchestrator.extract_research_data(
+                        {"action_result": result, "deliberation": {"intent_weights": intent_weights}}
+                    )
+
+                    def _build_research_payload(answer_src: str) -> dict[str, Any]:
+                        return {
+                            "papers": research_data.get("papers", []),
+                            "pubmed_papers": research_data.get("pubmed_papers", []),
+                            "top_papers": research_data.get("top_papers", []),
+                            "cross_domain_bridges": research_data.get("cross_domain_bridges", []),
+                        "drug_story": research_data.get("drug_story"),
+                            "repositories": research_data.get("repositories", []),
+                            "models": research_data.get("models", []),
+                            "web_results": research_data.get("web_results", []),
                             "summary": result.get("summary", ""),
-                            "answer": result.get("answer", ""),
+                            "answer": answer_src,
                         }
+
+                    if action_taken == "research":
+                        research_results = _build_research_payload(result.get("answer", ""))
                         sources_used = body.sources
                     elif action_taken == "debate":
                         debate_results = {
@@ -201,15 +216,12 @@ async def send_message(
                             "confidence": result.get("confidence", 0),
                         }
                         # Collaborative/deep mode includes research data alongside debate
-                        if result.get("papers") or result.get("repositories") or result.get("models") or result.get("web_results"):
-                            research_results = {
-                                "papers": result.get("papers", []),
-                                "repositories": result.get("repositories", []),
-                                "models": result.get("models", []),
-                                "web_results": result.get("web_results", []),
-                                "summary": result.get("answer", ""),
-                                "answer": result.get("answer", ""),
-                            }
+                        if any(
+                            research_data.get(k)
+                            for k in ("papers", "pubmed_papers", "top_papers",
+                                      "repositories", "models", "web_results")
+                        ):
+                            research_results = _build_research_payload(result.get("answer", ""))
                             sources_used = body.sources
 
                     # Extract images from action_result (ThinkingOrchestrator returns them)
@@ -425,6 +437,12 @@ async def stream_message(
             deliberation = data.get("deliberation", {})
             action_result = data.get("action_result") or {}
 
+            # Same derivation as /api/v1/research so the UI receives
+            # top_papers (ai/bio split by intent weights) and pubmed_papers
+            # (flattened from bio MCP results) for chat-driven research.
+            from dova.agents.thinking_orchestrator import ThinkingOrchestrator
+            research_data = ThinkingOrchestrator.extract_research_data(data)
+
             session.state.conversation.append(
                 ConversationTurn(
                     role="assistant",
@@ -446,15 +464,21 @@ async def stream_message(
             action_taken = deliberation.get("action")
 
             if action_result:
-                if any(
-                    action_result.get(k)
-                    for k in ("papers", "repositories", "models", "web_results")
-                ):
+                has_any = any(
+                    research_data.get(k)
+                    for k in ("papers", "pubmed_papers", "top_papers",
+                              "repositories", "models", "web_results")
+                )
+                if has_any:
                     research_results = {
-                        "papers": action_result.get("papers", []),
-                        "repositories": action_result.get("repositories", []),
-                        "models": action_result.get("models", []),
-                        "web_results": action_result.get("web_results", []),
+                        "papers": research_data.get("papers", []),
+                        "pubmed_papers": research_data.get("pubmed_papers", []),
+                        "top_papers": research_data.get("top_papers", []),
+                        "cross_domain_bridges": research_data.get("cross_domain_bridges", []),
+                        "drug_story": research_data.get("drug_story"),
+                        "repositories": research_data.get("repositories", []),
+                        "models": research_data.get("models", []),
+                        "web_results": research_data.get("web_results", []),
                         "summary": action_result.get("summary", ""),
                         "answer": response_text,
                     }

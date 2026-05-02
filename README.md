@@ -2,12 +2,18 @@
 
 DOVA is an enterprise-grade, multi-agent research automation system built on AWS Strands Agents SDK and Amazon Bedrock AgentCore. It aggregates knowledge from ArXiv, GitHub, HuggingFace, biomedical sources (PubMed / ClinicalTrials.gov / PubChem), and the web through the Model Context Protocol (MCP).
 
-**Latest: v1.7** — Semantic intent weighting across AI / Bio / Web, biotech-pharma MCP servers (PubMed, ClinicalTrials.gov, PubChem), grouped UI source selector, and unified orchestrator across `dova interact`, `dova research`, and `dova serve`. See [release notes](docs/release_notes_v1.7.md).
+**Latest: v1.8** — Cross-field reasoning (AI ⇄ Bio bridges, bio→AI analogue reframes, drug-story chaining), bio-flow reliability fixes (PubMed always fanned-out, query distillation, two-step hydration), `dova mcp serve` parity with `dova serve`, and **100% env-driven LLM configuration**. See [release notes](docs/release_notes_v1.8.md). Prior: [v1.7](docs/release_notes_v1.7.md).
 
 ## Features
 
 ### Core Capabilities
-- **Weighted Intent Deliberation** *(New in v1.7)*: Every query is scored across {AI, Bio, Web} into a percentage distribution (e.g. `60% AI / 30% Bio / 10% Web`). Weights drive result aggregation in synthesis without zero-summing any group — a 10% web floor guarantees general-purpose context on every query.
+- **Cross-Domain AI ⇄ Bio Analyst** *(New in v1.8)*: After tool fan-out, a dedicated bridge step emits structured `{ai_method, bio_target, mechanism, novelty, feasibility, testable_prediction}` pairs that are rendered in the synthesis narrative and surfaced as a 🔗 card in the UI. Gated — pure-AI and pure-bio queries skip it entirely.
+- **Bio → AI Reframe Map** *(New in v1.8)*: 24 curated mechanism analogues (olfactory → sparse distributed reps, immune → clonal selection, hippocampus → episodic memory, …) injected into the synthesis prompt when biological vocabulary meets `ai_weight ≥ 0.3`. Zero LLM cost.
+- **Drug-Story Chain** *(New in v1.8)*: PubChem + PubMed + ClinicalTrials payloads stitched into one structured `{compound, cid, mechanism_pmids, trial_ncts}` unit, rendered as a 💊 card with clickable links.
+- **Bio-Flow Reliability** *(New in v1.8)*: PubMed is now always part of the bio fan-out (literature is nearly always relevant); raw natural-language queries are distilled before hitting NCBI (0 hits → 455+ hits in observed cases); PubMed responses are hydrated via `pubmed_fetch_articles` so synthesis has real titles/abstracts, not just PMIDs.
+- **`dova mcp serve` Parity** *(New in v1.8)*: MCP tool server now runs the same `ThinkingOrchestrator` + memory + source registry as `dova serve`. `dova_research` returns `top_papers`, `pubmed_papers`, `cross_domain_bridges`, and `drug_story` identical to `/api/v1/research`.
+- **100 % Env-Driven LLM Config** *(New in v1.8)*: No model IDs, embedding IDs, or provider priorities remain hardcoded. Edit `.env` to set primary / secondary / tertiary providers, per-tier models, embeddings, and output caps.
+- **Weighted Intent Deliberation** *(Since v1.7)*: Every query is scored across {AI, Bio, Web} into a percentage distribution (e.g. `60% AI / 30% Bio / 10% Web`). Weights drive result aggregation in synthesis without zero-summing any group — a 10% web floor guarantees general-purpose context on every query.
 - **Biotech / Pharma Sources** *(New in v1.6→1.7)*: `bio` umbrella routes to hosted PubMed, ClinicalTrials.gov, and PubChem MCP endpoints; orchestrator performs semantic multi-server fan-out based on keywords (literature / trials / compounds).
 - **ThinkingOrchestrator** *(Since v1.5)*: Deliberation-first orchestration that reasons about user needs before deciding which tools to use; shared by `dova interact`, `dova research`, and the `dova serve` chat endpoints.
 - **Interactive CLI Mode**: Claude Code-like experience with `dova interact` - chain-of-thought reasoning, memory integration, and automatic tool selection
@@ -78,17 +84,36 @@ cp .env.example .env
 
 ### Configuration
 
-Edit `.env` with your credentials:
+Edit `.env` with your credentials. All LLM configuration is env-driven as of v1.8 — see `.env.example` for the full template:
 
 ```bash
 # AWS Configuration
 AWS_REGION=us-east-1
-AWS_BEDROCK_MODEL_ID=anthropic.claude-sonnet-4-20250514-v1:0
+
+# Provider fallback order — primary first
+LLM_PROVIDER_ORDER=bedrock,anthropic,openai
+
+# Bedrock (primary) — tiered models
+BEDROCK_MODEL_BASIC=us.anthropic.claude-haiku-4-5-20251001-v1:0
+BEDROCK_MODEL_STANDARD=us.anthropic.claude-sonnet-4-20250514-v1:0
+BEDROCK_MODEL_ADVANCED=us.anthropic.claude-opus-4-5-20251101-v1:0
+BEDROCK_MODEL_REASONING=us.anthropic.claude-opus-4-5-20251101-v1:0
+BEDROCK_EMBEDDING_MODEL=amazon.titan-embed-text-v2:0
+
+# Anthropic (secondary fallback)
+ANTHROPIC_API_KEY=your-anthropic-key
+ANTHROPIC_MODEL_STANDARD=claude-sonnet-4-20250514
+ANTHROPIC_MODEL_ADVANCED=claude-opus-4-5-20251101
+
+# OpenAI (tertiary fallback)
+OPENAI_API_KEY=your-openai-key
+OPENAI_MODEL_STANDARD=gpt-5.4
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # MCP Server Configuration
 MCP_GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 
-# Web Search Providers (optional - DuckDuckGo is free fallback)
+# Web Search Providers (optional — DuckDuckGo is free fallback)
 BRAVE_API_KEY=xxx           # https://brave.com/search/api/
 PERPLEXITY_API_KEY=xxx      # https://perplexity.ai/settings/api
 TAVILY_API_KEY=xxx          # https://tavily.com
@@ -401,7 +426,7 @@ make deploy
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `AWS_REGION` | AWS region for Bedrock | Yes |
-| `AWS_BEDROCK_MODEL_ID` | Bedrock model ID | Yes |
+| `AWS_BEDROCK_MODEL_ID` | Legacy single-model override (use `BEDROCK_MODEL_*` tiered vars below instead) | No |
 | `STACK_NAME` | AWS stack name for AgentCore resources | For AgentCore |
 | `MEMORY_ID` | AgentCore Memory ID | For AgentCore |
 | `GATEWAY_URL` | AgentCore Gateway URL | For AgentCore |
@@ -427,10 +452,18 @@ make deploy
 | `DISCOVERY_AUTO_DISCOVER_ON_STARTUP` | Auto-discover models on startup | No (default: true) |
 | `MEMORY_ENHANCED_SEMANTIC_SEARCH_ENABLED` | Enable semantic memory search | No (default: true) |
 | `MEMORY_ENHANCED_MMR_LAMBDA` | MMR diversity parameter (0-1) | No (default: 0.5) |
-| `LLM_TIER_BASIC_MODEL` | Model for basic tasks (classification, summarization) | No |
-| `LLM_TIER_STANDARD_MODEL` | Model for standard tasks | No |
-| `LLM_TIER_ADVANCED_MODEL` | Model for complex tasks (code generation, reasoning) | No |
-| `LLM_TIER_REASONING_MODEL` | Model for deep reasoning tasks | No |
+| `LLM_PRIMARY_PROVIDER` | Primary LLM provider (`bedrock` / `anthropic` / `openai`) | No (default: `bedrock`) |
+| `LLM_PROVIDER_ORDER` | Provider fallback order, comma-separated | No (default: `bedrock,anthropic,openai`) |
+| `BEDROCK_MODEL_BASIC` | Bedrock model for BASIC tier | No (has default) |
+| `BEDROCK_MODEL_STANDARD` | Bedrock model for STANDARD tier | No (has default) |
+| `BEDROCK_MODEL_ADVANCED` | Bedrock model for ADVANCED tier | No (has default) |
+| `BEDROCK_MODEL_REASONING` | Bedrock model for REASONING tier | No (has default) |
+| `BEDROCK_EMBEDDING_MODEL` | Bedrock embedding model | No (default: `amazon.titan-embed-text-v2:0`) |
+| `ANTHROPIC_MODEL_BASIC` / `_STANDARD` / `_ADVANCED` / `_REASONING` | Anthropic tiered models (secondary) | No (has defaults) |
+| `OPENAI_MODEL_BASIC` / `_STANDARD` / `_ADVANCED` / `_REASONING` | OpenAI tiered models (tertiary) | No (has defaults) |
+| `OPENAI_EMBEDDING_MODEL` | OpenAI embedding model | No (default: `text-embedding-3-small`) |
+| `OPENAI_DEFAULT_MAX_TOKENS` | OpenAI default output cap | No (default: 16384) |
+| `OPENAI_MAX_TOKENS_<MODEL>` | Per-model OpenAI output cap (e.g. `OPENAI_MAX_TOKENS_GPT_5_4`) | No |
 
 ## License
 
