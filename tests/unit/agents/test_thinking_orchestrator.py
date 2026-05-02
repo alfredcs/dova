@@ -753,3 +753,47 @@ class TestDebateFirstFlow:
         assert "orchestrator_answer" not in captured["params"]["context"]
         # It SHOULD include the evidence
         assert "papers" in captured["params"]["context"]
+
+
+class TestTokenBudgetEstimator:
+    """Tests for the worst-case per-query token bound (Thm.1 of paper)."""
+
+    def test_ai_only_no_bridge(self):
+        from dova.agents.thinking_orchestrator import _estimate_token_bound
+        r = _estimate_token_bound({"ai": 1.0, "bio": 0.0, "web": 0.0}, {"ai"})
+        assert r["bridge_on"] is False
+        assert r["n_groups"] == 1
+        # Defaults: 4096*(1+1+0) + min(15*2100, 65536) = 8192 + 31500 = 39692
+        assert r["estimate"] == 39692
+        assert r["pre_synthesis"] == 8192
+        assert r["synthesis"] == 31500
+
+    def test_bridge_fires_when_both_above_eps(self):
+        from dova.agents.thinking_orchestrator import _estimate_token_bound
+        r = _estimate_token_bound(
+            {"ai": 0.6, "bio": 0.3, "web": 0.1}, {"ai", "bio", "web"}
+        )
+        assert r["bridge_on"] is True
+        assert r["n_groups"] == 3
+        # 4096*(1+3+1) + 31500 = 20480 + 31500 = 51980
+        assert r["estimate"] == 51980
+
+    def test_bridge_off_when_bio_below_eps(self):
+        from dova.agents.thinking_orchestrator import _estimate_token_bound
+        r = _estimate_token_bound(
+            {"ai": 0.85, "bio": 0.05, "web": 0.10}, {"ai", "bio", "web"}
+        )
+        assert r["bridge_on"] is False, "bio=0.05 < eps_pi=0.1, bridge should be off"
+        assert r["estimate"] == 4096 * (1 + 3) + 31500
+
+    def test_monotonic_in_group_count(self):
+        from dova.agents.thinking_orchestrator import _estimate_token_bound
+        single = _estimate_token_bound({"ai": 1.0}, {"ai"})
+        triple = _estimate_token_bound({"ai": 0.5, "bio": 0.3, "web": 0.2}, {"ai", "bio", "web"})
+        assert triple["estimate"] > single["estimate"]
+
+    def test_synthesis_cap_dominated_by_tier_when_kappa_large(self):
+        from dova.agents.thinking_orchestrator import _estimate_token_bound
+        # With B=15 and kappa=100000, B*kappa=1.5M dwarfs T_k=65536; clamp to T_k
+        r = _estimate_token_bound({"ai": 1.0}, {"ai"}, T_k=65536, kappa=100000)
+        assert r["synthesis"] == 65536

@@ -101,6 +101,10 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         self.session_manager = session_manager  # AgentCore memory session manager
         self.name = self.__class__.__name__
         self._logger = logger.bind(agent=self.name)
+        # Per-stage token accounting: last_*_tokens is refreshed every
+        # think() call so orchestrators can compute stage-level totals.
+        self.last_input_tokens: int = 0
+        self.last_output_tokens: int = 0
 
     @abstractmethod
     async def execute(self, task: AgentTask) -> AgentResult:
@@ -165,6 +169,11 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
             response.output_tokens,
             labels={"agent": self.name},
         )
+
+        # Expose last-call token counts so orchestrators can do per-stage
+        # accounting without changing the think() return shape.
+        self.last_input_tokens = response.input_tokens
+        self.last_output_tokens = response.output_tokens
 
         self._logger.debug(
             "llm_call_complete",
@@ -271,15 +280,23 @@ class BaseAgent(ReasoningMixin, MemoryMixin, ABC):
         self,
         query: str,
         max_results: int = 10,
+        date_from: str | None = None,
     ) -> MCPToolResult:
-        """Convenience method for ArXiv search."""
+        """Convenience method for ArXiv search.
+
+        Args:
+            query: Search query string.
+            max_results: Max papers to return.
+            date_from: Optional inclusive start date in ``YYYY-MM-DD`` format.
+                Recent-only windowing keeps synthesis grounded in current work.
+        """
+        params: dict[str, Any] = {"query": query, "max_results": max_results}
+        if date_from:
+            params["date_from"] = date_from
         return await self.call_tool(
             "arxiv",
             "search_papers",  # blazickjp/arxiv-mcp-server uses this tool name
-            {
-                "query": query,
-                "max_results": max_results,
-            },
+            params,
         )
 
     async def search_github(

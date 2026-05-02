@@ -156,9 +156,18 @@ def test_mcp_tool_for_query_bio(orch, server, expected_tool):
 
 
 def test_mcp_tool_params_pubmed(orch):
-    # pubmed uses `maxResults` (camelCase) per cyanheads schema
+    # pubmed uses `maxResults` (camelCase) per cyanheads schema, plus a
+    # 24-month bio recency window via dateRange{minDate,maxDate}.
     params = orch._get_mcp_tool_params("pubmed-bio", "pubmed_search_articles", "aspirin")
-    assert params == {"query": "aspirin", "maxResults": 10}
+    assert params["query"] == "aspirin"
+    assert params["maxResults"] == 10
+    dr = params.get("dateRange")
+    assert dr is not None, "expected dateRange for 24-month bio window"
+    # Format: YYYY/MM/DD
+    import re
+    assert re.fullmatch(r"\d{4}/\d{2}/\d{2}", dr["minDate"])
+    assert re.fullmatch(r"\d{4}/\d{2}/\d{2}", dr["maxDate"])
+    assert dr["minDate"] < dr["maxDate"]
 
 
 def test_mcp_tool_params_clinicaltrials(orch):

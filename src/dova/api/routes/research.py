@@ -210,6 +210,9 @@ async def execute_research(
                 "deliberation_action": deliberation.get("action", ""),
                 "intent_weights": deliberation.get("intent_weights", {}),
                 "tools_used": tools_used,
+                "token_budget_estimate": data.get("token_budget_estimate"),
+                "stage_tokens": data.get("stage_tokens", {}),
+                "stage_tokens_total": data.get("stage_tokens_total", 0),
             },
         )
 

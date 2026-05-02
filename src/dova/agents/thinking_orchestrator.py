@@ -13,10 +13,11 @@ based DOVAOrchestrator, this one:
 
 import asyncio
 import json
+import os
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Awaitable, Callable
 
@@ -176,6 +177,74 @@ def _enrich_query_with_date(query: str) -> str:
     if _RECENCY_PATTERN.search(query) and year not in query:
         return f"{query} {year}"
     return query
+
+
+# Recency windows for AI vs Bio paper search. AI moves fast — 12-month window.
+# Bio literature cycles slower (trials, reviews, meta-analyses) — 24 months.
+AI_RECENCY_MONTHS = 12
+BIO_RECENCY_MONTHS = 24
+
+
+def _months_ago_date(months: int, fmt: str = "%Y-%m-%d") -> str:
+    """Return today minus *months* months formatted per *fmt*.
+
+    Uses a 30.44-day-per-month approximation — good enough for PubMed and
+    arXiv which both accept any date on the requested calendar day.
+    """
+    today = datetime.now()
+    delta_days = int(round(months * 30.44))
+    target = today - timedelta(days=delta_days)
+    return target.strftime(fmt)
+
+
+# Token-budget accounting constants for the pipeline worst-case bound
+# (matches the paper's Thm.1 calibration). Overridable via env:
+#   DOVA_TPI       per-call provider output cap
+#   DOVA_TK        thinking-tier cap for synthesis
+#   DOVA_KAPPA     per-slot synthesis tokens
+#   DOVA_BRIDGE_EPS  bridge gating threshold (epsilon_pi)
+_DEFAULT_T_PI = int(os.environ.get("DOVA_TPI", "4096"))
+_DEFAULT_T_K = int(os.environ.get("DOVA_TK", "65536"))
+_DEFAULT_KAPPA = int(os.environ.get("DOVA_KAPPA", "2100"))
+_DEFAULT_EPS_PI = float(os.environ.get("DOVA_BRIDGE_EPS", "0.10"))
+_DEFAULT_SLOT_BUDGET = 15
+
+
+def _estimate_token_bound(
+    intent_weights: dict[str, float] | None,
+    allowed_groups: set[str] | None,
+    T_pi: int = _DEFAULT_T_PI,
+    T_k: int = _DEFAULT_T_K,
+    kappa: int = _DEFAULT_KAPPA,
+    B: int = _DEFAULT_SLOT_BUDGET,
+    eps_pi: float = _DEFAULT_EPS_PI,
+) -> dict[str, Any]:
+    """Worst-case per-query output-token estimate (Thm.1 of the paper).
+
+    T(q) <= T_pi * (1 + |G'| + 1[bridge on]) + min(B*kappa, T_k)
+
+    Computable before any LLM call. Returns a dict with the final estimate
+    and the per-component breakdown so operators can reason about the
+    dominant term.
+    """
+    weights = intent_weights or {}
+    groups = allowed_groups if allowed_groups is not None else set()
+    n_groups = max(1, len(groups))
+    bridge_on = (
+        weights.get("ai", 0.0) >= eps_pi
+        and weights.get("bio", 0.0) >= eps_pi
+    )
+    pre_synthesis = T_pi * (1 + n_groups + (1 if bridge_on else 0))
+    synthesis = min(B * kappa, T_k)
+    total = pre_synthesis + synthesis
+    return {
+        "estimate": int(total),
+        "pre_synthesis": int(pre_synthesis),
+        "synthesis": int(synthesis),
+        "bridge_on": bridge_on,
+        "n_groups": n_groups,
+        "inputs": {"T_pi": T_pi, "T_k": T_k, "kappa": kappa, "B": B, "eps_pi": eps_pi},
+    }
 
 
 # Stopwords and filler phrases that cause PubMed's NLM parser to yield 0 hits
@@ -734,6 +803,39 @@ Critical rules:
                 allowed_sources=allowed_sources,
             )
 
+            # Per-stage token accounting + worst-case budget estimate.
+            # The estimate is computable before any downstream LLM call
+            # (it consumes only intent weights and enabled groups).
+            stage_tokens: dict[str, int] = {}
+            # Capture deliberation cost (already ran): read the last
+            # output-token count from the base-agent attribute set by
+            # think(). Zero if the fast path skipped the LLM.
+            stage_tokens["deliberation"] = int(getattr(self, "last_output_tokens", 0) or 0)
+            token_budget = _estimate_token_bound(
+                intent_weights=deliberation.intent_weights,
+                allowed_groups=allowed_groups,
+            )
+            self._logger.info(
+                "token_budget_estimate",
+                estimate=token_budget["estimate"],
+                pre_synthesis=token_budget["pre_synthesis"],
+                synthesis=token_budget["synthesis"],
+                bridge_on=token_budget["bridge_on"],
+                n_groups=token_budget["n_groups"],
+            )
+            max_budget_env = os.environ.get("DOVA_MAX_TOKEN_BUDGET")
+            if max_budget_env:
+                try:
+                    limit = int(max_budget_env)
+                    if token_budget["estimate"] > limit:
+                        self._logger.warning(
+                            "token_budget_exceeds_limit",
+                            estimate=token_budget["estimate"],
+                            limit=limit,
+                        )
+                except ValueError:
+                    pass
+
             if progress:
                 tools_planned = [t.tool_name for t in deliberation.tools_to_use if t.would_help]
                 await progress("stage", {
@@ -797,6 +899,7 @@ Critical rules:
                 response = await self._respond_from_context(
                     query, deliberation, user_model, context
                 )
+                stage_tokens["respond"] = int(getattr(self, "last_output_tokens", 0) or 0)
             elif deliberation.action == ActionDecision.USE_TOOLS:
                 tool_results = await self._execute_selected_tools(
                     deliberation, allowed_sources=allowed_sources,
@@ -826,6 +929,7 @@ Critical rules:
                 bridges = await self._analyze_cross_domain(
                     query, deliberation, tool_results, progress=progress,
                 )
+                stage_tokens["bridge"] = int(getattr(self, "last_output_tokens", 0) or 0) if bridges else 0
                 if bridges:
                     action_result["cross_domain_bridges"] = bridges
 
@@ -887,11 +991,15 @@ Critical rules:
                         query, tool_results, user_model, context, deliberation,
                         progress, debate_output=debate_out,
                     )
+                    # Streaming path bypasses last_output_tokens; estimate
+                    # from response length at ~4 chars/token.
+                    stage_tokens["synthesis"] = max(1, len(response) // 4)
                 else:
                     response = await self._synthesize_with_results(
                         query, tool_results, user_model, context, deliberation,
                         debate_output=debate_out,
                     )
+                    stage_tokens["synthesis"] = int(getattr(self, "last_output_tokens", 0) or 0)
 
                 # 3c. Optional refinement pass. When the debate's confidence
                 # is low, re-synthesize once to explicitly address bear
@@ -916,6 +1024,7 @@ Critical rules:
                             response = await self._refine_synthesis(
                                 query, response, debate_out,
                             )
+                            stage_tokens["refine"] = int(getattr(self, "last_output_tokens", 0) or 0)
                             action_result["refined"] = True
                             action_result["refine_reason"] = (
                                 f"debate confidence {confidence:.2f} below threshold {threshold:.2f}"
@@ -949,6 +1058,21 @@ Critical rules:
             await self._save_conversation_context(context)
 
             execution_time = (time.time() - start_time) * 1000
+
+            # Attach budget + stage-token observability to action_result so
+            # downstream response builders surface them through
+            # extract_research_data() / chat.py metadata.
+            if action_result is None:
+                action_result = {}
+            action_result["token_budget_estimate"] = token_budget
+            action_result["stage_tokens"] = stage_tokens
+            action_result["stage_tokens_total"] = sum(stage_tokens.values())
+            self._logger.info(
+                "pipeline_token_summary",
+                total=action_result["stage_tokens_total"],
+                stages=stage_tokens,
+                budget_estimate=token_budget["estimate"],
+            )
 
             return self._wrap_result(
                 task,
@@ -1632,6 +1756,37 @@ Return ONLY the JSON array. No prose. No markdown fences."""
                 )
                 try:
                     r = await self.call_tool(name, call, params)
+                    # PubMed-specific progressive shortening: if the distilled
+                    # query returned zero hits (Total Found: 0), drop the
+                    # rightmost token and retry, down to 3 tokens. Long
+                    # natural-language queries commonly zero-out under NCBI's
+                    # boolean-AND parser even after stopword removal.
+                    if (
+                        name == "pubmed-bio"
+                        and call == "pubmed_search_articles"
+                        and r.success
+                        and isinstance(r.data, str)
+                        and "Total Found:** 0" in r.data
+                    ):
+                        tokens = params.get("query", "").split()
+                        for n_keep in range(len(tokens) - 1, 2, -1):
+                            short_query = " ".join(tokens[:n_keep])
+                            retry_params = dict(params)
+                            retry_params["query"] = short_query
+                            self._logger.info(
+                                "pubmed_retry_shorter",
+                                original_tokens=len(tokens),
+                                retry_tokens=n_keep,
+                                short_query=short_query,
+                            )
+                            r2 = await self.call_tool(name, call, retry_params)
+                            if (
+                                r2.success
+                                and isinstance(r2.data, str)
+                                and "Total Found:** 0" not in r2.data
+                            ):
+                                r = r2
+                                break
                     if r.success and r.data:
                         # Report size so operators can see the call really fired.
                         if isinstance(r.data, str):
@@ -1969,12 +2124,20 @@ Return ONLY the JSON array. No prose. No markdown fences."""
 
         # Bio servers — each has its own schema (verified against live endpoints).
         if server_name == "pubmed-bio":
-            # pubmed_search_articles: {query, maxResults, ...}
+            # pubmed_search_articles: {query, maxResults, dateRange{minDate,maxDate}}
             # PubMed's parser treats the full string as a conjunction, so long
             # natural-language queries ("latest clinical trials for ... safety
             # profile and efficacy 2026") return zero hits. Distill to a short
             # keyword form: drop stopwords, years, recency/qualifier phrases.
-            return {"query": _distill_pubmed_query(query), "maxResults": 10}
+            # Also constrain to the bio recency window (24 months). Date format
+            # is PubMed's native YYYY/MM/DD.
+            min_date = _months_ago_date(BIO_RECENCY_MONTHS, fmt="%Y/%m/%d")
+            max_date = datetime.now().strftime("%Y/%m/%d")
+            return {
+                "query": _distill_pubmed_query(query),
+                "maxResults": 10,
+                "dateRange": {"minDate": min_date, "maxDate": max_date},
+            }
         if server_name == "clinicaltrials-bio":
             # clinicaltrials_search_studies: free-text `query`, no max_results in schema.
             return {"query": query}
@@ -2167,10 +2330,11 @@ Return ONLY the JSON array. No prose. No markdown fences."""
         return "\n".join(result_lines)
 
     async def _search_arxiv(self, query: str, max_results: int = 10) -> list[dict[str, Any]]:
-        """Search ArXiv for papers."""
-        result = await self.search_arxiv(query, max_results=max_results)
+        """Search ArXiv for papers within the AI recency window (12 months)."""
+        date_from = _months_ago_date(AI_RECENCY_MONTHS, fmt="%Y-%m-%d")
+        result = await self.search_arxiv(query, max_results=max_results, date_from=date_from)
         if not result.success:
-            self._logger.warning("arxiv_search_failed", error=result.error, query=query)
+            self._logger.warning("arxiv_search_failed", error=result.error, query=query, date_from=date_from)
             return []
         if not result.data:
             self._logger.warning("arxiv_search_empty", query=query)
@@ -3282,8 +3446,16 @@ Response:"""
     ) -> list[dict]:
         """Pick up to `cap` papers, split between arxiv (ai weight) and pubmed (bio weight).
 
-        Falls back to proportional-to-availability when one pool is empty or
-        weights are missing. Always returns up to `cap` items in ai-first order.
+        Honors ``intent_weights`` proportionally. When one pool is empty, we
+        do NOT silently pour the other pool into its slots — this would hide
+        the fact that the dominant group failed. Instead:
+
+        * If the empty pool is the MINORITY (weight < 0.3) we backfill from
+          the majority pool, since the UI's dominant section is healthy.
+        * If the empty pool is the MAJORITY (weight >= 0.3) we return only
+          the minority's fair share and log the miss, so the UI honestly
+          shows a short list rather than a misleading full page of minority
+          results that contradict the deliberation banner.
         """
         weights = intent_weights or {}
         ai_w = float(weights.get("ai", 0.0))
@@ -3291,19 +3463,36 @@ Response:"""
 
         if not arxiv_papers and not pubmed_papers:
             return []
-        if not arxiv_papers:
-            return pubmed_papers[:cap]
-        if not pubmed_papers:
-            return arxiv_papers[:cap]
 
         total = ai_w + bio_w
         if total <= 0:
-            # No intent signal — 70/30 arxiv/pubmed default.
-            ai_share = 0.7
-            bio_share = 0.3
+            ai_share, bio_share = 0.7, 0.3
         else:
-            ai_share = ai_w / total
-            bio_share = bio_w / total
+            ai_share, bio_share = ai_w / total, bio_w / total
+
+        MAJORITY_THRESHOLD = 0.30
+
+        # Empty-pool handling with majority-respect guard.
+        if not pubmed_papers and arxiv_papers:
+            if bio_share >= MAJORITY_THRESHOLD:
+                # Bio was the user's dominant intent but returned nothing;
+                # return only the AI fair-share so we don't mislead.
+                logger.warning(
+                    "top_papers_bio_empty_majority",
+                    bio_share=round(bio_share, 2),
+                    ai_share=round(ai_share, 2),
+                )
+                return arxiv_papers[:max(1, round(ai_share * cap))]
+            return arxiv_papers[:cap]
+        if not arxiv_papers and pubmed_papers:
+            if ai_share >= MAJORITY_THRESHOLD:
+                logger.warning(
+                    "top_papers_arxiv_empty_majority",
+                    ai_share=round(ai_share, 2),
+                    bio_share=round(bio_share, 2),
+                )
+                return pubmed_papers[:max(1, round(bio_share * cap))]
+            return pubmed_papers[:cap]
 
         ai_slots = round(ai_share * cap)
         bio_slots = cap - ai_slots
@@ -3360,6 +3549,10 @@ Response:"""
             "images": action_result.get("images", []),
             "mcp_results": mcp_results,
             "deliberation": deliberation,
+            # Budget / per-stage telemetry (paper's Thm.1 + per-stage counts)
+            "token_budget_estimate": action_result.get("token_budget_estimate"),
+            "stage_tokens": action_result.get("stage_tokens", {}),
+            "stage_tokens_total": action_result.get("stage_tokens_total", 0),
         }
 
     def register_agent(self, agent_type: str, agent: BaseAgent) -> None:
