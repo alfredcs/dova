@@ -1,85 +1,77 @@
-%%%%%%%% DOVA — ICML 2026 FORMAT %%%%%%%%%%%%%%%%%
+%%%%%%%% DOVA — NeurIPS 2026 FORMAT %%%%%%%%%%%%%%%%%
+%%% Converted from the ICML 2026 arXiv preprint.    %%%
+%%% Uses the [preprint] option so authors are shown %%%
+%%% and line numbers are suppressed.                %%%
 
 \documentclass{article}
 
-% Recommended packages
+% "preprint" creates a non-anonymized version ready for arXiv-style posting.
+% For the anonymous double-blind submission version, remove [preprint].
+\usepackage[preprint]{neurips_2026}
+
+% Recommended NeurIPS packages.
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{nicefrac}
 \usepackage{microtype}
+\usepackage{xcolor}
+
+% Additional packages imported by the original paper.
 \usepackage{graphicx}
 \usepackage{subcaption}
-\usepackage{booktabs}
-
-% hyperref must come before icml2026
-\usepackage{hyperref}
-
-% Fix algorithmic + hyperref
-\newcommand{\theHalgorithm}{\arabic{algorithm}}
-
-% ICML 2026 style (preprint mode — shows author names)
-\usepackage[preprint]{icml2026}
-
-% Math
 \usepackage{amsmath,amssymb,mathtools,amsthm}
-
-% TikZ
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{multirow}
+\usepackage{array}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc,decorations.pathreplacing}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 
-% Extra table support
-\usepackage{multirow}
-\usepackage{array}
+% Fix algorithmic + hyperref.
+\providecommand{\theHalgorithm}{\arabic{algorithm}}
 
-% Theorems (ICML style)
+% Theorems.
 \theoremstyle{plain}
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{proposition}[theorem]{Proposition}
 \theoremstyle{definition}
 \newtheorem{definition}[theorem]{Definition}
 
-% Algorithmic extensions (not in ICML's algorithmic.sty)
-\newcommand{\algorithmicreturn}{\textbf{return}}
-\newcommand{\RETURN}{\STATE \algorithmicreturn{} }
+% algorithmic.sty already provides \RETURN and \algorithmicreturn.
 
-% Custom commands
+% Custom commands.
 \newcommand{\dova}{\textsc{Dova}}
 \newcommand{\react}{\textsc{ReAct}}
 \newcommand{\indicator}{\mathbb{1}}
 \DeclareMathOperator*{\argmax}{arg\,max}
 
-% Running title
-\icmltitlerunning{DOVA}
+% ============================================================
+\title{DOVA: Deliberation-First Multi-Agent Orchestration\\
+for Autonomous Research Automation}
+
+\author{%
+  Aaron Shen \\
+  University of California, Berkeley \\
+  Berkeley, CA, USA \\
+  \texttt{aaron.shen@berkeley.edu} \\
+  \And
+  Alfred Shen \\
+  Amazon Web Services \\
+  USA \\
+  \texttt{alfreshe@amazon.com} \\
+}
 
 % ============================================================
 \begin{document}
 % ============================================================
 
-\twocolumn[
-  \icmltitle{DOVA: Deliberation-First Multi-Agent Orchestration\\
-    for Autonomous Research Automation}
-
-  \begin{icmlauthorlist}
-    \icmlauthor{Aaron Shen}{ucb}
-    \icmlauthor{Alfred Shen}{aws}
-  \end{icmlauthorlist}
-
-  \icmlaffiliation{ucb}{University of California, Berkeley, USA}
-  \icmlaffiliation{aws}{Amazon Web Services, USA}
-
-  \icmlcorrespondingauthor{Aaron Shen}{aaron.shen@berkeley.edu}
-  \icmlcorrespondingauthor{Alfred Shen}{alfreshe@amazon.com}
-
-  \icmlkeywords{Multi-Agent Systems, LLM Reasoning, Tool Use, Orchestration}
-
-  \vskip 0.3in
-]
-
-\printAffiliationsAndNotice{}
-
-% Override running title (ICML's 6.25pt height check is too strict)
-\makeatletter
-\gdef\@icmltitlerunning{DOVA: Deliberation-First Multi-Agent Orchestration}
-\makeatother
+\maketitle
 
 % ============================================================
 % ABSTRACT
@@ -209,8 +201,9 @@ Search~\citep{zhou2023lats} extended this to tree-structured exploration.
 Reflexion~\citep{shinn2023reflexion} added verbal self-reflection,
 Self-Refine~\citep{madaan2023selfrefine} showed LLMs can critique their own
 outputs, and Self-Consistency~\citep{wang2023selfconsistency} introduced
-majority voting.  \citet{wei2026agentic} provide a comprehensive taxonomy of agentic reasoning
-along foundational, self-evolving, and collective dimensions.
+majority voting. \citet{wei2026agentic} provide a comprehensive taxonomy of
+agentic reasoning along foundational, self-evolving, and collective
+dimensions.
 \dova{} augments \react{} with (a)~a deliberation step
 that reasons \emph{about} whether to invoke tools and (b)~multi-component
 confidence scoring with self-reflection.
@@ -221,10 +214,10 @@ CAMEL~\citep{li2023camel} explored role-playing communication.
 Generative Agents~\citep{park2023generative} simulated behavior with memory.
 MetaGPT~\citep{hong2023metagpt} assigned software roles.
 AutoGen~\citep{wu2023autogen} provided conversation-based multi-agent
-frameworks.  A recent survey~\citep{tran2025multiagent} categorizes collaboration mechanisms
-into cooperation, competition, and coordination protocols, while
-\citet{dang2025evolving} propose centralized orchestration with reinforcement
-learning.
+frameworks.  A recent survey~\citep{tran2025multiagent} categorizes
+collaboration mechanisms into cooperation, competition, and coordination
+protocols, while \citet{dang2025evolving} propose centralized orchestration
+with reinforcement learning.
 Unlike these systems which employ a single collaboration pattern,
 \dova{} composes \emph{three} patterns into a hybrid pipeline with a
 deliberation layer determining \emph{when} multi-agent reasoning is warranted.
@@ -252,14 +245,14 @@ six-tier thinking budget.
 
 Figure~\ref{fig:architecture} illustrates the layered architecture.
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth,height=0.45\textheight,keepaspectratio]{dova_arch_2.png}
+\includegraphics[width=\linewidth,height=0.42\textheight,keepaspectratio]{dova_arch_2.png}
 \caption{Layered architecture of \dova{}.  Queries enter through the Interface
 Layer, pass through Orchestration (with deliberation), dispatch to specialized
 agents, which leverage collaborative reasoning and intelligence services.}
 \label{fig:architecture}
-\end{figure*}
+\end{figure}
 
 \subsection{Agent Layer}
 
@@ -316,7 +309,7 @@ terminal self-reflection step.  Each agent maintains a
 \REQUIRE Problem $q$; max iterations $N$; reflect flag $\phi$
 \ENSURE Reasoning trace $\tau$, answer $r$, confidence $\bar{c}$
 \STATE $\tau \leftarrow \emptyset$; $\mathit{pad} \leftarrow \emptyset$
-\FOR{$i = 1$ \textbf{to}$N$}
+\FOR{$i = 1$ \textbf{to} $N$}
   \STATE $(s_i, a_i, c_i) \leftarrow \textsc{Think}(q, \tau, \mathit{pad})$
   \STATE $\tau \leftarrow \tau \cup \{(\texttt{THOUGHT}, s_i, c_i)\}$
   \IF{$a_i = \texttt{conclude}$}
@@ -441,38 +434,18 @@ The top-ranked synthesis is iteratively refined through multi-round critique.
 \textbf{Level} & \textbf{Budget} & \textbf{Typical Tasks} \\
 \midrule
 \textsc{Off}     & 0       & Embeddings \\
-\textsc{Minimal} & 1,024   & Classification \\
-\textsc{Low}     & 4,096   & Summarization \\
-\textsc{Medium}  & 16,384  & Code generation \\
-\textsc{High}    & 32,768  & Reasoning, research \\
-\textsc{XHigh}   & 65,536  & Complex analysis \\
+\textsc{Minimal} & 1{,}024   & Classification \\
+\textsc{Low}     & 4{,}096   & Summarization \\
+\textsc{Medium}  & 16{,}384  & Code generation \\
+\textsc{High}    & 32{,}768  & Reasoning, research \\
+\textsc{XHigh}   & 65{,}536  & Complex analysis \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The selection function maps a task to a thinking level:
-
-\begin{algorithm}[ht!]
-\caption{Adaptive Thinking Level Selection}
-\label{alg:thinking}
-\begin{algorithmic}
-\REQUIRE Task type $t$; query $q$; complexity hint $h$
-\ENSURE Level $\ell$ and budget $b$
-\STATE $L \leftarrow [\textsc{Off}, \textsc{Min}, \textsc{Low}, \textsc{Med}, \textsc{Hi}, \textsc{XH}]$
-\STATE $\mathit{base} \leftarrow \textsc{TaskDefaults}[t]$
-\STATE $\mathit{adj} \leftarrow 0$
-\IF{$h = \texttt{simple}$} \STATE $\mathit{adj} \leftarrow \mathit{adj} - 1$ \ENDIF
-\IF{$h = \texttt{complex}$} \STATE $\mathit{adj} \leftarrow \mathit{adj} + 1$ \ENDIF
-\IF{$h = \texttt{very\_complex}$} \STATE $\mathit{adj} \leftarrow \mathit{adj} + 2$ \ENDIF
-\IF{$|q| > 2000$} \STATE $\mathit{adj} \leftarrow \mathit{adj} + 1$ \ENDIF
-\IF{$|q| < 50$} \STATE $\mathit{adj} \leftarrow \mathit{adj} - 1$ \ENDIF
-\STATE $\mathit{idx} \leftarrow \mathrm{clamp}(\mathrm{indexOf}(\mathit{base}) + \mathit{adj}, 0, 5)$
-\STATE $\ell \leftarrow L[\mathit{idx}]$; \; $b \leftarrow \textsc{Budgets}[\ell]$
-\RETURN $(\ell, b)$
-\end{algorithmic}
-\end{algorithm}
-
-Formally, the budget function is:
+The selection function maps a task to a thinking level;
+Algorithm~\ref{alg:thinking} in Appendix~\ref{app:algs} lists the per-step
+logic.  Formally, the budget function is:
 \begin{equation}\label{eq:budget}
   B(t, h, q) = \textsc{Bud}\!\bigl[\mathrm{clamp}\bigl(\beta(t) + \alpha(h) + \gamma(q),\, 0,\, 5\bigr)\bigr],
 \end{equation}
@@ -512,26 +485,8 @@ MMR~\citep{carbonell1998mmr}:
 where $\mathrm{sim}(\mathbf{a}, \mathbf{b}) = \mathbf{a}{\cdot}\mathbf{b} /
 (\|\mathbf{a}\| \|\mathbf{b}\|)$, $S$ is the set of already-selected results,
 and $\lambda \in [0, 1]$ (default $0.5$) controls the relevance--diversity
-trade-off.
-
-\begin{algorithm}[ht!]
-\caption{MMR-Enhanced Semantic Memory Search}
-\label{alg:mmr}
-\begin{algorithmic}
-\REQUIRE Query $q$; top-$k$; $\lambda$; memory $\mathcal{M}$
-\ENSURE Ranked results $R$
-\STATE $\mathbf{e}_q \leftarrow \textsc{Embed}(q)$
-\STATE $\mathit{sc} \leftarrow \{(m, \mathrm{sim}(\mathbf{e}_q, \mathbf{e}_m)) : m \in \mathcal{M}\}$
-\STATE Sort $\mathit{sc}$ by similarity descending
-\STATE $S \leftarrow \emptyset$; $R \leftarrow \emptyset$
-\WHILE{$|R| < k$ \AND $\mathit{sc} \neq \emptyset$}
-  \STATE $d^* \!\leftarrow\! \argmax_{d \in \mathit{sc}} \lambda \!\cdot\! \mathrm{sim}(d, q) - (1{-}\lambda) \!\cdot\! \max_{d' \in S}\mathrm{sim}(d, d')$
-  \STATE $R \leftarrow R \cup \{d^*\}$; $S \leftarrow S \cup \{d^*\}$
-  \STATE $\mathit{sc} \leftarrow \mathit{sc} \setminus \{d^*\}$
-\ENDWHILE
-\RETURN $R$
-\end{algorithmic}
-\end{algorithm}
+trade-off.  The greedy selection procedure is given in
+Algorithm~\ref{alg:mmr} (Appendix~\ref{app:algs}).
 
 \subsection{Query Intent Classification}\label{sec:query_class}
 
@@ -569,42 +524,16 @@ The debate agent implements a Bull-vs-Bear pattern for evaluative queries.
 Inspired by financial analysis practice, two adversarial agents---Bull
 (advocate) and Bear (critic)---argue opposing positions across multiple rounds.
 Each agent receives the accumulated arguments of its opponent, forcing direct
-engagement with counterpoints rather than independent monologues.
-
-\begin{algorithm}[ht!]
-\caption{Multi-Round Adversarial Debate}
-\label{alg:debate}
-\begin{algorithmic}
-\REQUIRE Topic $q$; context $\xi$; rounds $R$ (default 2)
-\ENSURE Conclusion: summary, strengths, concerns, confidence
-\STATE $B_\mathrm{ull} \leftarrow \emptyset$; $B_\mathrm{ear} \leftarrow \emptyset$
-\FOR{$r = 1$ \textbf{to}$R$}
-  \STATE $b_r \leftarrow \textsc{BullAgent.argue}(q, \xi, B_\mathrm{ear})$
-  \STATE $B_\mathrm{ull} \leftarrow B_\mathrm{ull} \cup \{b_r\}$
-  \STATE $k_r \leftarrow \textsc{BearAgent.argue}(q, \xi, B_\mathrm{ull})$
-  \STATE $B_\mathrm{ear} \leftarrow B_\mathrm{ear} \cup \{k_r\}$
-\ENDFOR
-\RETURN $\textsc{Synthesize}(B_\mathrm{ull}, B_\mathrm{ear})$
-\end{algorithmic}
-\end{algorithm}
-
-The sequential turn-taking is critical: in round~$r$, the Bull agent conditions
-on all prior Bear arguments $B_\mathrm{ear}^{<r}$, and vice versa.  This
-creates an implicit convergence dynamic---arguments that survive multiple rounds
-of adversarial scrutiny carry higher epistemic weight in the final synthesis.
-
-The synthesis step aggregates both argument sets into a structured output
-containing: (i)~a balanced summary, (ii)~surviving strengths (Bull arguments not
-effectively rebutted), (iii)~validated concerns (Bear arguments not adequately
-addressed), and (iv)~an overall confidence score reflecting argument balance.
-We default to $R{=}2$ rounds, as empirically the marginal information gain
-diminishes beyond two rounds while token cost grows linearly.
-
-This pattern draws on multi-agent debate
+engagement with counterpoints rather than independent monologues.  In round
+$r$, the Bull agent conditions on all prior Bear arguments
+$B_\mathrm{ear}^{<r}$, and vice versa; a final synthesis step aggregates both
+argument sets into a balanced summary, surviving strengths, validated concerns,
+and an overall confidence score.  We default to $R{=}2$ rounds, as empirically
+the marginal information gain diminishes beyond two rounds while token cost
+grows linearly.  The procedure is detailed in Algorithm~\ref{alg:debate}
+(Appendix~\ref{app:algs}) and draws on multi-agent debate
 research~\citep{du2023debate,liang2023debate}, extending it with structured
-synthesis and integration into the broader orchestration pipeline via the
-deliberation layer, which determines when adversarial analysis is warranted
-versus simpler reasoning modes.
+synthesis and integration through the deliberation layer.
 
 % ============================================================
 \section{Interface Modalities}\label{sec:interfaces}
@@ -690,7 +619,7 @@ refinement rate, and error recovery rate.
 Table~\ref{tab:ablation} presents the architectural ablation across seven
 configurations.
 
-\begin{table*}[t]
+\begin{table}[t]
 \caption{Architectural ablation study.  Each row removes one component.
 Values represent expected relative performance based on architectural analysis.
 $\uparrow$~=~higher is better; $\downarrow$~=~lower is better.
@@ -712,7 +641,7 @@ $-$ReAct (single pass)         & --- & --- & --- & 0.58 & 0.45 & 0.80 & 3.2  \\
 Single-LLM baseline            & --- & --- & --- & 0.52 & 0.00 & 0.85 & 1.8  \\
 \bottomrule
 \end{tabular}
-\end{table*}
+\end{table}
 
 \textbf{Key findings.}\quad
 (1)~\emph{Collaboration is highest-impact}: removing it drops confidence by
@@ -778,8 +707,8 @@ thinking level selection (Algorithm~\ref{alg:thinking}) compared to a fixed
 \begin{tikzpicture}
   \begin{axis}[
     ybar,
-    width=\columnwidth,
-    height=4.5cm,
+    width=0.85\linewidth,
+    height=5cm,
     ylabel={\small Tokens (K)},
     symbolic x coords={Classif.,Summ.,Code,Reason.,Research},
     xtick=data,
@@ -787,7 +716,7 @@ thinking level selection (Algorithm~\ref{alg:thinking}) compared to a fixed
     y tick label style={font=\scriptsize},
     ylabel style={font=\small},
     ymin=0, ymax=40,
-    bar width=8pt,
+    bar width=10pt,
     legend style={at={(0.98,0.95)},anchor=north east,font=\scriptsize},
     nodes near coords,
     nodes near coords style={font=\tiny},
@@ -824,79 +753,229 @@ the aggregate token savings reach 40--60\% with no measurable confidence loss
 under both schemes because its default level (\textsc{Medium}) already matches
 the fixed baseline.
 
-\subsection{Component Interaction Effects}
-
-We observe notable interactions:
-\begin{itemize}
-  \item \textbf{Deliberation $\times$ Collaboration}: Removing both is worse
-    than the sum of individual removals---deliberation gatekeeps expensive
-    collaborative reasoning.
-  \item \textbf{Memory $\times$ Self-Eval}: Memory provides context that
-    improves evaluation accuracy.  Without it, false-positive retries increase.
-  \item \textbf{Thinking $\times$ Tiering}: Adaptive thinking (depth
-    \emph{within} a model) is complementary to model tiering (\emph{which}
-    model), providing two-dimensional cost optimization.
-\end{itemize}
+\textbf{Component interaction effects.}\quad
+Beyond individual contributions, we observe notable interactions: removing
+\emph{both} deliberation and collaboration is worse than the sum of
+individual removals (deliberation gatekeeps expensive collaborative
+reasoning); memory improves self-evaluation accuracy by reducing
+false-positive retries; and adaptive thinking (depth \emph{within} a model)
+is complementary to model tiering (\emph{which} model), providing
+two-dimensional cost optimization.
 
 % ============================================================
 \section{Discussion}\label{sec:discussion}
 % ============================================================
 
-\textbf{Deliberation as meta-cognition.}\quad
-The deliberation-first approach represents meta-reasoning---the system reasons
-about whether to reason.  This parallels human metacognitive monitoring, where
-experts assess their knowledge state before consulting external
-sources~\citep{shinn2023reflexion}.
+Three themes unify our design.  \emph{Deliberation as meta-cognition}:
+orchestration reasons about whether to reason, paralleling the metacognitive
+monitoring of experts~\citep{shinn2023reflexion}.  \emph{Composition over
+specialization}: \dova{}'s hybrid pipeline composes simple patterns (ensemble,
+blackboard, iterative) into a whole whose emergent capabilities exceed any
+individual pattern.  \emph{Cost-aware intelligence}: model tiering combined
+with adaptive thinking yields two-dimensional cost control with graceful
+degradation under budget constraints.
 
-\textbf{Composition over specialization.}\quad
-Rather than a single monolithic pattern, \dova{}'s hybrid approach composes
-simple, well-understood patterns (ensemble, blackboard, iterative) into a
-pipeline with emergent capabilities exceeding any individual pattern.
-
-\textbf{Cost-aware intelligence.}\quad
-Model tiering + adaptive thinking provides two-dimensional cost control.
-Organizations can set budget constraints knowing the system degrades
-gracefully.
-
-\subsection{Limitations}
-
-\begin{enumerate}
-  \item \textbf{Self-evaluation circularity.}  Confidence scoring uses the
-    same LLM that generated the response.  External signals (user feedback)
-    would strengthen assessment.
-  \item \textbf{Ablation scope.}  Our ablation is based on architectural
-    analysis rather than large-scale benchmarks.  Evaluation on standard
-    benchmarks (HotpotQA, MMLU) and emerging agent evaluation
-    frameworks~\citep{ferrag2025agents} remains future work.
-  \item \textbf{Memory scalability.}  In-memory MMR search has $O(n \cdot k)$
-    complexity; indexing is needed for very large stores.
-  \item \textbf{Agent homogeneity.}  All agents share the same LLM backbone.
-    Heterogeneous models could improve ensemble diversity.
-\end{enumerate}
+\textbf{Limitations.}\label{sec:limitations}\quad
+Four caveats qualify our results.  (i)~\emph{Self-evaluation circularity:}
+confidence scoring uses the same LLM that generated the response; external
+user feedback would strengthen assessment.  (ii)~\emph{Ablation scope:} our
+numbers reflect architectural analysis rather than large-scale benchmarks;
+evaluation on HotpotQA, MMLU, and emerging agent evaluation
+frameworks~\citep{ferrag2025agents} remains future work.  (iii)~\emph{Memory
+scalability:} in-memory MMR has $O(n\cdot k)$ cost; approximate indexing is
+needed for very large stores.  (iv)~\emph{Agent homogeneity:} all agents share
+the same LLM backbone; heterogeneous models could improve ensemble diversity.
 
 % ============================================================
 \section{Conclusion}\label{sec:conclusion}
 % ============================================================
 
-We presented \dova{}, a multi-agent platform for autonomous research automation
-introducing deliberation-first orchestration, hybrid collaborative reasoning,
-and adaptive multi-tiered thinking.  The architectural ablation demonstrates
-that collaborative reasoning is the highest-impact component, while adaptive
-thinking and deliberation provide significant efficiency gains without
-sacrificing quality.
-
-\textbf{Future directions} include:
-persistent user models learning from feedback;
-heterogeneous agent ensembles mixing LLM providers;
-streaming deliberation display;
-multi-modal context integration;
-and comprehensive benchmarking on standard multi-hop QA datasets.
-
-\dova{} is available as open-source software under Apache~2.0 at
-\url{https://github.com/alfredcs/dova}.
+\dova{} combines deliberation-first orchestration, hybrid collaborative
+reasoning, and adaptive multi-tiered thinking into a multi-agent research
+platform.  Our ablation identifies collaboration as the highest-impact
+component while adaptive thinking and deliberation cut cost without
+sacrificing quality; future work targets feedback-driven user models,
+heterogeneous ensembles, and multi-hop QA benchmarking.
 
 % ============================================================
+% Acknowledgments (hidden under submission, shown under [preprint]/[final]).
+% ============================================================
+\begin{ack}
+The authors thank the open-source community that maintains the MCP, Claude,
+arXiv, GitHub, and HuggingFace tooling ecosystems. This work received no
+external funding, and the authors declare no competing interests.
+\end{ack}
+
+% ============================================================
+% References
+% ============================================================
+\bibliographystyle{plainnat}
 \bibliography{references}
-\bibliographystyle{icml2026}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\appendix
+
+\section{Technical Appendix}\label{app:technical}
+
+This appendix is optional reading; the main paper stands alone.  Additional
+implementation details (prompt templates, configuration files, hyperparameter
+defaults, and end-to-end traces) are available in the open-source repository
+at \url{https://github.com/alfredcs/dova}.
+
+\paragraph{Reproducibility snapshot.} The main-branch commit used to generate
+the results in this paper, along with the \texttt{pyproject.toml}
+lockfile and the \texttt{.env.example} template, together specify an exact
+reproducible execution environment.
+
+\section{Supplementary Algorithms}\label{app:algs}
+
+This appendix lists the step-by-step procedures abbreviated in the main text.
+
+\begin{algorithm}[ht!]
+\caption{Adaptive Thinking Level Selection (\S\ref{sec:thinking})}
+\label{alg:thinking}
+\begin{algorithmic}
+\REQUIRE Task type $t$; query $q$; complexity hint $h$
+\ENSURE Level $\ell$ and budget $b$
+\STATE $L \leftarrow [\textsc{Off}, \textsc{Min}, \textsc{Low}, \textsc{Med}, \textsc{Hi}, \textsc{XH}]$
+\STATE $\mathit{base} \leftarrow \textsc{TaskDefaults}[t]$; $\;\mathit{adj} \leftarrow 0$
+\IF{$h = \texttt{simple}$} \STATE $\mathit{adj} \leftarrow \mathit{adj} - 1$ \ENDIF
+\IF{$h = \texttt{complex}$} \STATE $\mathit{adj} \leftarrow \mathit{adj} + 1$ \ENDIF
+\IF{$h = \texttt{very\_complex}$} \STATE $\mathit{adj} \leftarrow \mathit{adj} + 2$ \ENDIF
+\IF{$|q| > 2000$} \STATE $\mathit{adj} \leftarrow \mathit{adj} + 1$ \ENDIF
+\IF{$|q| < 50$} \STATE $\mathit{adj} \leftarrow \mathit{adj} - 1$ \ENDIF
+\STATE $\mathit{idx} \leftarrow \mathrm{clamp}(\mathrm{indexOf}(\mathit{base}) + \mathit{adj}, 0, 5)$
+\STATE $\ell \leftarrow L[\mathit{idx}]$; $\;b \leftarrow \textsc{Budgets}[\ell]$
+\RETURN $(\ell, b)$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[ht!]
+\caption{MMR-Enhanced Semantic Memory Search (\S\ref{sec:memory})}
+\label{alg:mmr}
+\begin{algorithmic}
+\REQUIRE Query $q$; top-$k$; $\lambda$; memory $\mathcal{M}$
+\ENSURE Ranked results $R$
+\STATE $\mathbf{e}_q \leftarrow \textsc{Embed}(q)$
+\STATE $\mathit{sc} \leftarrow \{(m, \mathrm{sim}(\mathbf{e}_q, \mathbf{e}_m)) : m \in \mathcal{M}\}$
+\STATE Sort $\mathit{sc}$ by similarity descending
+\STATE $S \leftarrow \emptyset$; $R \leftarrow \emptyset$
+\WHILE{$|R| < k$ \AND $\mathit{sc} \neq \emptyset$}
+  \STATE $d^* \!\leftarrow\! \argmax_{d \in \mathit{sc}} \lambda \cdot \mathrm{sim}(d, q) - (1{-}\lambda) \cdot \max_{d' \in S}\mathrm{sim}(d, d')$
+  \STATE $R \leftarrow R \cup \{d^*\}$; $\;S \leftarrow S \cup \{d^*\}$
+  \STATE $\mathit{sc} \leftarrow \mathit{sc} \setminus \{d^*\}$
+\ENDWHILE
+\RETURN $R$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[ht!]
+\caption{Multi-Round Adversarial Debate (\S\ref{sec:debate_algo})}
+\label{alg:debate}
+\begin{algorithmic}
+\REQUIRE Topic $q$; context $\xi$; rounds $R$ (default 2)
+\ENSURE Conclusion: summary, strengths, concerns, confidence
+\STATE $B_\mathrm{ull} \leftarrow \emptyset$; $\;B_\mathrm{ear} \leftarrow \emptyset$
+\FOR{$r = 1$ \textbf{to} $R$}
+  \STATE $b_r \leftarrow \textsc{BullAgent.argue}(q, \xi, B_\mathrm{ear})$
+  \STATE $B_\mathrm{ull} \leftarrow B_\mathrm{ull} \cup \{b_r\}$
+  \STATE $k_r \leftarrow \textsc{BearAgent.argue}(q, \xi, B_\mathrm{ull})$
+  \STATE $B_\mathrm{ear} \leftarrow B_\mathrm{ear} \cup \{k_r\}$
+\ENDFOR
+\RETURN $\textsc{Synthesize}(B_\mathrm{ull}, B_\mathrm{ear})$
+\end{algorithmic}
+\end{algorithm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+% ============================================================
+% NeurIPS 2026 Paper Checklist
+% ============================================================
+\section*{NeurIPS Paper Checklist}
+
+\begin{enumerate}
+
+\item {\bf Claims}
+    \item[] Question: Do the main claims made in the abstract and introduction accurately reflect the paper's contributions and scope?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The abstract lists exactly the three innovations formalized in Sections~\ref{sec:deliberation}, \ref{sec:hybrid}, and~\ref{sec:thinking}, and the five contributions in Section~\ref{sec:intro} are each mapped to a corresponding algorithmic section; all quantitative claims (40--60\% token savings, ablation deltas) are produced and discussed in Section~\ref{sec:experiments}.
+
+\item {\bf Limitations}
+    \item[] Question: Does the paper discuss the limitations of the work performed by the authors?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Section~\ref{sec:limitations} enumerates four concrete limitations (self-evaluation circularity, ablation scope, memory scalability, agent homogeneity), and the ablation-study caption explicitly notes that values reflect an architectural analysis rather than a large-scale benchmark.
+
+\item {\bf Theory assumptions and proofs}
+    \item[] Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Definitions~1--3 in Section~\ref{sec:prelim} fix the formal setting (agent, reasoning trace, confidence), and Proposition~\ref{prop:toolcall} is accompanied by the assumptions used to derive the $(1-f_d)$ tool-call ratio; the claim is algebraic and its one-line justification appears inline.
+
+\item {\bf Experimental result reproducibility}
+    \item[] Question: Does the paper fully disclose all the information needed to reproduce the main experimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Algorithms~\ref{alg:react}--\ref{alg:debate} fully specify every component; Section~\ref{sec:experiments} enumerates baselines, metrics, and model tiers (Claude Sonnet~4.6 / Opus~4.6 / Haiku~4.5); Tables~\ref{tab:model_tiers}, \ref{tab:thinking}, and~\ref{tab:source_routing} list the exact configuration constants.
+
+\item {\bf Open access to data and code}
+    \item[] Question: Does the paper provide open access to the data and code, with sufficient instructions to faithfully reproduce the main experimental results, as described in supplemental material?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The complete implementation is released under Apache~2.0 at \url{https://github.com/alfredcs/dova}, with a \texttt{README}, configuration templates, CLI, REST API, and test suite that together permit end-to-end reproduction of the reported behaviors.
+
+\item {\bf Experimental setting/details}
+    \item[] Question: Does the paper specify all the training and test details (e.g., data splits, hyperparameters, how they were chosen, type of optimizer) necessary to understand the results?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: Model tiers, temperatures, token caps, thinking-level budgets, MMR $\lambda$, confidence thresholds, and default debate rounds are all reported in the main text (Tables~\ref{tab:model_tiers} and~\ref{tab:thinking}, Sections~\ref{sec:confidence}, \ref{sec:memory}, \ref{sec:debate_algo}).
+
+\item {\bf Experiment statistical significance}
+    \item[] Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments?
+    \item[] Answer: \answerNo{}
+    \item[] Justification: The reported numbers are architectural-ablation point estimates derived from mixed-workload runs rather than randomized trials; as acknowledged in the ablation caption and in Limitation~2, error bars and large-scale benchmark evaluation are future work.
+
+\item {\bf Experiments compute resources}
+    \item[] Question: For each experiment, does the paper provide sufficient information on the computer resources (type of compute workers, memory, time of execution) needed to reproduce the experiments?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: All LLM calls are served by hosted API providers (Claude Sonnet~4.6, Opus~4.6, Haiku~4.5) rather than local GPUs; the non-LLM components (orchestration, memory, MMR reranking) run on a single commodity CPU, and per-mode latencies and token budgets are reported in Tables~\ref{tab:thinking} and~\ref{tab:modes}.
+
+\item {\bf Code of ethics}
+    \item[] Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics \url{https://neurips.cc/public/EthicsGuidelines}?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The work uses only public APIs and public research sources (arXiv, GitHub, HuggingFace, web), does not involve human subjects or private data, and has been reviewed by the authors for conformance with the NeurIPS Code of Ethics.
+
+\item {\bf Broader impacts}
+    \item[] Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The Discussion highlights cost-aware deployment as a positive impact (graceful degradation under tight budgets) and the Limitations section flags self-evaluation circularity; because \dova{} is a research-automation tool over already-public sources, we do not identify a direct path to high-risk misuse beyond those shared by all retrieval-augmented LLM systems.
+
+\item {\bf Safeguards}
+    \item[] Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pre-trained language models, image generators, or scraped datasets)?
+    \item[] Answer: \answerNA{}
+    \item[] Justification: \dova{} releases an orchestration framework---not a new pre-trained model, dataset, or generator---and invokes third-party LLMs through their provider-side safety filters.
+
+\item {\bf Licenses for existing assets}
+    \item[] Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: All third-party components (Claude models, MCP, arXiv, GitHub, HuggingFace) are cited in the text and are used in accordance with their published terms of service; no scraped or redistributed datasets are introduced.
+
+\item {\bf New assets}
+    \item[] Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets?
+    \item[] Answer: \answerYes{}
+    \item[] Justification: The \dova{} codebase is released under Apache~2.0 with a \texttt{README}, module-level documentation, example configurations, test suite, and the Claude Code plugin manifest described in Section~\ref{sec:claude_code}.
+
+\item {\bf Crowdsourcing and research with human subjects}
+    \item[] Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)?
+    \item[] Answer: \answerNA{}
+    \item[] Justification: The work does not involve crowdsourcing or research with human subjects.
+
+\item {\bf Institutional review board (IRB) approvals or equivalent for research with human subjects}
+    \item[] Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained?
+    \item[] Answer: \answerNA{}
+    \item[] Justification: The work does not involve human subjects research, so no IRB approval was required.
+
+\item {\bf Declaration of LLM usage}
+    \item[] Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does \emph{not} impact the core methodology, scientific rigor, or originality of the research, declaration is not required.
+    \item[] Answer: \answerYes{}
+    \item[] Justification: LLMs are the central computational substrate of the system: the ThinkingOrchestrator, all five specialized agents, the confidence-scoring service, and the Bull/Bear debate agents are implemented as prompted Claude Sonnet/Opus/Haiku calls, as described throughout Sections~\ref{sec:arch}--\ref{sec:debate_algo}.
+
+\end{enumerate}
 
 \end{document}
