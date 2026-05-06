@@ -26,7 +26,14 @@ import structlog
 from dova.agents.base import AgentResult, AgentTask, BaseAgent
 from dova.agents.conversation_context import ConversationContext, ConversationTurn
 from dova.agents.user_model import ExpertiseLevel, ResponseDepth, UserModel
-from dova.config.mcp_servers import BIO_MCP_SERVERS, list_mcp_servers
+from dova.config.mcp_servers import (
+    BIO_MCP_SERVERS,
+    MASTER_PAPER_MCP_NAME,
+    MASTER_PAPER_MCP_SUBJECT_KEYWORDS,
+    MASTER_PAPER_MCP_UMBRELLA_DEFAULT_SUBJECT,
+    MASTER_PAPER_MCP_UMBRELLA_SUBJECTS,
+    list_mcp_servers,
+)
 from dova.config.providers import LLMRouter, TaskType
 from dova.services.web_search import (
     ParallelWebSearchService,
@@ -1385,19 +1392,46 @@ Response:"""
 
             tool_start = time.time()
             try:
-                if tool.tool_name == "arxiv":
-                    result_key, data = "papers", await self._search_arxiv(search_query, max_results=limit)
-                elif tool.tool_name == "github":
-                    result_key, data = "repositories", await self._search_github(search_query, max_results=limit)
-                elif tool.tool_name in ("huggingface", "hugging-face"):
-                    result_key, data = "huggingface", await self._search_huggingface(search_query, max_results=limit)
-                elif tool.tool_name == "web":
-                    result_key, data = "web_results", await self._search_web(search_query, max_results=limit)
-                elif tool.tool_name == "image":
-                    enhanced_prompt = await self._enhance_image_prompt(tool.search_query)
-                    result_key, data = "images", await self._generate_image(enhanced_prompt)
-                else:
-                    result_key, data = "mcp_results", await self._execute_mcp_tool(tool.tool_name, search_query)
+                async def _dispatch() -> tuple[str, Any]:
+                    if tool.tool_name == "arxiv":
+                        return "papers", await self._search_arxiv(search_query, max_results=limit)
+                    if tool.tool_name == "github":
+                        return "repositories", await self._search_github(search_query, max_results=limit)
+                    if tool.tool_name in ("huggingface", "hugging-face"):
+                        return "huggingface", await self._search_huggingface(search_query, max_results=limit)
+                    if tool.tool_name == "web":
+                        return "web_results", await self._search_web(search_query, max_results=limit)
+                    if tool.tool_name == "image":
+                        enhanced_prompt = await self._enhance_image_prompt(tool.search_query)
+                        return "images", await self._generate_image(enhanced_prompt)
+                    return "mcp_results", await self._execute_mcp_tool(tool.tool_name, search_query)
+
+                try:
+                    result_key, data = await asyncio.wait_for(
+                        _dispatch(), timeout=self._TOOL_EXEC_TIMEOUT_S
+                    )
+                except asyncio.TimeoutError:
+                    self._logger.warning(
+                        "tool_execution_timeout",
+                        tool=tool.tool_name,
+                        timeout_s=self._TOOL_EXEC_TIMEOUT_S,
+                    )
+                    # Return empty so the gather result slot is well-formed
+                    # and downstream aggregation doesn't see an exception.
+                    fallback_key = {
+                        "arxiv": "papers",
+                        "github": "repositories",
+                        "huggingface": "huggingface",
+                        "hugging-face": "huggingface",
+                        "web": "web_results",
+                        "image": "images",
+                    }.get(tool.tool_name, "mcp_results")
+                    fallback_data: Any = (
+                        {"models": [], "datasets": []}
+                        if fallback_key == "huggingface"
+                        else []
+                    )
+                    result_key, data = fallback_key, fallback_data
 
                 elapsed_ms = (time.time() - tool_start) * 1000
                 if progress:
@@ -1440,18 +1474,93 @@ Response:"""
                     })
                 raise
 
-        # Execute ALL tools in parallel
+        # Determine which umbrellas (ai/bio/web) should *additionally* fan
+        # out to master_paper_mcp. An umbrella is active when a tool in that
+        # umbrella was selected by deliberation OR the deliberation's
+        # intent_weights exceed the activation threshold (0.25 — above the
+        # 10% web floor in v1.7 so pure-ai / pure-bio queries don't drag web
+        # shards into the fan-out).
+        _umbrella_by_tool = {
+            "arxiv": "ai", "github": "ai", "huggingface": "ai", "hugging-face": "ai",
+            "bio": "bio",
+            "web": "web",
+        }
+        umbrellas_present: set[str] = set()
+        for t in active_tools:
+            u = _umbrella_by_tool.get(t.tool_name)
+            if u and u in MASTER_PAPER_MCP_UMBRELLA_SUBJECTS:
+                umbrellas_present.add(u)
+        for u, w in (deliberation.intent_weights or {}).items():
+            if u in MASTER_PAPER_MCP_UMBRELLA_SUBJECTS and w >= 0.25:
+                umbrellas_present.add(u)
+
+        def _master_query_for(umbrella: str) -> str:
+            """Pick the representative search query for this umbrella."""
+            for t in active_tools:
+                if _umbrella_by_tool.get(t.tool_name) == umbrella and t.search_query:
+                    return t.search_query
+            if active_tools and active_tools[0].search_query:
+                return active_tools[0].search_query
+            return ""
+
+        # Rank subjects across all active umbrellas by query-keyword overlap,
+        # then cap the total number of master_paper_mcp shards per request so
+        # a wide-umbrella query can't spawn 9 parallel calls.
+        umbrella_subjects: dict[str, list[str]] = {}
+        for u in sorted(umbrellas_present):
+            umbrella_subjects[u] = self._select_master_subjects(
+                u,
+                _master_query_for(u),
+                max_per_umbrella=self._MASTER_MAX_SUBJECTS_PER_UMBRELLA,
+            )
+        total = sum(len(s) for s in umbrella_subjects.values())
+        if total > self._MASTER_MAX_SUBJECTS_PER_REQUEST:
+            # Trim proportionally: keep the first N (already ranked) per
+            # umbrella until we fit under the global cap.
+            budget = self._MASTER_MAX_SUBJECTS_PER_REQUEST
+            trimmed: dict[str, list[str]] = {}
+            for u, subs in umbrella_subjects.items():
+                take = max(1, budget // max(1, len(umbrella_subjects)))
+                trimmed[u] = subs[:take]
+                budget -= len(trimmed[u])
+                if budget <= 0:
+                    break
+            umbrella_subjects = {u: s for u, s in trimmed.items() if s}
+
+        async def _run_master(umbrella: str) -> tuple[str, list[dict[str, Any]]]:
+            data = await self._invoke_master_paper_mcp(
+                umbrella=umbrella,
+                subjects=umbrella_subjects.get(umbrella, []),
+                query=_enrich_query_with_date(_master_query_for(umbrella)),
+                limit=limit,
+                progress=progress,
+            )
+            return ("mcp_results", data)
+
+        master_tasks = [_run_master(u) for u in umbrella_subjects.keys()]
+        master_umbrellas_ordered = list(umbrella_subjects.keys())
+
+        # Execute ALL tools in parallel — regular tools plus master_paper_mcp
+        # fan-outs. Master tasks never raise (errors are logged + returned as
+        # empty lists), so index-based error attribution below stays correct
+        # for the active_tools slice.
         tool_outputs = await asyncio.gather(
             *[_run_tool(t) for t in active_tools],
+            *master_tasks,
             return_exceptions=True,
         )
 
         # Aggregate results
         for i, output in enumerate(tool_outputs):
             if isinstance(output, Exception):
+                label = (
+                    active_tools[i].tool_name
+                    if i < len(active_tools)
+                    else f"{MASTER_PAPER_MCP_NAME}:{master_umbrellas_ordered[i - len(active_tools)]}"
+                )
                 self._logger.warning(
                     "tool_execution_error",
-                    tool=active_tools[i].tool_name,
+                    tool=label,
                     error=str(output),
                 )
                 continue
@@ -1514,10 +1623,15 @@ Response:"""
         models = (tool_results.get("models") or [])[:3]
         pubmed_papers = self._extract_pubmed_papers(tool_results.get("mcp_results") or [])
         pubmed_top = pubmed_papers[:5]
+        # master_paper_mcp papers bucketed by umbrella so they count as ai
+        # or bio evidence for the bridge gate and the prompt blocks below.
+        master_papers = self._extract_master_paper_papers(tool_results.get("mcp_results") or [])
+        master_ai = [p for p in master_papers if p.get("umbrella") == "ai"][:3]
+        master_bio = [p for p in master_papers if p.get("umbrella") == "bio"][:3]
 
-        has_ai = bool(papers or repos or models)
-        has_bio = bool(pubmed_top) or any(
-            isinstance(r, dict) and r.get("source") in ("clinicaltrials-bio", "pubchem-bio")
+        has_ai = bool(papers or repos or models or master_ai)
+        has_bio = bool(pubmed_top) or bool(master_bio) or any(
+            isinstance(r, dict) and r.get("source") in ("clinicaltrials-bio", "pubchem-bio", "doi-bio")
             for r in tool_results.get("mcp_results") or []
         )
         if not (has_ai and has_bio):
@@ -1540,6 +1654,7 @@ Response:"""
             [_fmt_paper(p) for p in papers]
             + [_fmt_repo(r) for r in repos]
             + [_fmt_model(m) for m in models]
+            + [_fmt_paper(p) for p in master_ai]
         ) or "(no AI evidence)"
 
         bio_block_parts: list[str] = []
@@ -1547,13 +1662,15 @@ Response:"""
             bio_block_parts.append(
                 f"- {p.get('title', 'Untitled')} ({p['url']}) — {(p.get('description') or '')[:200]}"
             )
+        for p in master_bio:
+            bio_block_parts.append(_fmt_paper(p))
         # Pull a short trials/compounds summary from the raw mcp_results so the
         # bridge LLM has a chance to reason about them as bio targets.
         for r in tool_results.get("mcp_results") or []:
             if not isinstance(r, dict):
                 continue
             src = r.get("source")
-            if src in ("clinicaltrials-bio", "pubchem-bio"):
+            if src in ("clinicaltrials-bio", "pubchem-bio", "doi-bio"):
                 data = r.get("data")
                 snippet = data[:400] if isinstance(data, str) else json.dumps(data, default=str)[:400]
                 bio_block_parts.append(f"- [{src}] {snippet}")
@@ -1686,7 +1803,17 @@ Return ONLY the JSON array. No prose. No markdown fences."""
         if tool_results:
             # Keep the context compact — the DebateAgent only needs a
             # summary of the evidence, not every raw field.
-            ctx["papers"] = (tool_results.get("papers") or [])[:5]
+            mcp_results = tool_results.get("mcp_results") or []
+            master_papers = self._extract_master_paper_papers(mcp_results)
+            pubmed_papers = self._extract_pubmed_papers(mcp_results)
+            # Merge arxiv papers + master_paper_mcp papers so the debate sees
+            # the full paper evidence surface, not just the arxiv slice.
+            merged_papers = (
+                (tool_results.get("papers") or [])
+                + master_papers
+                + pubmed_papers
+            )
+            ctx["papers"] = merged_papers[:10]
             ctx["repositories"] = (tool_results.get("repositories") or [])[:5]
             ctx["models"] = (tool_results.get("models") or [])[:5]
             ctx["web_results"] = (tool_results.get("web_results") or [])[:5]
@@ -1715,6 +1842,215 @@ Return ONLY the JSON array. No prose. No markdown fences."""
             "confidence_score": d.get("confidence_score", 0.0),
             "debate_summary": d.get("summary", ""),
         }
+
+    # ---- master_paper_mcp integration --------------------------------
+    # The master_paper_mcp HTTP gateway (registered in ~/.dova.json as
+    # `master_paper_mcp`) is invoked additively for the ai / bio / web
+    # umbrellas. We health-check it via `health_self` (short cache) and
+    # silently skip the fan-out if it isn't up — keeping the gateway a
+    # best-effort signal rather than a hard dependency.
+
+    _MASTER_HEALTH_TTL_S: float = 30.0
+    # Health probe must not block the critical path — if master_paper_mcp is
+    # up but its health_self tool hangs, every request in the TTL window
+    # would stall on it without this cap.
+    _MASTER_HEALTH_PROBE_TIMEOUT_S: float = 3.0
+    # Hard per-subject call timeout. The MCP client's default timeout is
+    # 45s (~ `.dova.json`); a local wait_for bounds each shard independently
+    # so a single stalled DB doesn't stretch the whole request.
+    _MASTER_SUBJECT_TIMEOUT_S: float = 20.0
+    # Hard per-tool wall-clock for top-level tool dispatch (arxiv/github/hf/
+    # web/bio/…). Without it, one stalled tool gates the whole step's gather.
+    _TOOL_EXEC_TIMEOUT_S: float = 30.0
+    # Hard per-server timeout inside the bio umbrella fan-out. Bounds the
+    # pubmed retry + hydration chain that can otherwise accumulate > 90s.
+    _BIO_SERVER_TIMEOUT_S: float = 25.0
+    # Per-subject failure memory TTL. A subject that errored/timed out
+    # recently is skipped for this window to avoid repeated slow failures.
+    _MASTER_SUBJECT_FAILURE_TTL_S: float = 120.0
+    # Caps on fan-out width.
+    _MASTER_MAX_SUBJECTS_PER_UMBRELLA: int = 2
+    _MASTER_MAX_SUBJECTS_PER_REQUEST: int = 3
+
+    def _select_master_subjects(
+        self,
+        umbrella: str,
+        query: str,
+        max_per_umbrella: int = 2,
+    ) -> list[str]:
+        """Rank umbrella subjects by query-keyword overlap.
+
+        Returns at most ``max_per_umbrella`` subjects. When no keyword
+        matches, falls back to the umbrella's default subject (one shard,
+        not all of them) to keep the gateway useful without fan-out cost.
+        """
+        subjects = MASTER_PAPER_MCP_UMBRELLA_SUBJECTS.get(umbrella, [])
+        if not subjects:
+            return []
+        q_low = (query or "").lower()
+        scored: list[tuple[int, str]] = []
+        for subj in subjects:
+            kws = MASTER_PAPER_MCP_SUBJECT_KEYWORDS.get(subj, [])
+            hits = sum(1 for kw in kws if kw and kw in q_low)
+            if hits > 0:
+                scored.append((hits, subj))
+        if not scored:
+            default = MASTER_PAPER_MCP_UMBRELLA_DEFAULT_SUBJECT.get(umbrella)
+            return [default] if default else []
+        scored.sort(key=lambda x: (-x[0], subjects.index(x[1])))
+        return [s for _, s in scored[:max_per_umbrella]]
+
+    async def _master_paper_mcp_healthy(self) -> bool:
+        """Return True if master_paper_mcp's `health_self` tool responds.
+
+        Result is cached for ``_MASTER_HEALTH_TTL_S`` to avoid probing on
+        every search. Any exception or unsuccessful MCPToolResult counts
+        as unhealthy.
+        """
+        cache: tuple[float, bool] | None = getattr(
+            self, "_master_mcp_health_cache", None
+        )
+        now = time.time()
+        if cache is not None and now - cache[0] < self._MASTER_HEALTH_TTL_S:
+            return cache[1]
+        healthy = False
+        try:
+            result = await asyncio.wait_for(
+                self.call_tool(
+                    MASTER_PAPER_MCP_NAME,
+                    "health_self",
+                    {},
+                    cache_ttl=0,
+                ),
+                timeout=self._MASTER_HEALTH_PROBE_TIMEOUT_S,
+            )
+            healthy = bool(result.success)
+            if not healthy:
+                self._logger.info(
+                    "master_paper_mcp_unhealthy",
+                    error=result.error,
+                )
+        except asyncio.TimeoutError:
+            self._logger.info(
+                "master_paper_mcp_unhealthy",
+                error=f"health_self timed out after {self._MASTER_HEALTH_PROBE_TIMEOUT_S}s",
+            )
+        except Exception as exc:
+            self._logger.info(
+                "master_paper_mcp_unhealthy",
+                error=str(exc),
+            )
+        self._master_mcp_health_cache = (now, healthy)
+        return healthy
+
+    def _master_subject_recently_failed(self, subject: str) -> bool:
+        """Return True if ``subject`` errored within the failure-TTL window."""
+        cache: dict[str, float] = getattr(
+            self, "_master_mcp_subject_failures", {}
+        )
+        ts = cache.get(subject)
+        if ts is None:
+            return False
+        if time.time() - ts < self._MASTER_SUBJECT_FAILURE_TTL_S:
+            return True
+        cache.pop(subject, None)
+        return False
+
+    def _record_master_subject_failure(self, subject: str) -> None:
+        cache: dict[str, float] = getattr(
+            self, "_master_mcp_subject_failures", None
+        ) or {}
+        cache[subject] = time.time()
+        self._master_mcp_subject_failures = cache
+
+    async def _invoke_master_paper_mcp(
+        self,
+        umbrella: str,
+        query: str,
+        limit: int = 10,
+        progress: ProgressCallback = None,
+        subjects: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fan master_paper_mcp.search_papers over the selected subjects.
+
+        ``subjects`` — pre-selected, query-relevance-ranked subject shards
+        (see ``_select_master_subjects``). When omitted, falls back to the
+        umbrella's full subject list so existing callers keep working.
+
+        Each call is bounded by ``_MASTER_SUBJECT_TIMEOUT_S`` and subjects
+        that errored/timed-out recently are skipped for
+        ``_MASTER_SUBJECT_FAILURE_TTL_S`` to avoid repeated slow failures.
+        Returns an empty list if the gateway is not healthy or the query
+        is blank.
+        """
+        if subjects is None:
+            subjects = MASTER_PAPER_MCP_UMBRELLA_SUBJECTS.get(umbrella, [])
+        # Drop subjects that failed recently — they'd just time out again.
+        subjects = [s for s in subjects if not self._master_subject_recently_failed(s)]
+        if not subjects or not query.strip():
+            return []
+        if not await self._master_paper_mcp_healthy():
+            self._logger.info(
+                "master_paper_mcp_skipped",
+                reason="unhealthy",
+                umbrella=umbrella,
+            )
+            return []
+
+        self._logger.info(
+            "master_paper_mcp_fanout_starting",
+            umbrella=umbrella,
+            subjects=subjects,
+            query=query,
+        )
+        if progress:
+            await progress("stage", {
+                "stage": "searching",
+                "tool": f"{MASTER_PAPER_MCP_NAME}:{umbrella}",
+                "message": f"Searching {MASTER_PAPER_MCP_NAME} ({umbrella})...",
+            })
+
+        async def _one(subject: str) -> dict[str, Any] | None:
+            try:
+                r = await asyncio.wait_for(
+                    self.call_tool(
+                        MASTER_PAPER_MCP_NAME,
+                        "search_papers",
+                        {"query": query, "subject": subject, "limit": limit},
+                    ),
+                    timeout=self._MASTER_SUBJECT_TIMEOUT_S,
+                )
+                if r.success and r.data:
+                    return {
+                        "source": f"{MASTER_PAPER_MCP_NAME}:{subject}",
+                        "tool": "search_papers",
+                        "data": r.data,
+                    }
+                if not r.success:
+                    self._record_master_subject_failure(subject)
+                    self._logger.warning(
+                        "master_paper_mcp_subject_failed",
+                        subject=subject,
+                        error=r.error,
+                    )
+            except asyncio.TimeoutError:
+                self._record_master_subject_failure(subject)
+                self._logger.warning(
+                    "master_paper_mcp_subject_timeout",
+                    subject=subject,
+                    timeout_s=self._MASTER_SUBJECT_TIMEOUT_S,
+                )
+            except Exception as exc:
+                self._record_master_subject_failure(subject)
+                self._logger.warning(
+                    "master_paper_mcp_subject_exception",
+                    subject=subject,
+                    error=str(exc),
+                )
+            return None
+
+        gathered = await asyncio.gather(*[_one(s) for s in subjects])
+        return [r for r in gathered if r is not None]
 
     async def _execute_mcp_tool(self, tool_name: str, query: str) -> list[dict[str, Any]]:
         """
@@ -1821,7 +2157,20 @@ Return ONLY the JSON array. No prose. No markdown fences."""
                     )
                 return None
 
-            fan_results = await asyncio.gather(*[_run(s) for s in selected])
+            async def _run_bounded(name: str) -> dict[str, Any] | None:
+                try:
+                    return await asyncio.wait_for(
+                        _run(name), timeout=self._BIO_SERVER_TIMEOUT_S
+                    )
+                except asyncio.TimeoutError:
+                    self._logger.warning(
+                        "bio_server_timeout",
+                        server=name,
+                        timeout_s=self._BIO_SERVER_TIMEOUT_S,
+                    )
+                    return None
+
+            fan_results = await asyncio.gather(*[_run_bounded(s) for s in selected])
             fan_results = [r for r in fan_results if r is not None]
 
             # Second pass: if the pubmed-bio search returned just a PMID list
@@ -1937,6 +2286,16 @@ Return ONLY the JSON array. No prose. No markdown fences."""
                 "pharmacokinetic", "pharmacodynamic", "drug-drug interaction",
                 "ddi", "hepatotoxicity", "retrosynthesis",
             ],
+            "doi-bio": [
+                # DOI / cross-database citation signals — doi-mcp queries
+                # CrossRef, OpenAlex, Semantic Scholar, DBLP, zbMATH, ERIC,
+                # HAL, INSPIRE-HEP alongside PubMed. Distinct from pubmed-bio
+                # because the user explicitly names the DB or asks to verify.
+                "doi", "crossref", "openalex", "semantic scholar",
+                "dblp", "zbmath", "inspirehep", "inspire-hep", "eric database",
+                " hal ", "verify citation", "verified paper", "verified papers",
+                "citation check", "citation verification", "anti-hallucination",
+            ],
             "pubmed-bio": [
                 # Literature / biomedical research signals — broad so most
                 # biotech/pharma questions pick up PubMed as at least one
@@ -2025,6 +2384,12 @@ Return ONLY the JSON array. No prose. No markdown fences."""
                 "medline", "clinical study", "systematic review", "meta-analysis",
                 "case report", "cohort study", "article abstract", "citation",
             ],
+            "doi-bio": [
+                "doi", "crossref", "openalex", "semantic scholar",
+                "dblp", "zbmath", "inspirehep", "inspire-hep",
+                "verify citation", "verified paper", "verified papers",
+                "citation check", "citation verification",
+            ],
         }
 
         # Score each server
@@ -2069,6 +2434,7 @@ Return ONLY the JSON array. No prose. No markdown fences."""
             "pubmed-bio": "pubmed_search_articles",
             "clinicaltrials-bio": "clinicaltrials_search_studies",
             "pubchem-bio": "pubchem_search_compounds",
+            "doi-bio": "findVerifiedPapers",
         }
 
         return tool_mapping.get(server_name, "search")
@@ -2148,6 +2514,15 @@ Return ONLY the JSON array. No prose. No markdown fences."""
                 "searchType": "identifier",
                 "identifierType": "name",
                 "identifiers": [query],
+            }
+        if server_name == "doi-bio":
+            # findVerifiedPapers: {query, source, limit, yearFrom?, yearTo?}.
+            # Use source="all" to fan out across all 9 DBs; bio recency
+            # window keeps results aligned with the PubMed window.
+            return {
+                "query": query,
+                "source": "all",
+                "limit": 10,
             }
 
         # Default fallback - try common parameter names
@@ -2971,8 +3346,12 @@ Return ONLY the revised answer."""
                     if fuzzy_result:
                         result_parts.append(fuzzy_result)
                         continue
-                is_bio = source in ("pubmed-bio", "clinicaltrials-bio", "pubchem-bio")
-                cap = bio_budget_chars if is_bio else 500
+                is_bio = source in ("pubmed-bio", "clinicaltrials-bio", "pubchem-bio", "doi-bio")
+                # master_paper_mcp shards carry full paper records and deserve
+                # the same synthesis budget as the bio MCPs — truncating them
+                # to 500 chars was hiding entire paper payloads from the LLM.
+                is_master_paper = source.startswith(f"{MASTER_PAPER_MCP_NAME}:")
+                cap = bio_budget_chars if (is_bio or is_master_paper) else 500
                 if isinstance(data, dict):
                     summary = json.dumps(data, indent=2)[:cap]
                 elif isinstance(data, list):
@@ -3438,6 +3817,65 @@ Response:"""
         return papers
 
     @staticmethod
+    def _extract_master_paper_papers(mcp_results: list[dict]) -> list[dict]:
+        """Flatten master_paper_mcp.search_papers results into paper-shaped dicts.
+
+        The gateway returns a list of Paper records
+        ``{doi, title, authors, abstract, url, pdf_url, source, ...}`` per
+        shard. We tag each paper with the umbrella (ai/bio/web) derived from
+        the master_paper_mcp subject so downstream ranking/debate can bucket
+        them correctly. Duplicates across subjects are removed by (doi | url
+        | title).
+        """
+        # subject → umbrella mapping (matches MASTER_PAPER_MCP_UMBRELLA_SUBJECTS)
+        subject_to_umbrella = {
+            "ai": "ai", "computer": "ai", "math": "ai", "physics": "ai",
+            "bio": "bio", "clinical": "bio", "chemistry": "bio",
+            "social": "web", "other": "web",
+        }
+        papers: list[dict] = []
+        seen: set[str] = set()
+
+        for r in mcp_results:
+            if not isinstance(r, dict):
+                continue
+            source = r.get("source") or ""
+            if not source.startswith(f"{MASTER_PAPER_MCP_NAME}:"):
+                continue
+            subject = source.split(":", 1)[1] if ":" in source else ""
+            umbrella = subject_to_umbrella.get(subject, "web")
+            data = r.get("data")
+            # master_paper_mcp returns list[dict]; a stringified payload would
+            # be a downstream bug — skip rather than regex-scrape.
+            if not isinstance(data, list):
+                continue
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                title = (item.get("title") or "").strip()
+                url = (item.get("url") or item.get("pdf_url") or "").strip()
+                doi = (item.get("doi") or "").strip()
+                key = doi.lower() or url.lower() or title.lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                authors = item.get("authors") or []
+                if not isinstance(authors, list):
+                    authors = []
+                abstract = (item.get("abstract") or "")[:500]
+                papers.append({
+                    "title": title or "Untitled",
+                    "url": url,
+                    "description": abstract,
+                    "authors": authors,
+                    "doi": doi,
+                    "source": f"{MASTER_PAPER_MCP_NAME}:{subject}" if subject else MASTER_PAPER_MCP_NAME,
+                    "umbrella": umbrella,
+                    "published": item.get("published_date") or item.get("updated_date") or "",
+                })
+        return papers
+
+    @staticmethod
     def _allocate_top_papers(
         arxiv_papers: list[dict],
         pubmed_papers: list[dict],
@@ -3529,9 +3967,16 @@ Response:"""
         arxiv_papers = action_result.get("papers", []) or []
         mcp_results = action_result.get("mcp_results", []) or []
         pubmed_papers = ThinkingOrchestrator._extract_pubmed_papers(mcp_results)
+        # master_paper_mcp papers bucket into the ai or bio pool by umbrella
+        # so they flow through the same top_papers allocator. Tagged papers
+        # are also surfaced as a dedicated `master_paper_papers` array for
+        # clients that want to render the source explicitly.
+        master_paper_papers = ThinkingOrchestrator._extract_master_paper_papers(mcp_results)
+        master_ai = [p for p in master_paper_papers if p.get("umbrella") == "ai"]
+        master_bio = [p for p in master_paper_papers if p.get("umbrella") == "bio"]
         top_papers = ThinkingOrchestrator._allocate_top_papers(
-            arxiv_papers,
-            pubmed_papers,
+            arxiv_papers + master_ai,
+            pubmed_papers + master_bio,
             deliberation.get("intent_weights"),
             cap=10,
         )
@@ -3539,6 +3984,7 @@ Response:"""
             "response": result_data.get("response", ""),
             "papers": arxiv_papers,
             "pubmed_papers": pubmed_papers,
+            "master_paper_papers": master_paper_papers,
             "top_papers": top_papers,
             "cross_domain_bridges": action_result.get("cross_domain_bridges", []),
             "drug_story": action_result.get("drug_story"),

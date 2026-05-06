@@ -403,13 +403,137 @@ BIO_PUBCHEM_MCP = MCPServerConfig(
 )
 
 
+# DOI-MCP (tfscharff/doi-mcp) — STDIO, zero-config, runs via npx.
+# Exposes verifyCitation (anti-hallucination) and findVerifiedPapers
+# (cross-database search across 9 DBs: CrossRef, OpenAlex, PubMed,
+# Semantic Scholar, DBLP, zbMATH, ERIC, HAL, INSPIRE-HEP).
+BIO_DOI_MCP = MCPServerConfig(
+    name="doi-bio",
+    description="DOI citation verification and multi-database verified paper search (tfscharff/doi-mcp)",
+    transport=MCPTransport.STDIO,
+    command="npx -y github:tfscharff/doi-mcp",
+    priority=2,
+    tools=[
+        MCPTool(
+            name="findVerifiedPapers",
+            description="Search 9 academic DBs (CrossRef, OpenAlex, PubMed, Semantic Scholar, DBLP, zbMATH, ERIC, HAL, INSPIRE-HEP) for papers with verified DOIs",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "all", "crossref", "openalex", "pubmed", "zbmath",
+                            "eric", "hal", "inspirehep", "semanticscholar", "dblp",
+                        ],
+                        "default": "all",
+                    },
+                    "limit": {"type": "integer", "default": 5, "maximum": 20},
+                    "yearFrom": {"type": "integer"},
+                    "yearTo": {"type": "integer"},
+                },
+                "required": ["query"],
+            },
+            capabilities=[MCPCapability.SEARCH],
+        ),
+        MCPTool(
+            name="verifyCitation",
+            description="Verify whether a citation exists across 9 academic DBs (anti-hallucination check)",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "authors": {"type": "array", "items": {"type": "string"}},
+                    "year": {"type": "integer"},
+                    "doi": {"type": "string"},
+                    "journal": {"type": "string"},
+                },
+            },
+            capabilities=[MCPCapability.FETCH],
+        ),
+    ],
+    rate_limit_rpm=60,
+    timeout_seconds=30,
+)
+
+
 # Canonical list of bio-prefixed server names used by the orchestrator
 # for keyword-based sub-routing within the `bio` umbrella tool.
 BIO_MCP_SERVERS: list[str] = [
     "pubmed-bio",
     "clinicaltrials-bio",
     "pubchem-bio",
+    "doi-bio",
 ]
+
+
+# master_paper_mcp — local gateway aggregating paper-search MCPs. Registered
+# via ~/.dova.json as an HTTP MCP at http://localhost:8084/mcp. It exposes a
+# single `search_papers` tool whose `subject` enum lets callers shard the
+# fan-out across downstream MCPs (arxiv, pubmed, doi, ...). The orchestrator
+# invokes it alongside existing ai/bio/web tools as an additive source.
+MASTER_PAPER_MCP_NAME: str = "master_paper_mcp"
+
+# Map each umbrella → master_paper_mcp `subject` values to fan out over.
+# The umbrellas correspond to the intent groups the orchestrator already
+# tracks (see `compute_intent_weights`).
+MASTER_PAPER_MCP_UMBRELLA_SUBJECTS: dict[str, list[str]] = {
+    "ai": ["ai", "computer", "math", "physics"],
+    "bio": ["bio", "clinical", "chemistry"],
+    "web": ["social", "other"],
+}
+
+# Keyword relevance signals used to rank subjects against the query text.
+# Only subjects whose keywords appear (or the umbrella-default subject) are
+# considered — keeps the fan-out narrow when the query is clearly one-topic.
+MASTER_PAPER_MCP_SUBJECT_KEYWORDS: dict[str, list[str]] = {
+    # ai umbrella
+    "ai": [
+        "ai", "artificial intelligence", "machine learning", "ml",
+        "deep learning", "neural", "transformer", "llm", "agent",
+        "reinforcement learning", "nlp",
+    ],
+    "computer": [
+        "computer", "systems", "distributed", "database", "security",
+        "software", "compiler", "networking", "operating system",
+    ],
+    "math": [
+        "math", "theorem", "proof", "algebra", "topology", "geometry",
+        "optimization", "probability", "statistics", "stochastic",
+    ],
+    "physics": [
+        "physics", "quantum", "relativity", "particle", "astrophysics",
+        "cosmology", "condensed matter", "thermodynamics",
+    ],
+    # bio umbrella
+    "bio": [
+        "bio", "gene", "genome", "protein", "cell", "rna", "dna",
+        "microbiome", "pathway", "molecular", "biology",
+    ],
+    "clinical": [
+        "clinical", "trial", "patient", "therapy", "treatment",
+        "efficacy", "placebo", "diagnosis", "disease", "disorder",
+    ],
+    "chemistry": [
+        "chemistry", "compound", "molecule", "reaction", "synthesis",
+        "drug", "pharmacology", "smiles", "pharmacokinetic",
+    ],
+    # web umbrella
+    "social": [
+        "social", "policy", "economic", "education", "behavior",
+        "society", "psychology", "public",
+    ],
+    "other": [],
+}
+
+# Default subject fallback per umbrella when no keywords match. Keeps the
+# gateway useful for generic queries without dragging every subject along.
+MASTER_PAPER_MCP_UMBRELLA_DEFAULT_SUBJECT: dict[str, str] = {
+    "ai": "ai",
+    "bio": "bio",
+    "web": "social",
+}
 
 
 # AWS Documentation MCP Server (for AWS best practices)
@@ -534,7 +658,7 @@ def get_default_registry() -> MCPRegistry:
 
     # Register built-in bio/pharma HTTP endpoints (zero-install).
     # User config in ~/.dova.json takes precedence if they override the name.
-    for bio_config in (BIO_PUBMED_MCP, BIO_CLINICALTRIALS_MCP, BIO_PUBCHEM_MCP):
+    for bio_config in (BIO_PUBMED_MCP, BIO_CLINICALTRIALS_MCP, BIO_PUBCHEM_MCP, BIO_DOI_MCP):
         if bio_config.name not in registry.servers:
             registry.register_server(bio_config)
 

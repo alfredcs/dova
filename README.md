@@ -2,11 +2,13 @@
 
 DOVA is an enterprise-grade, multi-agent research automation system built on AWS Strands Agents SDK and Amazon Bedrock AgentCore. It aggregates knowledge from ArXiv, GitHub, HuggingFace, biomedical sources (PubMed / ClinicalTrials.gov / PubChem), and the web through the Model Context Protocol (MCP).
 
-**Latest: v1.8** — Cross-field reasoning (AI ⇄ Bio bridges, bio→AI analogue reframes, drug-story chaining), bio-flow reliability fixes (PubMed always fanned-out, query distillation, two-step hydration), `dova mcp serve` parity with `dova serve`, and **100% env-driven LLM configuration**. See [release notes](docs/release_notes_v1.8.md). Prior: [v1.7](docs/release_notes_v1.7.md).
+**Latest: v1.9** — **DOI verification & cross-DB paper search** via `doi-bio` MCP (9 databases: CrossRef, OpenAlex, PubMed, Semantic Scholar, DBLP, zbMATH, ERIC, HAL, INSPIRE-HEP) and **`master_paper_mcp` gateway fan-out** (umbrella-driven subject sharding across ai/bio/web, health-cached and additive). See [release notes](docs/release_notes_v1.9.md). Prior: [v1.8](docs/release_notes_v1.8.md), [v1.7](docs/release_notes_v1.7.md).
 
 ## Features
 
 ### Core Capabilities
+- **DOI / Cross-Database Paper Verification** *(New in v1.9)*: New `doi-bio` MCP server (tfscharff/doi-mcp, STDIO, zero-config via `npx`) exposes `findVerifiedPapers` across 9 academic DBs (CrossRef, OpenAlex, PubMed, Semantic Scholar, DBLP, zbMATH, ERIC, HAL, INSPIRE-HEP) and `verifyCitation` as an anti-hallucination check. `search_bio_tool` gains `verified_papers` / `citation` domains, and the bio router adds keyword-based semantic routing (e.g. `doi`, `crossref`, `openalex`, `verify citation`).
+- **`master_paper_mcp` Gateway Fan-out** *(New in v1.9)*: Additive paper-search gateway registered via `~/.dova.json`. The orchestrator fans `search_papers` out over umbrella-specific subjects (`ai` → ai/computer/math/physics; `bio` → bio/clinical/chemistry; `web` → social/other) in parallel with the existing tools. Health-cached (30 s TTL), silently skipped when unavailable, never raises — stays best-effort.
 - **Cross-Domain AI ⇄ Bio Analyst** *(New in v1.8)*: After tool fan-out, a dedicated bridge step emits structured `{ai_method, bio_target, mechanism, novelty, feasibility, testable_prediction}` pairs that are rendered in the synthesis narrative and surfaced as a 🔗 card in the UI. Gated — pure-AI and pure-bio queries skip it entirely.
 - **Bio → AI Reframe Map** *(New in v1.8)*: 24 curated mechanism analogues (olfactory → sparse distributed reps, immune → clonal selection, hippocampus → episodic memory, …) injected into the synthesis prompt when biological vocabulary meets `ai_weight ≥ 0.3`. Zero LLM cost.
 - **Drug-Story Chain** *(New in v1.8)*: PubChem + PubMed + ClinicalTrials payloads stitched into one structured `{compound, cid, mechanism_pmids, trial_ncts}` unit, rendered as a 💊 card with clickable links.

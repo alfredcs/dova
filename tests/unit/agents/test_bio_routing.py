@@ -20,6 +20,7 @@ from dova.agents.thinking_orchestrator import (
 )
 from dova.config.mcp_servers import (
     BIO_CLINICALTRIALS_MCP,
+    BIO_DOI_MCP,
     BIO_MCP_SERVERS,
     BIO_PUBCHEM_MCP,
     BIO_PUBMED_MCP,
@@ -42,8 +43,20 @@ def test_bio_servers_are_http_with_valid_urls():
 
 
 def test_bio_mcp_servers_list_matches_configs():
-    names = {BIO_PUBMED_MCP.name, BIO_CLINICALTRIALS_MCP.name, BIO_PUBCHEM_MCP.name}
+    names = {
+        BIO_PUBMED_MCP.name,
+        BIO_CLINICALTRIALS_MCP.name,
+        BIO_PUBCHEM_MCP.name,
+        BIO_DOI_MCP.name,
+    }
     assert set(BIO_MCP_SERVERS) == names
+
+
+def test_doi_bio_is_stdio():
+    assert BIO_DOI_MCP.transport == MCPTransport.STDIO
+    assert BIO_DOI_MCP.command and "doi-mcp" in BIO_DOI_MCP.command
+    tool_names = {t.name for t in BIO_DOI_MCP.tools}
+    assert {"findVerifiedPapers", "verifyCitation"} <= tool_names
 
 
 def test_default_registry_registers_bio_servers():
@@ -94,6 +107,10 @@ def orch():
         # Non-specific biomedical queries fall back to PubMed (default).
         ("TP53 gene variants in breast cancer", "pubmed-bio"),
         ("side effects of ibuprofen", "pubmed-bio"),
+        # DOI / cross-DB citation queries → doi-bio
+        ("crossref lookup for DOI 10.1038/s41586-021-03819-2", "doi-bio"),
+        ("verify citation by semantic scholar", "doi-bio"),
+        ("openalex search for verified papers on graph neural networks", "doi-bio"),
     ],
 )
 @pytest.mark.asyncio
@@ -132,6 +149,11 @@ async def test_bio_keyword_routing(orch, query, expected_server):
         ("latest NCT trials for melanoma", {"clinicaltrials-bio", "pubmed-bio"}),
         # No explicit keywords → default fallback to pubmed-bio only
         ("aspirin cardiovascular disease", {"pubmed-bio"}),
+        # DOI / cross-DB query → doi-bio (+ pubmed-bio always added)
+        (
+            "crossref verified papers for DOI 10.1038/nature12373",
+            {"doi-bio", "pubmed-bio"},
+        ),
     ],
 )
 def test_bio_fanout_semantic(orch, query, expected_servers):
@@ -149,6 +171,7 @@ def test_bio_fanout_semantic(orch, query, expected_servers):
         ("pubmed-bio", "pubmed_search_articles"),
         ("clinicaltrials-bio", "clinicaltrials_search_studies"),
         ("pubchem-bio", "pubchem_search_compounds"),
+        ("doi-bio", "findVerifiedPapers"),
     ],
 )
 def test_mcp_tool_for_query_bio(orch, server, expected_tool):
@@ -178,6 +201,11 @@ def test_mcp_tool_params_clinicaltrials(orch):
     assert params == {"query": "BRAF V600E"}
 
 
+def test_mcp_tool_params_doi_bio(orch):
+    params = orch._get_mcp_tool_params("doi-bio", "findVerifiedPapers", "graph neural networks")
+    assert params == {"query": "graph neural networks", "source": "all", "limit": 10}
+
+
 def test_mcp_tool_params_pubchem(orch):
     # pubchem requires searchType + identifierType + identifiers
     params = orch._get_mcp_tool_params(
@@ -204,6 +232,10 @@ def test_mcp_tool_params_pubchem(orch):
         ("clinical", "clinicaltrials-bio", "clinicaltrials_search_studies"),
         ("compounds", "pubchem-bio", "pubchem_search_compounds"),
         ("drugs", "pubchem-bio", "pubchem_search_compounds"),
+        ("verified_papers", "doi-bio", "findVerifiedPapers"),
+        ("doi", "doi-bio", "findVerifiedPapers"),
+        ("citation", "doi-bio", "verifyCitation"),
+        ("verify", "doi-bio", "verifyCitation"),
         # Unknown domain falls back to literature
         ("nonsense", "pubmed-bio", "pubmed_search_articles"),
     ],
@@ -218,6 +250,11 @@ def test_search_bio_tool_dispatch(domain, expected_server, expected_tool):
         assert params == {"query": "test query", "maxResults": 5}
     elif expected_server == "clinicaltrials-bio":
         assert params == {"query": "test query"}
+    elif expected_server == "doi-bio":
+        if expected_tool == "verifyCitation":
+            assert params == {"title": "test query"}
+        else:
+            assert params == {"query": "test query", "limit": 5, "source": "all"}
     else:  # pubchem-bio
         assert params == {
             "searchType": "identifier",
@@ -293,3 +330,40 @@ def test_weights_zero_keyword_query_splits_evenly():
     assert _approx_sum_one(w)
     # Should be roughly 1/3 each after floors (web floor may nudge).
     assert all(v > 0 for v in w.values())
+
+
+# ---------------------------------------------------------------------------
+# master_paper_mcp subject selection & failure-cache (v1.9 perf)
+# ---------------------------------------------------------------------------
+
+def test_select_master_subjects_prefers_matching_keywords(orch):
+    subs = orch._select_master_subjects("ai", "quantum neural networks")
+    assert "physics" in subs and "ai" in subs
+    assert len(subs) <= 2
+
+
+def test_select_master_subjects_single_topic(orch):
+    subs = orch._select_master_subjects("bio", "CRISPR gene editing in zebrafish")
+    # Only "bio" keywords match — should not spawn clinical/chemistry shards.
+    assert subs == ["bio"]
+
+
+def test_select_master_subjects_no_match_uses_default(orch):
+    subs = orch._select_master_subjects("web", "asdf qwerty zxcv")
+    # No keyword hits → fall back to umbrella default, not all subjects.
+    assert subs == ["social"]
+
+
+def test_select_master_subjects_respects_cap(orch):
+    subs = orch._select_master_subjects(
+        "ai",
+        "ai machine learning computer systems math optimization physics quantum",
+        max_per_umbrella=2,
+    )
+    assert len(subs) == 2
+
+
+def test_master_subject_failure_cache_skips_recent(orch):
+    orch._record_master_subject_failure("physics")
+    assert orch._master_subject_recently_failed("physics") is True
+    assert orch._master_subject_recently_failed("ai") is False

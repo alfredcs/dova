@@ -185,6 +185,10 @@ def search_bio_tool(
         "compounds": ("pubchem-bio", "pubchem_search_compounds"),
         "chemicals": ("pubchem-bio", "pubchem_search_compounds"),
         "drugs": ("pubchem-bio", "pubchem_search_compounds"),
+        "verified_papers": ("doi-bio", "findVerifiedPapers"),
+        "doi": ("doi-bio", "findVerifiedPapers"),
+        "citation": ("doi-bio", "verifyCitation"),
+        "verify": ("doi-bio", "verifyCitation"),
     }
 
     if domain == "auto":
@@ -201,6 +205,11 @@ def search_bio_tool(
         params: dict[str, Any] = {"query": query, "maxResults": capped}
     elif mcp_server == "clinicaltrials-bio":
         params = {"query": query}
+    elif mcp_server == "doi-bio":
+        if tool_name == "verifyCitation":
+            params = {"title": query}
+        else:
+            params = {"query": query, "limit": min(capped, 20), "source": "all"}
     else:  # pubchem-bio — schema: searchType + identifierType + identifiers[]
         params = {
             "searchType": "identifier",
@@ -430,7 +439,7 @@ RESEARCH_TOOLS = [
                 },
                 "domain": {
                     "type": "string",
-                    "enum": ["auto", "literature", "trials", "compounds"],
+                    "enum": ["auto", "literature", "trials", "compounds", "verified_papers", "citation"],
                     "default": "auto",
                     "description": "Which bio subdomain to target",
                 },
