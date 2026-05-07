@@ -379,8 +379,10 @@ class Deliberation:
     reasoning: str = ""
     clarification_needed: str = ""
     inferred_entity: str = ""  # What we inferred from ambiguous user input (e.g., typo correction)
-    # Semantic intent weights across the three top-level groups. Sum to 1.0.
-    # Used downstream to weight result aggregation in synthesis, not execution.
+    # Semantic intent weights across {ai, bio, web}. Sum to 1.0.
+    # Used downstream (a) to weight result aggregation in synthesis, and
+    # (b) to gate master_paper_mcp umbrella fan-out in _collect_results
+    # when a weight meets the activation threshold (see line ~1494).
     intent_weights: dict[str, float] = field(default_factory=dict)
 
 
@@ -1480,6 +1482,12 @@ Response:"""
         # intent_weights exceed the activation threshold (0.25 — above the
         # 10% web floor in v1.7 so pure-ai / pure-bio queries don't drag web
         # shards into the fan-out).
+        #
+        # The map covers every tool name that can appear in active_tools:
+        # get_available_tools (line ~63) only surfaces umbrella-level names
+        # to the deliberation LLM, so "bio" here transparently covers
+        # pubmed-bio / clinicaltrials-bio / pubchem-bio. `image` and
+        # `awslabs` are not paper sources and are correctly absent.
         _umbrella_by_tool = {
             "arxiv": "ai", "github": "ai", "huggingface": "ai", "hugging-face": "ai",
             "bio": "bio",
@@ -1527,12 +1535,29 @@ Response:"""
                     break
             umbrella_subjects = {u: s for u, s in trimmed.items() if s}
 
+        # Split `limit` across active umbrellas proportional to intent
+        # weights, so a low-weight umbrella doesn't burn MCP calls whose
+        # results synthesis will trim in _allocate_top_papers. Floor of 1
+        # per active umbrella preserves the activation signal.
+        _intent_weights = deliberation.intent_weights or {}
+        _active_weight_total = sum(
+            max(0.0, float(_intent_weights.get(u, 0.0))) for u in umbrella_subjects
+        )
+
+        def _limit_for(umbrella: str) -> int:
+            if _active_weight_total > 0:
+                w = max(0.0, float(_intent_weights.get(umbrella, 0.0)))
+                share = w / _active_weight_total
+            else:
+                share = 1.0 / max(len(umbrella_subjects), 1)
+            return max(1, round(share * limit))
+
         async def _run_master(umbrella: str) -> tuple[str, list[dict[str, Any]]]:
             data = await self._invoke_master_paper_mcp(
                 umbrella=umbrella,
                 subjects=umbrella_subjects.get(umbrella, []),
                 query=_enrich_query_with_date(_master_query_for(umbrella)),
-                limit=limit,
+                limit=_limit_for(umbrella),
                 progress=progress,
             )
             return ("mcp_results", data)

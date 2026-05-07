@@ -463,7 +463,7 @@ docker-compose down
 curl http://localhost:8000/health
 
 # Expected response:
-# {"status": "healthy", "version": "1.4.0", "environment": "development"}
+# {"status": "healthy", "version": "2.0.0", "environment": "development"}
 ```
 
 ---
