@@ -420,6 +420,41 @@ uvicorn dova.api.main:app --reload --host 0.0.0.0 --port 8000
 make run-local
 ```
 
+### Concurrency tuning (v2.1)
+
+DOVA routes every synchronous boto3 call through the asyncio default
+`ThreadPoolExecutor`. Python's default pool size is `min(32, cpu_count + 4)`
+≈ 8, which becomes the serialization bottleneck under ~9 concurrent requests
+× 3–6 Bedrock calls each. DOVA bumps the pool to **64** at startup and
+exposes the knob via environment:
+
+```bash
+# Increase for heavier concurrency; decrease to bound thread overhead
+DOVA_EXECUTOR_WORKERS=128 dova serve
+DOVA_EXECUTOR_WORKERS=32 dova mcp serve   # lighter deployments
+```
+
+Both `dova serve` and `dova mcp serve` emit an `executor_saturation`
+structured log line every 5 s while requests are active:
+
+```json
+{
+  "event": "executor_saturation",
+  "workers_max": 64,
+  "workers_busy": 12,
+  "queue_depth": 0,
+  "in_flight_requests": 3,
+  "peak_requests": 9
+}
+```
+
+Tuning guidance:
+
+- **`queue_depth > 30` sustained** → raise `DOVA_EXECUTOR_WORKERS`.
+- **`workers_busy` stays well under `workers_max`** → you can lower the limit.
+- **`peak_requests` never approaches single digits** → the default 64 is
+  overprovisioned for your workload.
+
 ### AgentCore Runtime Mode
 
 For AWS deployment with AgentCore Runtime:
@@ -463,7 +498,7 @@ docker-compose down
 curl http://localhost:8000/health
 
 # Expected response:
-# {"status": "healthy", "version": "2.0.0", "environment": "development"}
+# {"status": "healthy", "version": "2.1.0", "environment": "development"}
 ```
 
 ---

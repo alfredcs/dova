@@ -83,6 +83,17 @@ async def execute_research(
         sources=body.sources,
     )
 
+    from dova.utils.concurrency import track_request
+
+    async with track_request("api_research"):
+        return await _execute_research_inner(request, body, current_user)
+
+
+async def _execute_research_inner(
+    request: Request,
+    body: ResearchRequest,
+    current_user: User,
+) -> ResearchResponse:
     try:
         from dova.agents.base import AgentTask
         from dova.agents.thinking_orchestrator import ThinkingOrchestrator

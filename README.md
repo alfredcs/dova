@@ -2,12 +2,13 @@
 
 DOVA is an enterprise-grade, multi-agent research automation system built on AWS Strands Agents SDK and Amazon Bedrock AgentCore. It aggregates knowledge from ArXiv, GitHub, HuggingFace, biomedical sources (PubMed / ClinicalTrials.gov / PubChem), and the web through the Model Context Protocol (MCP).
 
-**Latest: v2.0** — **Intent-weighted `master_paper_mcp` fan-out.** Shard budgets now split across active umbrellas (`ai` / `bio` / `web`) proportional to the query's semantic intent weights, with a floor of 1 per active umbrella. Low-weight umbrellas stop burning downstream MCP capacity on results that synthesis would trim. Docstring and comment fixes on `Deliberation.intent_weights` and `_umbrella_by_tool` so the routing logic matches the documentation. No API or schema changes. See [release notes](docs/release_notes_v2.0.md). Prior: [v1.9](docs/release_notes_v1.9.md), [v1.8](docs/release_notes_v1.8.md), [v1.7](docs/release_notes_v1.7.md).
+**Latest: v2.1** — **Concurrency & observability release.** Removes five compounding bottlenecks that caused `dova mcp serve` to time out under ~9 parallel requests: serialized cold start under `asyncio.Lock`, 64-thread default executor (env-tunable via `DOVA_EXECUTOR_WORKERS`), pooled `httpx.AsyncClient` with per-server session-init locks, transport-aware retries (STDIO keeps 3, HTTP drops to 1 — saves ~50 s per failed call), plus in-flight request gauge (`request_started` / `request_finished`) and executor saturation logger (`executor_saturation` every 5 s while busy). No API or schema changes. See [release notes](docs/release_notes_v2.1.md). Prior: [v2.0](docs/release_notes_v2.0.md), [v1.9](docs/release_notes_v1.9.md), [v1.8](docs/release_notes_v1.8.md), [v1.7](docs/release_notes_v1.7.md).
 
 ## Features
 
 ### Core Capabilities
-- **Intent-Weighted Paper Fan-out** *(New in v2.0)*: `master_paper_mcp` shard `limit` is now split across active umbrellas proportional to `deliberation.intent_weights`, with a floor of 1 per active umbrella. A query scored `{ai: 0.7, bio: 0.2, web: 0.1}` with `limit=10` now allocates `{ai: 7, bio: 2, web: 1}` shard capacity instead of a uniform 10 everywhere. Low-weight umbrellas stop burning downstream MCP capacity on results synthesis would trim.
+- **Concurrency-Safe Serving** *(New in v2.1)*: `dova mcp serve` and `dova serve` no longer serialize or time out under parallel load. Cold-start `_get_services` is lock-protected; the default `ThreadPoolExecutor` is enlarged to **64 threads** (tunable via `DOVA_EXECUTOR_WORKERS`) so synchronous boto3 Bedrock calls don't queue; `httpx.AsyncClient` is pooled per MCP client with per-server session-init locks; HTTP/SSE/streamable MCP retries drop from 3 to 1 (saves up to ~50 s per failing call). Every request emits `request_started` / `request_finished` structured logs with `in_flight` and `peak` counts, and an `executor_saturation` logger runs every 5 s while busy — giving operators real data on whether tuning matches traffic.
+- **Intent-Weighted Paper Fan-out** *(Since v2.0)*: `master_paper_mcp` shard `limit` is now split across active umbrellas proportional to `deliberation.intent_weights`, with a floor of 1 per active umbrella. A query scored `{ai: 0.7, bio: 0.2, web: 0.1}` with `limit=10` now allocates `{ai: 7, bio: 2, web: 1}` shard capacity instead of a uniform 10 everywhere. Low-weight umbrellas stop burning downstream MCP capacity on results synthesis would trim.
 - **DOI / Cross-Database Paper Verification** *(Since v1.9)*: `doi-bio` MCP server (tfscharff/doi-mcp, STDIO, zero-config via `npx`) exposes `findVerifiedPapers` across 9 academic DBs (CrossRef, OpenAlex, PubMed, Semantic Scholar, DBLP, zbMATH, ERIC, HAL, INSPIRE-HEP) and `verifyCitation` as an anti-hallucination check. `search_bio_tool` gains `verified_papers` / `citation` domains, and the bio router adds keyword-based semantic routing (e.g. `doi`, `crossref`, `openalex`, `verify citation`).
 - **`master_paper_mcp` Gateway Fan-out** *(Since v1.9)*: Additive paper-search gateway registered via `~/.dova.json`. The orchestrator fans `search_papers` out over umbrella-specific subjects (`ai` → ai/computer/math/physics; `bio` → bio/clinical/chemistry; `web` → social/other) in parallel with the existing tools. Health-cached (30 s TTL), silently skipped when unavailable, never raises — stays best-effort.
 - **Cross-Domain AI ⇄ Bio Analyst** *(New in v1.8)*: After tool fan-out, a dedicated bridge step emits structured `{ai_method, bio_target, mechanism, novelty, feasibility, testable_prediction}` pairs that are rendered in the synthesis narrative and surfaced as a 🔗 card in the UI. Gated — pure-AI and pure-bio queries skip it entirely.
@@ -134,6 +135,23 @@ make run-local
 # Or use Docker Compose for everything
 docker-compose up -d
 ```
+
+#### Concurrency tuning
+
+Both `dova serve` and `dova mcp serve` share a single asyncio event loop with
+a `ThreadPoolExecutor` that dispatches synchronous boto3 calls (Bedrock
+`invoke_model`, embeddings). DOVA bumps the default pool from Python's
+~8 threads to **64** at startup to handle ~10 concurrent requests × 3–6
+Bedrock calls each without queueing. Override via:
+
+```bash
+DOVA_EXECUTOR_WORKERS=128 dova serve   # or: dova mcp serve
+```
+
+When requests are in flight, every 5 s the server emits an
+`executor_saturation` structured log line with `workers_max`, `workers_busy`,
+`queue_depth`, `in_flight_requests`, and `peak_requests`. If `queue_depth`
+stays above ~30 under your traffic, raise `DOVA_EXECUTOR_WORKERS`.
 
 ### Browser-Based Research UI
 

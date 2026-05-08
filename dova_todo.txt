@@ -1,0 +1,116 @@
+DOVA — Concurrency Follow-ups (deferred from Tier 1 fixes on 2026-05-08)
+========================================================================
+
+Context: The Tier 1 concurrency fixes landed three changes — lock-protected
+_get_services cold start, enlarged default ThreadPoolExecutor for boto3, and
+pooled httpx.AsyncClient per MCPClient. These items were identified during
+that investigation but deferred.
+
+---
+
+Tier 2 — Targeted hardening
+---------------------------
+
+[ ] Lock BedrockProvider._client lazy init
+    File: src/dova/config/providers.py:257-263
+    Issue: `self._client is None` check + boto3.client() construction is not
+           atomic. Under concurrent cold start, two coroutines can both
+           instantiate the boto3 client. boto3.client() is not thread-safe
+           to construct (though safe to call after construction).
+    Fix:   Wrap the lazy init in an asyncio.Lock (or move construction into
+           __init__). Same double-checked-lock pattern used in
+           mcp_server._get_services.
+    Impact: Rare bite in practice; the second client is usually discarded
+            harmlessly. Low priority unless we see duplicate-client metrics
+            or SIGABRT from botocore.
+
+[ ] Reduce MCP retry max_retries from 3 to 1 on HTTP transport
+    File: src/dova/tools/mcp_registry.py:108
+           self.retry_config = retry_config or RetryConfig(max_retries=3)
+    Issue: With base_delay=1.0, exponential_base=2.0, max_delay=60s, and
+           server-side timeouts already at 20-45s per call, a single failing
+           MCP can eat 1 + 2 + 4 = 7s of sleeps plus 3 × server_timeout of
+           attempt duration. On a 45s-timeout downstream, worst case is
+           ~135s for one call that will never succeed.
+    Fix:   Either drop max_retries to 1 (one retry on transient failure),
+           or make it transport-specific — keep 3 for STDIO (cheap local
+           subprocess), use 1 for HTTP/streamable-HTTP.
+    Impact: Saves up to ~90s per failure-path call. Small throughput win
+            on healthy path, large latency win on degraded-downstream path.
+
+[ ] Circuit breaker per-request isolation
+    File: src/dova/tools/mcp_registry.py:109
+    Issue: CircuitBreaker is shared across all in-flight requests. When it
+           trips for one slow downstream, all 9 concurrent requests see the
+           "open" error at the same instant — good for fast-failing, but
+           prevents natural load-shedding per request.
+    Option: Keep shared state but document the behavior, or introduce a
+            per-request context so a user-initiated retry gets a fresh
+            window on the circuit.
+
+Tier 3 — Architectural
+----------------------
+
+[ ] Replace boto3 with aioboto3 for fully async Bedrock
+    Files: src/dova/config/providers.py (BedrockProvider.complete/stream/embed)
+    Benefit: Eliminates the run_in_executor round-trip entirely. Each Bedrock
+             call becomes a cooperative async operation instead of a thread
+             claim. The default-executor enlargement in Tier 1 becomes
+             unnecessary for Bedrock (still useful for other blocking calls).
+    Cost:  Larger blast radius — touches every LLM call path. Requires
+           aioboto3 as a new dep and re-testing stream semantics. The
+           AsyncIterator[str] return type in .stream() changes shape.
+    Priority: Only do this if Tier 1's 8→64 thread bump proves insufficient
+              under sustained load (>20 concurrent requests).
+
+[ ] Per-provider asyncio.Semaphore for rate limiting
+    Files: src/dova/config/providers.py (each provider class)
+    Rationale: ProviderConfig.rate_limit_rpm exists (default 60) but is not
+               actually enforced anywhere in the code — grep shows it's
+               only read in config, never honored. Under heavy concurrency
+               we can exceed Bedrock/Anthropic/OpenAI quotas and get
+               ThrottlingException rather than graceful queuing.
+    Fix:  Per-provider Semaphore sized to rate_limit_rpm / 60 (per-second
+          budget); acquire in .complete()/.stream() with a timeout.
+
+[ ] Request-level tracing
+    Files: new infra + src/dova/agents/thinking_orchestrator.py
+    Rationale: When a request times out, we currently have structured logs
+               but no unified request_id that threads through deliberation
+               → tool fan-out → synthesis → MCP calls. Hard to reconstruct
+               "where did those 15 minutes go" from logs.
+    Fix:  OpenTelemetry spans on AgentTask boundaries + MCP invoke +
+          provider.complete(). Already have opentelemetry-api and
+          opentelemetry-sdk in pyproject.toml as deps — not wired up.
+
+[ ] Pool streamable_http MCP sessions
+    File: src/dova/tools/mcp_registry.py:671-684
+    Issue: Tier 1 pooled the regular HTTP transport, but streamable_http
+           still opens a fresh streamablehttp_client + ClientSession per
+           call. Each call pays the init cost.
+    Fix:  Cache the (read_stream, write_stream, ClientSession) tuple per
+          server. Non-trivial because the SDK's context-manager lifecycle
+          makes caching awkward; may need a background task to keep the
+          session alive and a queue for requests.
+
+Observability / investigation
+-----------------------------
+
+[ ] Measure actual concurrent request profile
+    How:  Add a simple in-memory counter at dova_research entry/exit
+          (increment/decrement + max-seen). Log on each request's
+          completion: "concurrent_requests=N peak_this_session=M".
+    Why:  We're tuning for "~9 concurrent" but don't have hard numbers
+          on actual production concurrency. Real data > assumption.
+
+[ ] Executor saturation metric
+    How:  After Tier 1, log executor._work_queue.qsize() and in-flight
+          task count every 5s while any request is in progress. Want to
+          know if 64 threads is actually enough or we're still queuing.
+    Why:  64 is a guess based on 9 requests × ~6 LLM calls. If prod
+          concurrency is higher, this number is too low.
+
+[ ] Document the DOVA_EXECUTOR_WORKERS env var
+    Files: README.md, docs/getting_started.md, .env.example
+    Rationale: Added in Tier 1 but not documented. Operators won't know
+               to tune it.

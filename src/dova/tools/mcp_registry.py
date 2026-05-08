@@ -105,11 +105,67 @@ class MCPClient:
         self.registry = registry or get_default_registry()
         self.cache = cache or InMemoryCache()
         self.metrics = metrics or MetricsCollector()
+        # Transport-aware retry policy. Local STDIO subprocesses are cheap
+        # to retry, so keep 3 attempts. HTTP / streamable-HTTP / SSE reach
+        # out to remote MCPs with their own 20-45s timeouts — three attempts
+        # can pile on ~135s of wait for a call that's never going to
+        # succeed. Drop to 1 retry for network transports unless the caller
+        # provides an explicit config.
         self.retry_config = retry_config or RetryConfig(max_retries=3)
+        self._http_retry_config = retry_config or RetryConfig(max_retries=1)
         self.circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60)
         self._connections: dict[str, Any] = {}
         self._sessions: dict[str, str] = {}  # server_name -> session_id
+        # Pooled httpx client for HTTP MCP calls — lazy-initialized on first
+        # use under `_http_client_lock` so ~9 concurrent invokers at cold
+        # start don't each create their own client (each with its own TCP +
+        # TLS handshake cost and its own _sessions race window).
+        self._http_client: Any | None = None
+        self._http_client_lock: asyncio.Lock | None = None
+        self._session_init_locks: dict[str, asyncio.Lock] = {}
         self._logger = logger.bind(component="mcp_client")
+
+    async def _get_http_client(self, timeout_seconds: float) -> Any:
+        """Return a shared ``httpx.AsyncClient`` with a warm connection pool.
+
+        The pool is lazy and process-wide (one per MCPClient instance). The
+        timeout is set to the first caller's value — per-call timeouts are
+        applied at a higher level via ``asyncio.wait_for`` already, so the
+        client-level timeout just acts as a backstop.
+        """
+        if self._http_client is not None:
+            return self._http_client
+
+        if self._http_client_lock is None:
+            self._http_client_lock = asyncio.Lock()
+
+        async with self._http_client_lock:
+            if self._http_client is None:
+                import httpx
+
+                # keepalive + connection pooling: reuse TCP + TLS across calls,
+                # cap pool so we don't fan out unbounded downstream.
+                limits = httpx.Limits(
+                    max_keepalive_connections=32,
+                    max_connections=64,
+                    keepalive_expiry=30.0,
+                )
+                self._http_client = httpx.AsyncClient(
+                    timeout=timeout_seconds,
+                    limits=limits,
+                    http2=False,  # most MCP servers are HTTP/1.1
+                )
+        return self._http_client
+
+    async def aclose(self) -> None:
+        """Close the pooled HTTP client. Safe to call multiple times."""
+        client = self._http_client
+        self._http_client = None
+        if client is not None:
+            try:
+                await client.aclose()
+            except Exception as e:
+                self._logger.warning("http_client_close_failed", error=str(e))
 
     async def invoke(
         self,
@@ -217,7 +273,15 @@ class MCPClient:
 
             return result
 
-        return await retry_async(_call, config=self.retry_config)
+        # Pick the retry policy based on transport: STDIO gets the full
+        # 3-attempt budget, everything network-bound (HTTP/SSE/streamable)
+        # gets 1 retry.
+        retry_cfg = (
+            self.retry_config
+            if server_config.transport == MCPTransport.STDIO
+            else self._http_retry_config
+        )
+        return await retry_async(_call, config=retry_cfg)
 
     async def _invoke_stdio(
         self,
@@ -368,66 +432,78 @@ class MCPClient:
         tool: str,
         params: dict[str, Any],
     ) -> Any:
-        """Invoke MCP tool via HTTP transport with session management."""
-        import httpx
+        """Invoke MCP tool via HTTP transport with session management.
+
+        Uses a pooled ``httpx.AsyncClient`` (connections reused across calls)
+        and a per-server init lock so ~9 concurrent invokers of the same
+        server don't race ``_initialize_session`` and stomp ``_sessions``.
+        """
         import json
 
         if not server_config.url:
             raise ValueError(f"No URL configured for HTTP server: {server_config.name}")
 
-        async with httpx.AsyncClient(timeout=server_config.timeout_seconds) as client:
-            # Ensure we have a session for this server
-            if server_config.name not in self._sessions:
-                await self._initialize_session(client, server_config)
+        client = await self._get_http_client(server_config.timeout_seconds)
 
-            # Build headers with session ID
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            }
-            headers.update(server_config.headers)
+        # Ensure we have a session for this server. Lock is per-server so
+        # different servers still initialize in parallel.
+        if server_config.name not in self._sessions:
+            init_lock = self._session_init_locks.setdefault(
+                server_config.name, asyncio.Lock()
+            )
+            async with init_lock:
+                if server_config.name not in self._sessions:
+                    await self._initialize_session(client, server_config)
 
-            # Add session ID if we have one
-            session_id = self._sessions.get(server_config.name)
-            if session_id:
-                headers["Mcp-Session-Id"] = session_id
+        # Build headers with session ID
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        headers.update(server_config.headers)
 
-            self._logger.debug(
-                "http_invoke",
+        # Add session ID if we have one
+        session_id = self._sessions.get(server_config.name)
+        if session_id:
+            headers["Mcp-Session-Id"] = session_id
+
+        self._logger.debug(
+            "http_invoke",
+            server=server_config.name,
+            tool=tool,
+            url=server_config.url,
+        )
+
+        # MCP HTTP uses JSON-RPC 2.0
+        request_body = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": params},
+        }
+
+        response = await client.post(
+            server_config.url,
+            json=request_body,
+            headers=headers,
+            timeout=server_config.timeout_seconds,
+        )
+
+        # Update session ID from response if provided
+        if "mcp-session-id" in response.headers:
+            self._sessions[server_config.name] = response.headers["mcp-session-id"]
+
+        # Check for HTTP errors with detailed message
+        if response.status_code >= 400:
+            self._logger.error(
+                "http_error",
                 server=server_config.name,
-                tool=tool,
-                url=server_config.url,
+                status=response.status_code,
+                body=response.text[:500] if response.text else "(empty)",
             )
+            response.raise_for_status()
 
-            # MCP HTTP uses JSON-RPC 2.0
-            request_body = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": tool, "arguments": params},
-            }
-
-            response = await client.post(
-                server_config.url,
-                json=request_body,
-                headers=headers,
-            )
-
-            # Update session ID from response if provided
-            if "mcp-session-id" in response.headers:
-                self._sessions[server_config.name] = response.headers["mcp-session-id"]
-
-            # Check for HTTP errors with detailed message
-            if response.status_code >= 400:
-                self._logger.error(
-                    "http_error",
-                    server=server_config.name,
-                    status=response.status_code,
-                    body=response.text[:500] if response.text else "(empty)",
-                )
-                response.raise_for_status()
-
-            return self._parse_http_response(server_config.name, response)
+        return self._parse_http_response(server_config.name, response)
 
     async def _initialize_session(
         self,

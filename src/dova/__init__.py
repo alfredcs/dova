@@ -5,7 +5,7 @@ A production-grade multi-agent research automation system built on
 AWS Strands Agents SDK and Amazon Bedrock AgentCore.
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __author__ = "DOVA Team"
 
 from dova.agents.orchestrator import DOVAOrchestrator

@@ -9,6 +9,7 @@ Exposes Dova's multi-agent research capabilities as MCP tools:
 - dova_web_search: Multi-provider web search
 """
 
+import asyncio
 import json
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -17,6 +18,7 @@ import structlog
 from mcp.server.fastmcp import FastMCP
 
 from dova.agents.base import AgentTask
+from dova.utils.concurrency import tracked
 
 logger = structlog.get_logger(__name__)
 
@@ -25,8 +27,12 @@ mcp = FastMCP(
     instructions="Multi-agent AI/ML research platform — search ArXiv, GitHub, HuggingFace, and the web",
 )
 
-# Lazy-initialized services
+# Lazy-initialized services. `_services_lock` guards cold-start so concurrent
+# callers don't each run the 140-line init block (which spawns subprocesses,
+# clones git repos, and builds LLM clients). Once `_services` is populated
+# the lock is uncontended — the fast path returns immediately without it.
 _services: dict[str, Any] = {}
+_services_lock: asyncio.Lock | None = None
 
 
 async def _get_services() -> dict[str, Any]:
@@ -34,13 +40,43 @@ async def _get_services() -> dict[str, Any]:
 
     Mirrors the wiring in ``dova.api.main.lifespan`` so the MCP server and the
     FastAPI server share an identical deliberation-first orchestration path.
+
+    Concurrency: the init block is serialized via ``_services_lock`` so
+    parallel MCP requests at cold start don't each spawn subprocesses,
+    clone repos, or instantiate LLM clients independently. Hot-path returns
+    without acquiring the lock.
     """
     if _services:
         return _services
 
+    global _services_lock
+    if _services_lock is None:
+        _services_lock = asyncio.Lock()
+
+    async with _services_lock:
+        # Double-check after acquiring the lock — another coroutine may
+        # have finished init while we were waiting.
+        if _services:
+            return _services
+        await _init_services()
+    return _services
+
+
+async def _init_services() -> None:
+    """Populate ``_services`` in-place. Must be called with ``_services_lock`` held."""
     from dotenv import load_dotenv
 
     load_dotenv()
+
+    # Enlarge the event loop's default ThreadPoolExecutor before we start
+    # routing blocking boto3 calls through it. Idempotent.
+    from dova.utils.concurrency import configure_default_executor, start_saturation_logger
+
+    configure_default_executor()
+    # Log executor + in-flight-request saturation every 5s while requests
+    # are active. Silent when idle. Gives us real data on whether 64
+    # workers is enough for observed traffic.
+    start_saturation_logger()
 
     from dova.config.settings import get_settings
 
@@ -171,8 +207,6 @@ async def _get_services() -> dict[str, Any]:
             logger.warning("orchestrator_init_failed", error=str(e))
             _services["orchestrator"] = None
 
-    return _services
-
 
 def _serialize(obj: Any) -> Any:
     """Serialize dataclasses and other objects to JSON-safe dicts."""
@@ -186,6 +220,7 @@ def _serialize(obj: Any) -> Any:
 
 
 @mcp.tool()
+@tracked("dova_research")
 async def dova_research(
     query: str,
     sources: str = "all",
@@ -267,6 +302,7 @@ async def dova_research(
 
 
 @mcp.tool()
+@tracked("dova_search")
 async def dova_search(
     query: str,
     source: str = "arxiv",
@@ -308,6 +344,7 @@ async def dova_search(
 
 
 @mcp.tool()
+@tracked("dova_debate")
 async def dova_debate(
     topic: str,
     num_rounds: int = 2,
@@ -341,6 +378,7 @@ async def dova_debate(
 
 
 @mcp.tool()
+@tracked("dova_validate")
 async def dova_validate(
     code: str,
     language: str = "python",
@@ -375,6 +413,7 @@ async def dova_validate(
 
 
 @mcp.tool()
+@tracked("dova_web_search")
 async def dova_web_search(
     query: str,
     max_results: int = 10,

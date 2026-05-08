@@ -58,6 +58,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         version=settings.app_version,
     )
 
+    # Enlarge the event loop's default ThreadPoolExecutor before the first
+    # synchronous boto3 call lands on it. Python's default (min(32, cpu+4) ≈ 8
+    # on typical hosts) becomes the serialization bottleneck under ~9
+    # concurrent requests with 3–6 Bedrock calls each.
+    from dova.utils.concurrency import configure_default_executor, start_saturation_logger
+
+    configure_default_executor()
+    # Log executor + in-flight-request saturation every 5s while requests
+    # are active. Silent when idle.
+    start_saturation_logger()
+
     # Initialize services
     app.state.settings = settings
 
