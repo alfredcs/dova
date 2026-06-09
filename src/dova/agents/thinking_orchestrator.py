@@ -3709,32 +3709,33 @@ Response:"""
             elif src == "clinicaltrials-bio":
                 trials_blob += data + "\n"
 
-        if not pubchem_blob and not trials_blob:
+        # The drug story only makes sense when we have an actual compound
+        # signal from PubChem — without one, any PubMed / trials output
+        # that happened to fire for a non-drug query would produce a
+        # nonsense story (e.g. "Drug story for Synthetic" on a
+        # multi-agent-LLM question that grabbed 'Synthetic' from the
+        # user's query as a fallback compound name).
+        if not pubchem_blob:
             return None
 
         # PubChem markdown usually surfaces "CID: 12345" and a compound name.
-        # Try to pull the top compound name and CID.
         cid_match = re.search(r"(?:CID|PubChem\s*CID)[:\s]+(\d+)", pubchem_blob, re.IGNORECASE)
         cid = cid_match.group(1) if cid_match else None
         # Compound name candidates: look for "Name: X" or a bolded header.
         name_match = re.search(r"(?:Name|IUPAC|Compound)[:\s]+([A-Za-z][\w\-,\(\) ]{2,80})", pubchem_blob)
         compound_name: str | None = name_match.group(1).strip() if name_match else None
-        # Fallback: any capitalised token repeated across blobs could be the
-        # subject — use the most prominent query token that looks like a
-        # compound (hyphenated or ≥4 chars alpha) as a last resort.
-        if not compound_name:
-            candidates = re.findall(r"\b[A-Z][a-zA-Z\-]{3,20}\b", query)
-            if candidates:
-                compound_name = candidates[0]
+
+        # Require a concrete compound identifier from PubChem. Without
+        # either a CID or a labelled compound name in the pubchem blob we
+        # have no confidence this query is about a drug.
+        if not cid and not compound_name:
+            return None
 
         # Harvest PMIDs / NCT IDs that co-occur with the compound name in the
         # respective blobs. If we don't have a compound name, still return
         # the aggregate counts so the story block is useful.
         pmids = list(dict.fromkeys(re.findall(r"\b(\d{7,9})\b", pubmed_blob)))[:5]
         ncts = list(dict.fromkeys(re.findall(r"\bNCT\d{7,9}\b", trials_blob, re.IGNORECASE)))[:5]
-
-        if not (compound_name or pmids or ncts):
-            return None
 
         story = {
             "compound": compound_name or "(unknown)",
@@ -3900,6 +3901,17 @@ Response:"""
                 })
         return papers
 
+    # Raw-weight floor below which a group is treated as "incidental" — it
+    # gets 0 top_papers slots. ``compute_intent_weights`` applies a 5 %
+    # floor to every allowed group so the distribution never zero-sums, but
+    # that floor is a distribution artefact, not a routing signal. Without
+    # a separate allocation threshold, an AI-only query scored
+    # ``{ai: 0.85, web: 0.10, bio: 0.05}`` would still surface one pubmed
+    # paper in top_papers because 5 % × 10 slots = 0.5 rounds up to 1.
+    # Pinning the allocation threshold at 0.10 matches the existing
+    # ``web_floor`` convention: anything under 10 % is visibility-only.
+    _INCIDENTAL_WEIGHT_THRESHOLD: float = 0.10
+
     @staticmethod
     def _allocate_top_papers(
         arxiv_papers: list[dict],
@@ -3909,9 +3921,14 @@ Response:"""
     ) -> list[dict]:
         """Pick up to `cap` papers, split between arxiv (ai weight) and pubmed (bio weight).
 
-        Honors ``intent_weights`` proportionally. When one pool is empty, we
-        do NOT silently pour the other pool into its slots — this would hide
-        the fact that the dominant group failed. Instead:
+        Honors ``intent_weights`` proportionally. Weights below
+        ``_INCIDENTAL_WEIGHT_THRESHOLD`` (0.10) are treated as "incidental"
+        — that group receives 0 slots even if its pool has results, so a
+        5 % bio weight won't surface a pubmed paper in an AI-only query.
+
+        When one pool is empty, we do NOT silently pour the other pool
+        into its slots — this would hide the fact that the dominant group
+        failed. Instead:
 
         * If the empty pool is the MINORITY (weight < 0.3) we backfill from
           the majority pool, since the UI's dominant section is healthy.
@@ -3921,11 +3938,22 @@ Response:"""
           results that contradict the deliberation banner.
         """
         weights = intent_weights or {}
-        ai_w = float(weights.get("ai", 0.0))
-        bio_w = float(weights.get("bio", 0.0))
+        ai_w_raw = float(weights.get("ai", 0.0))
+        bio_w_raw = float(weights.get("bio", 0.0))
 
         if not arxiv_papers and not pubmed_papers:
             return []
+
+        # Zero out incidental weights so 5 % bio doesn't steal a slot.
+        threshold = ThinkingOrchestrator._INCIDENTAL_WEIGHT_THRESHOLD
+        ai_w = ai_w_raw if ai_w_raw >= threshold else 0.0
+        bio_w = bio_w_raw if bio_w_raw >= threshold else 0.0
+
+        # If clamping zeroed both sides, fall back to the raw weights so we
+        # don't end up with no papers. (Unusual — would require both groups
+        # under 10 %, meaning web > 80 %.)
+        if ai_w == 0 and bio_w == 0:
+            ai_w, bio_w = ai_w_raw, bio_w_raw
 
         total = ai_w + bio_w
         if total <= 0:
@@ -3968,12 +3996,16 @@ Response:"""
 
         ai_cut = arxiv_papers[:ai_slots]
         bio_cut = pubmed_papers[:bio_slots]
-        # If one pool underfilled its slots, give the leftover to the other.
+        # If one pool underfilled its slots, give the leftover to the other
+        # — but only if the receiving group was intentional (share > 0).
+        # Without this guard, an AI-only query with fewer arxiv papers than
+        # ai_slots would pour the remainder into pubmed, resurfacing the
+        # incidental-weight problem the threshold was meant to fix.
         leftover = cap - (len(ai_cut) + len(bio_cut))
         if leftover > 0:
-            if len(ai_cut) < ai_slots:
+            if len(ai_cut) < ai_slots and bio_share > 0:
                 bio_cut = pubmed_papers[:bio_slots + leftover]
-            else:
+            elif ai_share > 0:
                 ai_cut = arxiv_papers[:ai_slots + leftover]
 
         return ai_cut + bio_cut

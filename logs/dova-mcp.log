@@ -1,0 +1,871 @@
+INFO:     Started server process [1671634]
+INFO:     Waiting for application startup.
+[06/09/26 00:39:56] INFO     StreamableHTTP session manager started                                                                                                                             streamable_http_manager.py:128
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8083 (Press CTRL+C to quit)
+[06/09/26 00:40:16] INFO     Created new transport with session ID: 00e5100d4cbc494eabe3c21aff5ed5fd                                                                                            streamable_http_manager.py:255
+INFO:     75.58.9.155:58958 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:58958 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     75.58.9.155:58958 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:58959 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type ListToolsRequest                                                                                                                                         server.py:727
+INFO:     75.58.9.155:58959 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:58959 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type ListPromptsRequest                                                                                                                                       server.py:727
+INFO:     75.58.9.155:58959 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:58959 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type ListResourcesRequest                                                                                                                                     server.py:727
+INFO:     75.58.9.155:58959 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:58959 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:59288 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:42:52] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:59288 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:42:52 [info     ] request_started                in_flight=1 peak=1 tool=dova_research
+2026-06-09 00:42:52 [info     ] default_executor_configured    max_workers=64
+2026-06-09 00:42:52 [info     ] saturation_logger_started      interval_s=5.0
+2026-06-09 00:42:52 [info     ] bedrock_models_configured      advanced=global.anthropic.claude-opus-4-7 basic=global.anthropic.claude-haiku-4-5-20251001-v1:0 standard=global.anthropic.claude-sonnet-4-6
+2026-06-09 00:42:52 [info     ] bedrock_provider_configured    region=us-east-2
+2026-06-09 00:42:52 [info     ] llm_provider_order             providers=['bedrock (priority=1)']
+2026-06-09 00:42:52 [info     ] llm_models_bedrock             advanced=global.anthropic.claude-opus-4-7 basic=global.anthropic.claude-haiku-4-5-20251001-v1:0 standard=global.anthropic.claude-sonnet-4-6
+2026-06-09 00:42:53 [info     ] updating_repo                  name=arxiv service=mcp_repo_manager
+2026-06-09 00:42:53 [info     ] update_succeeded               name=arxiv service=mcp_repo_manager
+2026-06-09 00:42:53 [info     ] mcp_repos_setup                results={'arxiv': True}
+2026-06-09 00:42:53 [info     ] agent_registered               agent=ThinkingOrchestrator agent_type=research
+2026-06-09 00:42:53 [info     ] agent_registered               agent=ThinkingOrchestrator agent_type=debate
+2026-06-09 00:42:53 [info     ] thinking_orchestrator_starting agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' session_id=3cab04ba-8704-4d21-9cfd-e6e6dcfb148d user_id=None
+2026-06-09 00:42:53 [info     ] fast_path_deliberation         agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' sources=['arxiv', 'github', 'huggingface', 'web', 'bio']
+2026-06-09 00:42:53 [info     ] intent_weights_computed        agent=ThinkingOrchestrator allowed_groups=['ai', 'bio', 'web'] weights={'ai': 0.15, 'bio': 0.75, 'web': 0.1}
+2026-06-09 00:42:53 [info     ] deliberation_complete          action=use_tools agent=ThinkingOrchestrator allowed_sources=['arxiv', 'github', 'huggingface', 'web', 'bio'] can_answer_from_context=False tools_count=5
+2026-06-09 00:42:53 [info     ] token_budget_estimate          agent=ThinkingOrchestrator bridge_on=True estimate=51980 n_groups=3 pre_synthesis=20480 synthesis=31500
+2026-06-09 00:42:53 [info     ] executing_tool                 agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' rationale='User selected arxiv' tool=arxiv
+2026-06-09 00:42:53 [info     ] executing_tool                 agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' rationale='User selected github' tool=github
+2026-06-09 00:42:53 [info     ] executing_tool                 agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' rationale='User selected huggingface' tool=huggingface
+2026-06-09 00:42:53 [info     ] executing_tool                 agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' rationale='User selected web' tool=web
+2026-06-09 00:42:53 [info     ] executing_tool                 agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' rationale='User selected bio' tool=bio
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity', 'max_results': 20, 'date_from': '2025-06-09'} server=arxiv tool=search_papers
+2026-06-09 00:42:53 [debug    ] stdio_invoke                   command='uv --directory /home/alfred/.dova/mcp-servers/arxiv-mcp-server run arxiv-mcp-server --storage-path /home/alfred/.dova/arxiv-papers' component=mcp_client server=arxiv tool=search_papers
+2026-06-09 00:42:53 [info     ] github_search_starting         agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' search_type=repositories tool=search_repositories
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity', 'perPage': 20} server=github tool=search_repositories
+2026-06-09 00:42:53 [debug    ] session_init                   component=mcp_client server=github url=https://api.githubcopilot.com/mcp
+2026-06-09 00:42:53 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity'
+2026-06-09 00:42:53 [info     ] executing_bio_fanout           agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' servers=['pubmed-bio'] tool=bio
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={} server=master_paper_mcp tool=health_self
+2026-06-09 00:42:53 [debug    ] session_init                   component=mcp_client server=master_paper_mcp url=http://localhost:8084/mcp
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={} server=master_paper_mcp tool=health_self
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={} server=master_paper_mcp tool=health_self
+2026-06-09 00:42:53 [info     ] huggingface_search_starting    agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' search_type=models tool=hub_repo_search
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity', 'limit': 20, 'sort': 'downloads'} server=hugging-face tool=hub_repo_search
+2026-06-09 00:42:53 [debug    ] session_init                   component=mcp_client server=huggingface url=https://huggingface.co/mcp
+2026-06-09 00:42:53 [info     ] huggingface_search_starting    agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' search_type=papers tool=paper_search
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity', 'results_limit': 10} server=hugging-face tool=paper_search
+2026-06-09 00:42:53 [info     ] bio_server_call_starting       agent=ThinkingOrchestrator params_keys=['query', 'maxResults', 'dateRange'] server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'rfdiffusion de novo protein binder design diffusion models', 'maxResults': 10, 'dateRange': {'minDate': '2024/06/08', 'maxDate': '2026/06/09'}} server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 00:42:53 [debug    ] session_init                   component=mcp_client server=pubmed-bio url=https://pubmed.caseyjhand.com/mcp
+[06/09/26 00:42:53] INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+2026-06-09 00:42:53 [debug    ] session_created                component=mcp_client server=master_paper_mcp session_id=0087808a36df4910...
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=health_self url=http://localhost:8084/mcp
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=health_self url=http://localhost:8084/mcp
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=health_self url=http://localhost:8084/mcp
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+2026-06-09 00:42:53 [info     ] master_paper_mcp_fanout_starting agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' subjects=['ai'] umbrella=ai
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity', 'subject': 'ai', 'limit': 3} server=master_paper_mcp tool=search_papers
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=search_papers url=http://localhost:8084/mcp
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+2026-06-09 00:42:53 [info     ] master_paper_mcp_fanout_starting agent=ThinkingOrchestrator query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' subjects=['bio'] umbrella=bio
+2026-06-09 00:42:53 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity', 'subject': 'bio', 'limit': 15} server=master_paper_mcp tool=search_papers
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=search_papers url=http://localhost:8084/mcp
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+                    INFO     HTTP Request: POST https://huggingface.co/mcp "HTTP/1.1 200 OK"                                                                                                                   _client.py:1740
+2026-06-09 00:42:53 [debug    ] session_created                component=mcp_client server=huggingface session_id=92f90a82-bce7-44...
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=huggingface tool=hub_repo_search url=https://huggingface.co/mcp
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=huggingface tool=paper_search url=https://huggingface.co/mcp
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=RFdiffusion%20de%20novo%20protein%20binder%20design%20diffusion%20models%20experimental%20hit%20rate           
+                             s%20AF2-Multimer%20filtering%20in-silico%20directed%20evolution%20energy-based%20refinement%20nanomolar%20affinity 200                                                                           
+                    INFO     HTTP Request: POST https://huggingface.co/mcp "HTTP/1.1 200 OK"                                                                                                                   _client.py:1740
+2026-06-09 00:42:53 [info     ] huggingface_search_complete    agent=ThinkingOrchestrator error=None success=True
+                    INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 00:42:53 [debug    ] session_no_id                  component=mcp_client server=pubmed-bio
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=pubmed-bio tool=pubmed_search_articles url=https://pubmed.caseyjhand.com/mcp
+                    INFO     HTTP Request: POST https://api.githubcopilot.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 00:42:53 [debug    ] session_created                component=mcp_client server=github session_id=3f06d04e-55dc-4f...
+2026-06-09 00:42:53 [debug    ] http_invoke                    component=mcp_client server=github tool=search_repositories url=https://api.githubcopilot.com/mcp
+                    INFO     HTTP Request: GET                                                                                                                                                                 _client.py:1740
+                             https://api.search.brave.com/res/v1/web/search?q=RFdiffusion+de+novo+protein+binder+design+diffusion+models+experimental+hit+rates+AF2-Multimer+filtering+in-silico+directed+evol                
+                             ution+energy-based+refinement+nanomolar+affinity&count=10&freshness=pw "HTTP/1.1 200 OK"                                                                                                         
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://grokipedia.com/api/typeahead?query=RFdiffusion+de+novo+protein+binder+design+diffusion+models+experimental+hit+rates+AF2-Multimer+filtering+in-silico+directed+evolution+energ           
+                             y-based+refinement+nanomolar+affinity&limit=1 200                                                                                                                                                
+[06/09/26 00:42:54] INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 00:42:54 [info     ] bio_server_call_complete       agent=ThinkingOrchestrator data='583 chars' server=pubmed-bio success=True tool=pubmed_search_articles
+2026-06-09 00:42:54 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'pmids': ['40897171', '42072649', '41562285', '39266056']} server=pubmed-bio tool=pubmed_fetch_articles
+2026-06-09 00:42:54 [debug    ] http_invoke                    component=mcp_client server=pubmed-bio tool=pubmed_fetch_articles url=https://pubmed.caseyjhand.com/mcp
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://www.mojeek.com/search?q=RFdiffusion+de+novo+protein+binder+design+diffusion+models+experimental+hit+rates+AF2-Multimer+filtering+in-silico+directed+evolution+energy-based+ref           
+                             inement+nanomolar+affinity 403                                                                                                                                                                   
+                    INFO     response: https://html.duckduckgo.com/html/ 202                                                                                                                                        lib.rs:495
+                    INFO     HTTP Request: POST https://api.githubcopilot.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 00:42:54 [info     ] github_search_complete         agent=ThinkingOrchestrator error=None success=True
+                    INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://search.yahoo.com/search;_ylt=GnyEb3MXLQ5BSFa4LN9xMomz;_ylu=OoBJow_yFElgCkERhwqAzJ6bEUjlTf8r2ePqYSjgQ8-KjbQ?p=RFdiffusion+de+novo+protein+binder+design+diffusion+models+experi           
+                             mental+hit+rates+AF2-Multimer+filtering+in-silico+directed+evolution+energy-based+refinement+nanomolar+affinity 200                                                                              
+2026-06-09 00:42:54 [info     ] pubmed_hydrated                agent=ThinkingOrchestrator data='13609 chars' pmids=4
+[06/09/26 00:42:55] INFO     HTTP Request: POST https://huggingface.co/mcp "HTTP/1.1 200 OK"                                                                                                                   _client.py:1740
+2026-06-09 00:42:55 [info     ] huggingface_search_complete    agent=ThinkingOrchestrator error=None success=True
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://search.brave.com/search?q=RFdiffusion+de+novo+protein+binder+design+diffusion+models+experimental+hit+rates+AF2-Multimer+filtering+in-silico+directed+evolution+energy-based+r           
+                             efinement+nanomolar+affinity&source=web 200                                                                                                                                                      
+2026-06-09 00:42:55 [info     ] parallel_search_provider_succeeded provider=brave result_count=7
+2026-06-09 00:42:55 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:42:55 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:42:55 [info     ] parallel_search_complete       deduplicated_count=3 final_results=20 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' total_results=27 total_time_ms=2455.7852745056152 unique_results=24
+2026-06-09 00:42:55 [info     ] parallel_web_search_complete   agent=ThinkingOrchestrator deduplicated=3 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='RFdiffusion de novo protein binder design diffusion models experimental hit rates AF2-Multimer filtering in-silico directed evolution energy-based refinement nanomolar affinity' result_count=20 time_ms=2455.7852745056152
+2026-06-09 00:42:56 [info     ] master_paper_mcp_unhealthy     agent=ThinkingOrchestrator error='health_self timed out after 3.0s'
+2026-06-09 00:42:56 [info     ] master_paper_mcp_skipped       agent=ThinkingOrchestrator reason=unhealthy umbrella=web
+2026-06-09 00:42:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:13 [warning  ] master_paper_mcp_subject_timeout agent=ThinkingOrchestrator subject=ai timeout_s=20.0
+[06/09/26 00:43:13] INFO     Found credentials in environment variables.                                                                                                                                   credentials.py:1252
+                    INFO     Found token in environment variables.                                                                                                                                               tokens.py:362
+2026-06-09 00:43:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:32 [debug    ] llm_call_complete              agent=ThinkingOrchestrator input_tokens=1809 model=global.anthropic.claude-opus-4-7 output_tokens=1433 provider=bedrock
+2026-06-09 00:43:32 [info     ] cross_domain_bridges           agent=ThinkingOrchestrator ai_weight=0.15 bio_weight=0.75 count=4
+2026-06-09 00:43:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:43:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:44:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:45:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:46:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:47:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:44 [warning  ] provider_failed                error='Read timeout on endpoint URL: "https://bedrock-runtime.us-east-2.amazonaws.com/model/global.anthropic.claude-sonnet-4-6/invoke"' provider=bedrock
+2026-06-09 00:48:44 [warning  ] retry_attempt                  attempt=1 delay=0.5247266042171599 error='All providers failed: [bedrock] Read timeout on endpoint URL: "https://bedrock-runtime.us-east-2.amazonaws.com/model/global.anthropic.claude-sonnet-4-6/invoke"' function=_call max_retries=3
+2026-06-09 00:48:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:48:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:49:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:50:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:51:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:52:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=1 queue_depth=0 workers_busy=4 workers_max=64
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 202 Accepted
+2026-06-09 00:52:53 [info     ] request_finished               in_flight=0 peak=1 tool=dova_research total=1
+[06/09/26 00:52:53] INFO     Request 9 cancelled - duplicate response suppressed                                                                                                                                 server.py:777
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:52:56] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:52:56 [info     ] request_started                in_flight=1 peak=1 tool=dova_search
+2026-06-09 00:52:56 [info     ] intent_detected                agent=ResearchAgent original_query='RFdiffusion de novo protein binder design experimental hit rates validation' primary_source=None query_type=technical recommended_sources=['arxiv', 'github', 'huggingface', 'web'] search_query='rfdiffusion de novo protein binder design experimental hit rates validation' type_scores={'technical': 1, 'news': 0, 'biographical': 0, 'factual': 0}
+2026-06-09 00:52:56 [info     ] research_starting              agent=ResearchAgent detected_intent=None query='RFdiffusion de novo protein binder design experimental hit rates validation' source=arxiv
+2026-06-09 00:52:56 [info     ] arxiv_search_starting          agent=ResearchAgent original_query='RFdiffusion de novo protein binder design experimental hit rates validation' query='rfdiffusion de novo protein binder design experimental hit rates validation'
+2026-06-09 00:52:56 [info     ] arxiv_search_complete          agent=ResearchAgent error='MCP client not configured' result_count=0 success=False
+2026-06-09 00:52:56 [info     ] request_finished               in_flight=0 peak=1 tool=dova_search total=2
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:52:57] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:52:57 [info     ] request_started                in_flight=1 peak=1 tool=dova_search
+2026-06-09 00:52:57 [info     ] intent_detected                agent=ResearchAgent original_query='AF2-Multimer filtering protein binder design confidence metrics' primary_source=None query_type=general recommended_sources=['web', 'github', 'arxiv', 'huggingface'] search_query='af2-multimer filtering protein binder design confidence metrics' type_scores={'technical': 0, 'news': 0, 'biographical': 0, 'factual': 0}
+2026-06-09 00:52:57 [info     ] research_starting              agent=ResearchAgent detected_intent=None query='AF2-Multimer filtering protein binder design confidence metrics' source=arxiv
+2026-06-09 00:52:57 [info     ] arxiv_search_starting          agent=ResearchAgent original_query='AF2-Multimer filtering protein binder design confidence metrics' query='af2-multimer filtering protein binder design confidence metrics'
+2026-06-09 00:52:57 [info     ] arxiv_search_complete          agent=ResearchAgent error='MCP client not configured' result_count=0 success=False
+2026-06-09 00:52:57 [info     ] request_finished               in_flight=0 peak=1 tool=dova_search total=3
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:52:58] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:52:58 [info     ] request_started                in_flight=1 peak=1 tool=dova_search
+2026-06-09 00:52:58 [info     ] intent_detected                agent=ResearchAgent original_query='in silico directed evolution protein design deep learning affinity maturation' primary_source=None query_type=technical recommended_sources=['arxiv', 'github', 'huggingface', 'web'] search_query='in silico directed evolution protein design deep learning affinity maturation' type_scores={'technical': 1, 'news': 0, 'biographical': 0, 'factual': 0}
+2026-06-09 00:52:58 [info     ] research_starting              agent=ResearchAgent detected_intent=None query='in silico directed evolution protein design deep learning affinity maturation' source=arxiv
+2026-06-09 00:52:58 [info     ] arxiv_search_starting          agent=ResearchAgent original_query='in silico directed evolution protein design deep learning affinity maturation' query='in silico directed evolution protein design deep learning affinity maturation'
+2026-06-09 00:52:58 [info     ] arxiv_search_complete          agent=ResearchAgent error='MCP client not configured' result_count=0 success=False
+2026-06-09 00:52:58 [info     ] request_finished               in_flight=0 peak=1 tool=dova_search total=4
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:53:00] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:00 [info     ] request_started                in_flight=1 peak=1 tool=dova_web_search
+2026-06-09 00:53:00 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='RFdiffusion protein binder design hit rates experimental validation 2023 2024'
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=RFdiffusion%20protein%20binder%20design%20hit%20rates%20experimental%20validation%202023%202024 200            
+[06/09/26 00:53:01] INFO     HTTP Request: GET https://api.search.brave.com/res/v1/web/search?q=RFdiffusion+protein+binder+design+hit+rates+experimental+validation+2023+2024&count=10&freshness=pw "HTTP/1.1  _client.py:1740
+                             200 OK"                                                                                                                                                                                          
+                    INFO     response: https://grokipedia.com/api/typeahead?query=RFdiffusion+protein+binder+design+hit+rates+experimental+validation+2023+2024&limit=1 200                                         lib.rs:495
+INFO:     75.58.9.155:60524 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60524 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:01 [info     ] request_started                in_flight=2 peak=2 tool=dova_search
+2026-06-09 00:53:01 [info     ] intent_detected                agent=ResearchAgent original_query='RFdiffusion protein binder design' primary_source=None query_type=technical recommended_sources=['arxiv', 'github', 'huggingface', 'web'] search_query='rfdiffusion protein binder design' type_scores={'technical': 1, 'news': 0, 'biographical': 0, 'factual': 0}
+2026-06-09 00:53:01 [info     ] research_starting              agent=ResearchAgent detected_intent=None query='RFdiffusion protein binder design' source=github
+2026-06-09 00:53:01 [info     ] github_search                  agent=ResearchAgent final_query='rfdiffusion protein binder design pushed:>2025-12-11 stars:>5' optimized_query='rfdiffusion protein binder design' original_query='RFdiffusion protein binder design' sort_by_stars=False
+2026-06-09 00:53:01 [info     ] github_search_starting         agent=ResearchAgent query='rfdiffusion protein binder design pushed:>2025-12-11 stars:>5' search_type=repositories tool=search_repositories
+2026-06-09 00:53:01 [info     ] github_search_complete         agent=ResearchAgent error='MCP client not configured' success=False
+2026-06-09 00:53:01 [info     ] request_finished               in_flight=1 peak=2 tool=dova_search total=6
+                    INFO     response: https://www.mojeek.com/search?q=RFdiffusion+protein+binder+design+hit+rates+experimental+validation+2023+2024 403                                                            lib.rs:495
+INFO:     75.58.9.155:60524 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:53:02] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60524 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:02 [info     ] request_started                in_flight=2 peak=2 tool=dova_search
+2026-06-09 00:53:02 [info     ] intent_detected                agent=ResearchAgent original_query='protein binder design diffusion model AlphaFold filtering' primary_source=None query_type=technical recommended_sources=['arxiv', 'github', 'huggingface', 'web'] search_query='protein binder design diffusion model alphafold filtering' type_scores={'technical': 1, 'news': 0, 'biographical': 0, 'factual': 0}
+2026-06-09 00:53:02 [info     ] research_starting              agent=ResearchAgent detected_intent=None query='protein binder design diffusion model AlphaFold filtering' source=bio
+2026-06-09 00:53:02 [info     ] request_finished               in_flight=1 peak=2 tool=dova_search total=7
+                    INFO     response: https://search.brave.com/search?q=RFdiffusion+protein+binder+design+hit+rates+experimental+validation+2023+2024&source=web 200                                               lib.rs:495
+2026-06-09 00:53:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=2 queue_depth=0 workers_busy=4 workers_max=64
+2026-06-09 00:53:03 [info     ] parallel_search_provider_succeeded provider=brave result_count=6
+2026-06-09 00:53:03 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:53:03 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:53:03 [info     ] parallel_search_complete       deduplicated_count=3 final_results=10 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='RFdiffusion protein binder design hit rates experimental validation 2023 2024' total_results=26 total_time_ms=2940.586566925049 unique_results=23
+2026-06-09 00:53:03 [info     ] request_finished               in_flight=0 peak=2 tool=dova_web_search total=7
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:53:06] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60497 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:06 [info     ] request_started                in_flight=1 peak=2 tool=dova_web_search
+2026-06-09 00:53:06 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='AF2-Multimer ipTM pAE filtering protein binder design success rate improvement'
+[06/09/26 00:53:07] INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=AF2-Multimer%20ipTM%20pAE%20filtering%20protein%20binder%20design%20success%20rate%20improvement 200           
+                    INFO     HTTP Request: GET https://api.search.brave.com/res/v1/web/search?q=AF2-Multimer+ipTM+pAE+filtering+protein+binder+design+success+rate+improvement&count=10&freshness=pw "HTTP/1.1 _client.py:1740
+                             200 OK"                                                                                                                                                                                          
+INFO:     75.58.9.155:60538 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60538 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:07 [info     ] request_started                in_flight=2 peak=2 tool=dova_web_search
+2026-06-09 00:53:07 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='BindCraft one-shot protein binder design AlphaFold2 optimization directed evolution'
+                    INFO     HTTP Request: GET https://api.search.brave.com/res/v1/web/search?q=BindCraft+one-shot+protein+binder+design+AlphaFold2+optimization+directed+evolution&count=10&freshness=pw      _client.py:1740
+                             "HTTP/1.1 429 Too Many Requests"                                                                                                                                                                 
+2026-06-09 00:53:07 [warning  ] brave_search_error             error="Client error '429 Too Many Requests' for url 'https://api.search.brave.com/res/v1/web/search?q=BindCraft+one-shot+protein+binder+design+AlphaFold2+optimization+directed+evolution&count=10&freshness=pw'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429"
+                    INFO     response: https://grokipedia.com/api/typeahead?query=BindCraft+one-shot+protein+binder+design+AlphaFold2+optimization+directed+evolution&limit=1 200                                   lib.rs:495
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=BindCraft%20one-shot%20protein%20binder%20design%20AlphaFold2%20optimization%20directed%20evolution            
+                             200                                                                                                                                                                                              
+[06/09/26 00:53:08] INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://search.yahoo.com/search;_ylt=_J-8ihiFlPLfr67LgEB5uonJ;_ylu=Rc9r99cBnfTFvkONtphKjTiRTiRRQYoN0dNkabcxnt6vjJs?p=BindCraft+one-shot+protein+binder+design+AlphaFold2+optimization+           
+                             directed+evolution 200                                                                                                                                                                           
+2026-06-09 00:53:08 [info     ] executor_saturation            in_flight_requests=2 peak_requests=2 queue_depth=0 workers_busy=5 workers_max=64
+INFO:     75.58.9.155:60539 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60539 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:08 [info     ] request_started                in_flight=3 peak=3 tool=dova_web_search
+2026-06-09 00:53:08 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='energy-based refinement Rosetta protein binder affinity maturation computational design 2024'
+                    INFO     response: https://grokipedia.com/api/typeahead?query=energy-based+refinement+Rosetta+protein+binder+affinity+maturation+computational+design+2024&limit=1 200                          lib.rs:495
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=energy-based%20refinement%20Rosetta%20protein%20binder%20affinity%20maturation%20computational%20des           
+                             ign%202024 200                                                                                                                                                                                   
+                    INFO     HTTP Request: GET                                                                                                                                                                 _client.py:1740
+                             https://api.search.brave.com/res/v1/web/search?q=energy-based+refinement+Rosetta+protein+binder+affinity+maturation+computational+design+2024&count=10&freshness=pw "HTTP/1.1 200                
+                             OK"                                                                                                                                                                                              
+[06/09/26 00:53:09] INFO     response: https://www.mojeek.com/search?q=BindCraft+one-shot+protein+binder+design+AlphaFold2+optimization+directed+evolution 403                                                      lib.rs:495
+                    INFO     response: https://grokipedia.com/api/typeahead?query=AF2-Multimer+ipTM+pAE+filtering+protein+binder+design+success+rate+improvement&limit=1 200                                        lib.rs:495
+                    INFO     response: https://html.duckduckgo.com/html/ 202                                                                                                                                        lib.rs:495
+                    INFO     response: https://yandex.com/search/site/?text=energy-based+refinement+Rosetta+protein+binder+affinity+maturation+computational+design+2024&web=1&searchid=2666432 200                 lib.rs:495
+[06/09/26 00:53:10] INFO     response: https://yandex.com/search/site/?text=BindCraft+one-shot+protein+binder+design+AlphaFold2+optimization+directed+evolution&web=1&searchid=6703297 200                          lib.rs:495
+2026-06-09 00:53:10 [info     ] parallel_search_provider_succeeded provider=brave result_count=0
+2026-06-09 00:53:10 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:53:10 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:53:10 [info     ] parallel_search_complete       deduplicated_count=4 final_results=10 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='BindCraft one-shot protein binder design AlphaFold2 optimization directed evolution' total_results=20 total_time_ms=2498.375415802002 unique_results=16
+2026-06-09 00:53:10 [info     ] request_finished               in_flight=2 peak=3 tool=dova_web_search total=10
+                    INFO     response: https://yandex.com/search/site/?text=AF2-Multimer+ipTM+pAE+filtering+protein+binder+design+success+rate+improvement&web=1&searchid=2925052 200                               lib.rs:495
+2026-06-09 00:53:10 [info     ] parallel_search_provider_succeeded provider=brave result_count=2
+2026-06-09 00:53:10 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:53:10 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:53:10 [info     ] parallel_search_complete       deduplicated_count=2 final_results=10 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='AF2-Multimer ipTM pAE filtering protein binder design success rate improvement' total_results=22 total_time_ms=4106.154441833496 unique_results=20
+2026-06-09 00:53:10 [info     ] request_finished               in_flight=1 peak=3 tool=dova_web_search total=10
+2026-06-09 00:53:11 [info     ] parallel_search_provider_succeeded provider=brave result_count=2
+2026-06-09 00:53:11 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:53:11 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:53:11 [info     ] parallel_search_complete       deduplicated_count=2 final_results=10 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='energy-based refinement Rosetta protein binder affinity maturation computational design 2024' total_results=22 total_time_ms=2874.8416900634766 unique_results=20
+2026-06-09 00:53:11 [info     ] request_finished               in_flight=0 peak=3 tool=dova_web_search total=10
+INFO:     75.58.9.155:60539 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:53:15] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60539 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:15 [info     ] request_started                in_flight=1 peak=3 tool=dova_web_search
+2026-06-09 00:53:15 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='in silico directed evolution protein language model EvoProtGrad DyNAbind binder optimization'
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=in%20silico%20directed%20evolution%20protein%20language%20model%20EvoProtGrad%20DyNAbind%20binder%20           
+                             optimization 200                                                                                                                                                                                 
+                    INFO     HTTP Request: GET                                                                                                                                                                 _client.py:1740
+                             https://api.search.brave.com/res/v1/web/search?q=in+silico+directed+evolution+protein+language+model+EvoProtGrad+DyNAbind+binder+optimization&count=10&freshness=pw "HTTP/1.1 200                
+                             OK"                                                                                                                                                                                              
+[06/09/26 00:53:16] INFO     response: https://grokipedia.com/api/typeahead?query=in+silico+directed+evolution+protein+language+model+EvoProtGrad+DyNAbind+binder+optimization&limit=1 200                          lib.rs:495
+INFO:     75.58.9.155:60555 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60555 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:16 [info     ] request_started                in_flight=2 peak=3 tool=dova_web_search
+2026-06-09 00:53:16 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='beta-pairing targeted RFdiffusion improved binder design polar epitopes 2024 2025'
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=beta-pairing%20targeted%20RFdiffusion%20improved%20binder%20design%20polar%20epitopes%202024%202025            
+                             200                                                                                                                                                                                              
+                    INFO     response: https://grokipedia.com/api/typeahead?query=beta-pairing+targeted+RFdiffusion+improved+binder+design+polar+epitopes+2024+2025&limit=1 200                                     lib.rs:495
+                    INFO     response: https://search.brave.com/search?q=in+silico+directed+evolution+protein+language+model+EvoProtGrad+DyNAbind+binder+optimization&source=web 200                                lib.rs:495
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://search.yahoo.com/search;_ylt=El0R1wDOpMZ6iQ8di4wD1i1l;_ylu=XEsm2HcL_Iq7Dtc57hqGOV_Y_zkOldkZvoXXdKdGgHOxu_w?p=beta-pairing+targeted+RFdiffusion+improved+binder+design+polar+ep           
+                             itopes+2024+2025 200                                                                                                                                                                             
+                    INFO     HTTP Request: GET https://api.search.brave.com/res/v1/web/search?q=beta-pairing+targeted+RFdiffusion+improved+binder+design+polar+epitopes+2024+2025&count=10&freshness=pw        _client.py:1740
+                             "HTTP/1.1 200 OK"                                                                                                                                                                                
+[06/09/26 00:53:17] INFO     response: https://search.brave.com/search?q=beta-pairing+targeted+RFdiffusion+improved+binder+design+polar+epitopes+2024+2025&source=web 200                                           lib.rs:495
+2026-06-09 00:53:18 [info     ] executor_saturation            in_flight_requests=2 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:53:18 [info     ] parallel_search_provider_succeeded provider=brave result_count=2
+2026-06-09 00:53:18 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:53:18 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:53:18 [info     ] parallel_search_complete       deduplicated_count=3 final_results=10 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='beta-pairing targeted RFdiffusion improved binder design polar epitopes 2024 2025' total_results=22 total_time_ms=2432.9607486724854 unique_results=19
+2026-06-09 00:53:18 [info     ] request_finished               in_flight=1 peak=3 tool=dova_web_search total=12
+2026-06-09 00:53:19 [info     ] parallel_search_provider_succeeded provider=brave result_count=5
+2026-06-09 00:53:19 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:53:19 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:53:19 [info     ] parallel_search_complete       deduplicated_count=3 final_results=10 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='in silico directed evolution protein language model EvoProtGrad DyNAbind binder optimization' total_results=25 total_time_ms=4329.0135860443115 unique_results=22
+2026-06-09 00:53:19 [info     ] request_finished               in_flight=0 peak=3 tool=dova_web_search total=12
+INFO:     75.58.9.155:60539 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:53:23] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60539 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:23 [info     ] request_started                in_flight=1 peak=3 tool=dova_web_search
+2026-06-09 00:53:23 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='BindEnergyCraft pTMEnergy AlphaFold energy-based model binder design pipeline 2025'
+                    INFO     response: https://grokipedia.com/api/typeahead?query=BindEnergyCraft+pTMEnergy+AlphaFold+energy-based+model+binder+design+pipeline+2025&limit=1 200                                    lib.rs:495
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=BindEnergyCraft%20pTMEnergy%20AlphaFold%20energy-based%20model%20binder%20design%20pipeline%202025             
+                             200                                                                                                                                                                                              
+                    INFO     response: https://html.duckduckgo.com/html/ 202                                                                                                                                        lib.rs:495
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://search.yahoo.com/search;_ylt=iXCK5je8NyUQ0RxS-iVSJwQW;_ylu=tIuePHgMt5LJjm3Z1hMqtfJxpHJl5uhy3hCJZLf_v1RpvPU?p=BindEnergyCraft+pTMEnergy+AlphaFold+energy-based+model+binder+des           
+                             ign+pipeline+2025 200                                                                                                                                                                            
+                    INFO     HTTP Request: GET https://api.search.brave.com/res/v1/web/search?q=BindEnergyCraft+pTMEnergy+AlphaFold+energy-based+model+binder+design+pipeline+2025&count=10&freshness=pw       _client.py:1740
+                             "HTTP/1.1 200 OK"                                                                                                                                                                                
+INFO:     75.58.9.155:60573 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:53:24] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60573 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:24 [info     ] request_started                in_flight=2 peak=3 tool=dova_web_search
+2026-06-09 00:53:24 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='protein binder design pipeline RFdiffusion ProteinMPNN AlphaFold2 multimer filtering workflow hit rate 10 percent'
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=protein%20binder%20design%20pipeline%20RFdiffusion%20ProteinMPNN%20AlphaFold2%20multimer%20filtering           
+                             %20workflow%20hit%20rate%2010%20percent 200                                                                                                                                                      
+                    INFO     response: https://grokipedia.com/api/typeahead?query=protein+binder+design+pipeline+RFdiffusion+ProteinMPNN+AlphaFold2+multimer+filtering+workflow+hit+rate+10+percent&limit=1 200     lib.rs:495
+                    INFO     HTTP Request: GET                                                                                                                                                                 _client.py:1740
+                             https://api.search.brave.com/res/v1/web/search?q=protein+binder+design+pipeline+RFdiffusion+ProteinMPNN+AlphaFold2+multimer+filtering+workflow+hit+rate+10+percent&count=10&fresh                
+                             ness=pw "HTTP/1.1 200 OK"                                                                                                                                                                        
+[06/09/26 00:53:25] INFO     response: https://search.brave.com/search?q=BindEnergyCraft+pTMEnergy+AlphaFold+energy-based+model+binder+design+pipeline+2025&source=web 200                                          lib.rs:495
+                    INFO     response: https://www.mojeek.com/search?q=protein+binder+design+pipeline+RFdiffusion+ProteinMPNN+AlphaFold2+multimer+filtering+workflow+hit+rate+10+percent 403                        lib.rs:495
+                    INFO     response: https://html.duckduckgo.com/html/ 202                                                                                                                                        lib.rs:495
+                    INFO     response: https://search.brave.com/search?q=protein+binder+design+pipeline+RFdiffusion+ProteinMPNN+AlphaFold2+multimer+filtering+workflow+hit+rate+10+percent&source=web 200           lib.rs:495
+2026-06-09 00:53:26 [info     ] parallel_search_provider_succeeded provider=brave result_count=10
+2026-06-09 00:53:26 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:53:26 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:53:26 [info     ] parallel_search_complete       deduplicated_count=7 final_results=10 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='BindEnergyCraft pTMEnergy AlphaFold energy-based model binder design pipeline 2025' total_results=30 total_time_ms=2785.576820373535 unique_results=23
+2026-06-09 00:53:26 [info     ] request_finished               in_flight=1 peak=3 tool=dova_web_search total=14
+2026-06-09 00:53:27 [info     ] parallel_search_provider_succeeded provider=brave result_count=7
+2026-06-09 00:53:27 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 00:53:27 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 00:53:27 [info     ] parallel_search_complete       deduplicated_count=6 final_results=10 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='protein binder design pipeline RFdiffusion ProteinMPNN AlphaFold2 multimer filtering workflow hit rate 10 percent' total_results=27 total_time_ms=2708.163022994995 unique_results=21
+2026-06-09 00:53:27 [info     ] request_finished               in_flight=0 peak=3 tool=dova_web_search total=14
+INFO:     75.58.9.155:60590 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 00:53:32] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:60590 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 00:53:32 [info     ] request_started                in_flight=1 peak=3 tool=dova_debate
+2026-06-09 00:53:32 [info     ] debate_starting                agent=DebateAgent rounds=3 topic='Can combining AF2-Multimer filtering, in-silico directed evolution, and energy-based refinement push de novo protein binder design hit rates above 10% with nanomolar affinity for arbitrary epitopes?'
+2026-06-09 00:53:32 [debug    ] debate_round                   agent=DebateAgent round=1
+2026-06-09 00:53:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:53:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:53:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:53:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:53:49 [debug    ] llm_call_complete              agent=BullAgent input_tokens=419 model=global.anthropic.claude-opus-4-7 output_tokens=853 provider=bedrock
+2026-06-09 00:53:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:53:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:10 [debug    ] llm_call_complete              agent=BearAgent input_tokens=425 model=global.anthropic.claude-opus-4-7 output_tokens=1003 provider=bedrock
+2026-06-09 00:54:10 [debug    ] debate_round                   agent=DebateAgent round=2
+2026-06-09 00:54:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:28 [debug    ] llm_call_complete              agent=BullAgent input_tokens=498 model=global.anthropic.claude-opus-4-7 output_tokens=905 provider=bedrock
+2026-06-09 00:54:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:49 [debug    ] llm_call_complete              agent=BearAgent input_tokens=822 model=global.anthropic.claude-opus-4-7 output_tokens=1057 provider=bedrock
+2026-06-09 00:54:49 [debug    ] debate_round                   agent=DebateAgent round=3
+2026-06-09 00:54:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:54:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:08 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:10 [debug    ] llm_call_complete              agent=BullAgent input_tokens=818 model=global.anthropic.claude-opus-4-7 output_tokens=1036 provider=bedrock
+2026-06-09 00:55:13 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:18 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:23 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:28 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:32 [debug    ] llm_call_complete              agent=BearAgent input_tokens=1065 model=global.anthropic.claude-opus-4-7 output_tokens=1275 provider=bedrock
+2026-06-09 00:55:33 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:38 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:43 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:48 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:53 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:55:58 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:56:03 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 00:56:03 [debug    ] llm_call_complete              agent=DebateAgent input_tokens=1485 model=global.anthropic.claude-sonnet-4-6 output_tokens=1443 provider=bedrock
+2026-06-09 00:56:03 [info     ] request_finished               in_flight=0 peak=3 tool=dova_debate total=15
+INFO:     75.58.9.155:62442 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:62659 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:65342 - "POST /mcp HTTP/1.1" 404 Not Found
+[06/09/26 03:47:06] INFO     Created new transport with session ID: 27017a9d27e347d886191b475b7f4a83                                                                                            streamable_http_manager.py:255
+INFO:     75.58.9.155:65342 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:65342 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     75.58.9.155:65342 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:65343 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type ListToolsRequest                                                                                                                                         server.py:727
+INFO:     75.58.9.155:65343 - "POST /mcp HTTP/1.1" 200 OK
+[06/09/26 03:47:11] INFO     Processing request of type PingRequest                                                                                                                                              server.py:727
+INFO:     75.58.9.155:65343 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type CallToolRequest                                                                                                                                          server.py:727
+2026-06-09 03:47:11 [info     ] request_started                in_flight=1 peak=3 tool=dova_research
+2026-06-09 03:47:11 [info     ] thinking_orchestrator_starting agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' session_id=420e9629-660d-4d4d-8969-67b90728a03c user_id=None
+2026-06-09 03:47:11 [info     ] fast_path_deliberation         agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' sources=['arxiv', 'github', 'huggingface', 'web', 'bio']
+2026-06-09 03:47:11 [info     ] intent_weights_computed        agent=ThinkingOrchestrator allowed_groups=['ai', 'bio', 'web'] weights={'ai': 0.85, 'bio': 0.05, 'web': 0.1}
+2026-06-09 03:47:11 [info     ] deliberation_complete          action=use_tools agent=ThinkingOrchestrator allowed_sources=['arxiv', 'github', 'huggingface', 'web', 'bio'] can_answer_from_context=False tools_count=5
+2026-06-09 03:47:11 [info     ] token_budget_estimate          agent=ThinkingOrchestrator bridge_on=False estimate=47884 n_groups=3 pre_synthesis=16384 synthesis=31500
+2026-06-09 03:47:11 [info     ] executing_tool                 agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' rationale='User selected arxiv' tool=arxiv
+2026-06-09 03:47:11 [info     ] executing_tool                 agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' rationale='User selected github' tool=github
+2026-06-09 03:47:11 [info     ] executing_tool                 agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' rationale='User selected huggingface' tool=huggingface
+2026-06-09 03:47:11 [info     ] executing_tool                 agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' rationale='User selected web' tool=web
+2026-06-09 03:47:11 [info     ] executing_tool                 agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' rationale='User selected bio' tool=bio
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods', 'max_results': 15, 'date_from': '2025-06-09'} server=arxiv tool=search_papers
+2026-06-09 03:47:11 [debug    ] stdio_invoke                   command='uv --directory /home/alfred/.dova/mcp-servers/arxiv-mcp-server run arxiv-mcp-server --storage-path /home/alfred/.dova/arxiv-papers' component=mcp_client server=arxiv tool=search_papers
+2026-06-09 03:47:11 [info     ] github_search_starting         agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' search_type=repositories tool=search_repositories
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods', 'perPage': 15} server=github tool=search_repositories
+2026-06-09 03:47:11 [debug    ] http_invoke                    component=mcp_client server=github tool=search_repositories url=https://api.githubcopilot.com/mcp
+2026-06-09 03:47:11 [info     ] parallel_search_starting       max_per_provider=10 providers=['brave', 'tavily', 'duckduckgo'] query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods'
+2026-06-09 03:47:11 [info     ] executing_bio_fanout           agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' servers=['pubmed-bio'] tool=bio
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={} server=master_paper_mcp tool=health_self
+2026-06-09 03:47:11 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=health_self url=http://localhost:8084/mcp
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={} server=master_paper_mcp tool=health_self
+2026-06-09 03:47:11 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=health_self url=http://localhost:8084/mcp
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={} server=master_paper_mcp tool=health_self
+2026-06-09 03:47:11 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=health_self url=http://localhost:8084/mcp
+2026-06-09 03:47:11 [info     ] huggingface_search_starting    agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' search_type=models tool=hub_repo_search
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods', 'limit': 15, 'sort': 'downloads'} server=hugging-face tool=hub_repo_search
+2026-06-09 03:47:11 [debug    ] http_invoke                    component=mcp_client server=huggingface tool=hub_repo_search url=https://huggingface.co/mcp
+2026-06-09 03:47:11 [info     ] huggingface_search_starting    agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' search_type=papers tool=paper_search
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods', 'results_limit': 7} server=hugging-face tool=paper_search
+2026-06-09 03:47:11 [debug    ] http_invoke                    component=mcp_client server=huggingface tool=paper_search url=https://huggingface.co/mcp
+2026-06-09 03:47:11 [info     ] bio_server_call_starting       agent=ThinkingOrchestrator params_keys=['query', 'maxResults', 'dateRange'] server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic ai systems dispute resolution fraud detection', 'maxResults': 10, 'dateRange': {'minDate': '2024/06/08', 'maxDate': '2026/06/09'}} server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 03:47:11 [debug    ] http_invoke                    component=mcp_client server=pubmed-bio tool=pubmed_search_articles url=https://pubmed.caseyjhand.com/mcp
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+2026-06-09 03:47:11 [info     ] master_paper_mcp_fanout_starting agent=ThinkingOrchestrator query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' subjects=['social'] umbrella=web
+2026-06-09 03:47:11 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods', 'subject': 'social', 'limit': 2} server=master_paper_mcp tool=search_papers
+2026-06-09 03:47:11 [debug    ] http_invoke                    component=mcp_client server=master_paper_mcp tool=search_papers url=http://localhost:8084/mcp
+                    INFO     HTTP Request: POST http://localhost:8084/mcp "HTTP/1.1 200 OK"                                                                                                                    _client.py:1740
+                    INFO     HTTP Request: POST https://huggingface.co/mcp "HTTP/1.1 200 OK"                                                                                                                   _client.py:1740
+2026-06-09 03:47:11 [info     ] huggingface_search_complete    agent=ThinkingOrchestrator error=None success=True
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=non-deterministic%20agentic%20AI%20systems%20for%20dispute%20resolution%20and%20fraud%20detection%3A           
+                             %20architecture%2C%20determinism%20control%2C%20reliability%20methods 200                                                                                                                        
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://grokipedia.com/api/typeahead?query=non-deterministic+agentic+AI+systems+for+dispute+resolution+and+fraud+detection%3A+architecture%2C+determinism+control%2C+reliability+metho           
+                             ds&limit=1 200                                                                                                                                                                                   
+                    INFO     response: https://html.duckduckgo.com/html/ 202                                                                                                                                        lib.rs:495
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://search.yahoo.com/search;_ylt=Mpa4SpP_ZvgxcySiiEHrivqL;_ylu=0IK2OuBfpvNPOxZy2G3zZNpagREMU1CQ9a7BsGZx3CM3t98?p=non-deterministic+agentic+AI+systems+for+dispute+resolution+and+f           
+                             raud+detection%3A+architecture%2C+determinism+control%2C+reliability+methods 200                                                                                                                 
+                    INFO     HTTP Request: GET                                                                                                                                                                 _client.py:1740
+                             https://api.search.brave.com/res/v1/web/search?q=non-deterministic+agentic+AI+systems+for+dispute+resolution+and+fraud+detection%3A+architecture%2C+determinism+control%2C+reliab                
+                             ility+methods&count=10&freshness=pw "HTTP/1.1 200 OK"                                                                                                                                            
+                    INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 03:47:12 [info     ] pubmed_retry_shorter           agent=ThinkingOrchestrator original_tokens=8 retry_tokens=7 short_query='non-deterministic agentic ai systems dispute resolution fraud'
+2026-06-09 03:47:12 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic ai systems dispute resolution fraud', 'maxResults': 10, 'dateRange': {'minDate': '2024/06/08', 'maxDate': '2026/06/09'}} server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 03:47:12 [debug    ] http_invoke                    component=mcp_client server=pubmed-bio tool=pubmed_search_articles url=https://pubmed.caseyjhand.com/mcp
+[06/09/26 03:47:12] INFO     HTTP Request: POST https://api.githubcopilot.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 03:47:12 [info     ] github_search_complete         agent=ThinkingOrchestrator error=None success=True
+                    INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 03:47:12 [info     ] pubmed_retry_shorter           agent=ThinkingOrchestrator original_tokens=8 retry_tokens=6 short_query='non-deterministic agentic ai systems dispute resolution'
+2026-06-09 03:47:12 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic ai systems dispute resolution', 'maxResults': 10, 'dateRange': {'minDate': '2024/06/08', 'maxDate': '2026/06/09'}} server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 03:47:12 [debug    ] http_invoke                    component=mcp_client server=pubmed-bio tool=pubmed_search_articles url=https://pubmed.caseyjhand.com/mcp
+                    INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 03:47:12 [info     ] pubmed_retry_shorter           agent=ThinkingOrchestrator original_tokens=8 retry_tokens=5 short_query='non-deterministic agentic ai systems dispute'
+2026-06-09 03:47:12 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic ai systems dispute', 'maxResults': 10, 'dateRange': {'minDate': '2024/06/08', 'maxDate': '2026/06/09'}} server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 03:47:12 [debug    ] http_invoke                    component=mcp_client server=pubmed-bio tool=pubmed_search_articles url=https://pubmed.caseyjhand.com/mcp
+                    INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 03:47:12 [info     ] pubmed_retry_shorter           agent=ThinkingOrchestrator original_tokens=8 retry_tokens=4 short_query='non-deterministic agentic ai systems'
+2026-06-09 03:47:12 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic ai systems', 'maxResults': 10, 'dateRange': {'minDate': '2024/06/08', 'maxDate': '2026/06/09'}} server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 03:47:12 [debug    ] http_invoke                    component=mcp_client server=pubmed-bio tool=pubmed_search_articles url=https://pubmed.caseyjhand.com/mcp
+[06/09/26 03:47:13] INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 03:47:13 [info     ] pubmed_retry_shorter           agent=ThinkingOrchestrator original_tokens=8 retry_tokens=3 short_query='non-deterministic agentic ai'
+2026-06-09 03:47:13 [debug    ] mcp_tool_call                  agent=ThinkingOrchestrator params={'query': 'non-deterministic agentic ai', 'maxResults': 10, 'dateRange': {'minDate': '2024/06/08', 'maxDate': '2026/06/09'}} server=pubmed-bio tool=pubmed_search_articles
+2026-06-09 03:47:13 [debug    ] http_invoke                    component=mcp_client server=pubmed-bio tool=pubmed_search_articles url=https://pubmed.caseyjhand.com/mcp
+                    INFO     HTTP Request: POST https://pubmed.caseyjhand.com/mcp "HTTP/1.1 200 OK"                                                                                                            _client.py:1740
+2026-06-09 03:47:13 [info     ] bio_server_call_complete       agent=ThinkingOrchestrator data='753 chars' server=pubmed-bio success=True tool=pubmed_search_articles
+                    INFO     HTTP Request: POST https://huggingface.co/mcp "HTTP/1.1 200 OK"                                                                                                                   _client.py:1740
+2026-06-09 03:47:13 [info     ] huggingface_search_complete    agent=ThinkingOrchestrator error=None success=True
+                    INFO     response:                                                                                                                                                                              lib.rs:495
+                             https://yandex.com/search/site/?text=non-deterministic+agentic+AI+systems+for+dispute+resolution+and+fraud+detection%3A+architecture%2C+determinism+control%2C+reliability+methods&web           
+                             =1&searchid=8815650 200                                                                                                                                                                          
+2026-06-09 03:47:13 [info     ] parallel_search_provider_succeeded provider=brave result_count=10
+2026-06-09 03:47:13 [info     ] parallel_search_provider_succeeded provider=tavily result_count=10
+2026-06-09 03:47:13 [info     ] parallel_search_provider_succeeded provider=duckduckgo result_count=10
+2026-06-09 03:47:13 [info     ] parallel_search_complete       deduplicated_count=0 final_results=15 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' total_results=30 total_time_ms=2214.7576808929443 unique_results=30
+2026-06-09 03:47:13 [info     ] parallel_web_search_complete   agent=ThinkingOrchestrator deduplicated=0 providers_failed=[] providers_succeeded=['brave', 'tavily', 'duckduckgo'] query='non-deterministic agentic AI systems for dispute resolution and fraud detection: architecture, determinism control, reliability methods' result_count=15 time_ms=2214.7576808929443
+2026-06-09 03:47:14 [info     ] master_paper_mcp_unhealthy     agent=ThinkingOrchestrator error='health_self timed out after 3.0s'
+2026-06-09 03:47:14 [info     ] master_paper_mcp_skipped       agent=ThinkingOrchestrator reason=unhealthy umbrella=ai
+2026-06-09 03:47:14 [info     ] master_paper_mcp_unhealthy     agent=ThinkingOrchestrator error='health_self timed out after 3.0s'
+2026-06-09 03:47:14 [info     ] master_paper_mcp_skipped       agent=ThinkingOrchestrator reason=unhealthy umbrella=bio
+2026-06-09 03:47:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:47:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:48:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:49:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:50:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:51:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:39 [warning  ] provider_failed                error='Read timeout on endpoint URL: "https://bedrock-runtime.us-east-2.amazonaws.com/model/global.anthropic.claude-sonnet-4-6/invoke"' provider=bedrock
+2026-06-09 03:52:39 [warning  ] retry_attempt                  attempt=1 delay=0.8533148115942351 error='All providers failed: [bedrock] Read timeout on endpoint URL: "https://bedrock-runtime.us-east-2.amazonaws.com/model/global.anthropic.claude-sonnet-4-6/invoke"' function=_call max_retries=3
+2026-06-09 03:52:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:52:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:53:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:54:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:55:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:14 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:19 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:24 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:29 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:34 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:39 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:44 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:49 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:54 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:56:59 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:57:04 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+2026-06-09 03:57:09 [info     ] executor_saturation            in_flight_requests=1 peak_requests=3 queue_depth=0 workers_busy=7 workers_max=64
+INFO:     75.58.9.155:65382 - "POST /mcp HTTP/1.1" 202 Accepted
+2026-06-09 03:57:11 [info     ] request_finished               in_flight=0 peak=3 tool=dova_research total=16
+[06/09/26 03:57:11] INFO     Request 3 cancelled - duplicate response suppressed                                                                                                                                 server.py:777
+INFO:     75.58.9.155:65496 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49163 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49192 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49225 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49261 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49286 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49315 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49357 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49395 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49420 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49448 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49470 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49497 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49545 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49597 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49629 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49650 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49676 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49697 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49722 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49745 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49779 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49804 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49831 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49869 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49890 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49917 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49944 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49968 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:49995 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50020 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50045 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50090 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50127 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50145 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50169 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50196 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50222 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50242 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50266 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50284 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50306 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50328 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50348 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50377 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50405 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50425 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50463 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50493 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50524 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50554 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50578 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50603 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50628 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50651 - "GET /mcp HTTP/1.1" 200 OK
+[06/09/26 15:39:26] INFO     Created new transport with session ID: 71216a0316ea4682bc1d500fe4e213ee                                                                                            streamable_http_manager.py:255
+INFO:     75.58.9.155:51384 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51384 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     75.58.9.155:51384 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51385 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type ListToolsRequest                                                                                                                                         server.py:727
+INFO:     75.58.9.155:51386 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type ListPromptsRequest                                                                                                                                       server.py:727
+INFO:     75.58.9.155:51387 - "POST /mcp HTTP/1.1" 200 OK
+                    INFO     Processing request of type ListResourcesRequest                                                                                                                                     server.py:727
+INFO:     75.58.9.155:50685 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50716 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50740 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50769 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50794 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50818 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50845 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50866 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50896 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50921 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50949 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50974 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:50998 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51050 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51071 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51095 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51121 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51158 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51184 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51212 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51240 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51263 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51286 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51305 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51333 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51362 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51387 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51412 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51439 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51465 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51486 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51511 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51553 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51604 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51635 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51658 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51683 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51710 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51734 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51766 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51788 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51813 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51840 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51871 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51906 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51928 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51944 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:51979 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:52000 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:52021 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:52049 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:52075 - "GET /mcp HTTP/1.1" 200 OK
+INFO:     75.58.9.155:52111 - "GET /mcp HTTP/1.1" 200 OK

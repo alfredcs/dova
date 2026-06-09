@@ -72,18 +72,23 @@ DEFAULT_BEDROCK_MODELS: dict[ModelTier, str] = {
     ModelTier.REASONING: os.environ.get("BEDROCK_MODEL_REASONING", "global.anthropic.claude-opus-4-6-v1"),
 }
 
+# Anthropic tier runs through AWS Bedrock Mantle (Messages API at /v1, bearer
+# auth). Model IDs are env-driven; adjust ANTHROPIC_MODEL_* in .env to whatever
+# naming Mantle's Anthropic endpoint expects.
 DEFAULT_ANTHROPIC_MODELS: dict[ModelTier, str] = {
-    ModelTier.BASIC: os.environ.get("ANTHROPIC_MODEL_BASIC", "claude-haiku-4-5-20251022"),
-    ModelTier.STANDARD: os.environ.get("ANTHROPIC_MODEL_STANDARD", "claude-sonnet-4-20250514"),
-    ModelTier.ADVANCED: os.environ.get("ANTHROPIC_MODEL_ADVANCED", "claude-opus-4-5-20251101"),
-    ModelTier.REASONING: os.environ.get("ANTHROPIC_MODEL_REASONING", "claude-opus-4-5-20251101"),
+    ModelTier.BASIC: os.environ.get("ANTHROPIC_MODEL_BASIC", "global.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    ModelTier.STANDARD: os.environ.get("ANTHROPIC_MODEL_STANDARD", "global.anthropic.claude-opus-4-8"),
+    ModelTier.ADVANCED: os.environ.get("ANTHROPIC_MODEL_ADVANCED", "global.anthropic.claude-opus-4-8"),
+    ModelTier.REASONING: os.environ.get("ANTHROPIC_MODEL_REASONING", "global.anthropic.claude-opus-4-8"),
 }
 
+# OpenAI tier runs through AWS Bedrock Mantle (Responses API), which expects
+# provider-prefixed model IDs (e.g. "openai.gpt-5.4").
 DEFAULT_OPENAI_MODELS: dict[ModelTier, str] = {
-    ModelTier.BASIC: os.environ.get("OPENAI_MODEL_BASIC", "gpt-5.4-mini"),
-    ModelTier.STANDARD: os.environ.get("OPENAI_MODEL_STANDARD", "gpt-5.4"),
-    ModelTier.ADVANCED: os.environ.get("OPENAI_MODEL_ADVANCED", "gpt-5.4"),
-    ModelTier.REASONING: os.environ.get("OPENAI_MODEL_REASONING", "gpt-5.4"),
+    ModelTier.BASIC: os.environ.get("OPENAI_MODEL_BASIC", "openai.gpt-5.4-mini"),
+    ModelTier.STANDARD: os.environ.get("OPENAI_MODEL_STANDARD", "openai.gpt-5.4"),
+    ModelTier.ADVANCED: os.environ.get("OPENAI_MODEL_ADVANCED", "openai.gpt-5.4"),
+    ModelTier.REASONING: os.environ.get("OPENAI_MODEL_REASONING", "openai.gpt-5.4"),
 }
 
 # Embedding models — also env-driven.
@@ -99,8 +104,8 @@ DEFAULT_OPENAI_EMBEDDING_MODEL: str = os.environ.get(
 # without touching source. Format: OPENAI_MAX_TOKENS_<model_id_upper>.
 OPENAI_DEFAULT_MAX_TOKENS: int = int(os.environ.get("OPENAI_DEFAULT_MAX_TOKENS", "16384"))
 OPENAI_MAX_COMPLETION_TOKENS: dict[str, int] = {
-    "gpt-5.4": int(os.environ.get("OPENAI_MAX_TOKENS_GPT_5_4", str(OPENAI_DEFAULT_MAX_TOKENS))),
-    "gpt-5.4-mini": int(os.environ.get("OPENAI_MAX_TOKENS_GPT_5_4_MINI", str(OPENAI_DEFAULT_MAX_TOKENS))),
+    "openai.gpt-5.4": int(os.environ.get("OPENAI_MAX_TOKENS_GPT_5_4", str(OPENAI_DEFAULT_MAX_TOKENS))),
+    "openai.gpt-5.4-mini": int(os.environ.get("OPENAI_MAX_TOKENS_GPT_5_4_MINI", str(OPENAI_DEFAULT_MAX_TOKENS))),
 }
 
 # Provider priority order (primary, secondary, tertiary). Lower number = higher
@@ -242,7 +247,7 @@ def _model_rejects_temperature(model_id: str) -> bool:
     """Anthropic reasoning models (Opus 4.6+) reject the `temperature` field."""
     # Normalize for substring checks like "global.anthropic.claude-opus-4-6-v1".
     normalized = model_id.lower()
-    return "opus-4-6" in normalized or "opus-4-7" in normalized
+    return "opus-4-6" in normalized or "opus-4-7" in normalized or "opus-4-8" in normalized
 
 
 class BedrockProvider(LLMProvider):
@@ -364,20 +369,31 @@ class BedrockProvider(LLMProvider):
 
 
 class AnthropicProvider(LLMProvider):
-    """Anthropic direct API provider."""
+    """Anthropic provider via AWS Bedrock Mantle (Messages API).
 
-    def __init__(self, config: ProviderConfig, api_key: str):
+    Uses ``AsyncAnthropic`` pointed at the Mantle gateway (``base_url`` +
+    ``bearer_token``). Auth is a Bedrock Mantle bearer token
+    (``Authorization: Bearer``) rather than SigV4 or a direct Anthropic API key.
+    The SDK appends ``/v1/messages`` to ``base_url``, so ``base_url`` is the
+    gateway's ``/anthropic`` endpoint root (e.g. ``https://…api.aws/anthropic``).
+    """
+
+    def __init__(self, config: ProviderConfig, base_url: str, bearer_token: str):
         super().__init__(config)
-        self.api_key = api_key
+        self.base_url = base_url
+        self.bearer_token = bearer_token
         self._client = None
 
     @property
     def client(self) -> Any:
-        """Lazy initialization of Anthropic client."""
+        """Lazy initialization of the Mantle-backed Anthropic client."""
         if self._client is None:
             from anthropic import AsyncAnthropic
 
-            self._client = AsyncAnthropic(api_key=self.api_key)
+            self._client = AsyncAnthropic(
+                base_url=self.base_url,
+                auth_token=self.bearer_token,
+            )
         return self._client
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
@@ -435,11 +451,12 @@ class AnthropicProvider(LLMProvider):
         raise NotImplementedError("Anthropic does not provide embedding models")
 
     async def health_check(self) -> bool:
-        """Check Anthropic API connectivity."""
+        """Check Bedrock (Anthropic) connectivity."""
         try:
-            # Make a minimal request
+            # Make a minimal request against the configured basic-tier model.
+            model_id = self.get_model_config(TaskType.CLASSIFICATION).model_id
             await self.client.messages.create(
-                model="claude-3-haiku-20240307",
+                model=model_id,
                 max_tokens=10,
                 messages=[{"role": "user", "content": "Hi"}],
             )
@@ -450,21 +467,47 @@ class AnthropicProvider(LLMProvider):
 
 
 class OpenAIProvider(LLMProvider):
-    """OpenAI API provider."""
+    """OpenAI provider via AWS Bedrock Mantle (Responses API).
 
-    def __init__(self, config: ProviderConfig, api_key: str):
+    Completions are routed through the Mantle gateway (``base_url`` +
+    ``bearer_token``) using the Responses API. Embeddings stay on the direct
+    OpenAI API (``api_key``), since Mantle is a chat/responses gateway.
+    """
+
+    def __init__(
+        self,
+        config: ProviderConfig,
+        api_key: str,
+        base_url: str | None = None,
+        bearer_token: str | None = None,
+    ):
         super().__init__(config)
-        self.api_key = api_key
+        self.api_key = api_key  # direct OpenAI key — used for embeddings
+        self.base_url = base_url  # Bedrock Mantle gateway — used for completions
+        self.bearer_token = bearer_token  # Mantle auth — used for completions
         self._client = None
+        self._embed_client = None
 
     @property
     def client(self) -> Any:
-        """Lazy initialization of OpenAI client."""
+        """Completion client. Routes to Bedrock Mantle when ``base_url`` is set."""
         if self._client is None:
             from openai import AsyncOpenAI
 
-            self._client = AsyncOpenAI(api_key=self.api_key)
+            self._client = AsyncOpenAI(
+                api_key=self.bearer_token or self.api_key,
+                base_url=self.base_url,
+            )
         return self._client
+
+    @property
+    def embed_client(self) -> Any:
+        """Embedding client — direct OpenAI, independent of the Mantle gateway."""
+        if self._embed_client is None:
+            from openai import AsyncOpenAI
+
+            self._embed_client = AsyncOpenAI(api_key=self.api_key)
+        return self._embed_client
 
     def _clamp_max_tokens(self, model_id: str, max_tokens: int) -> int:
         """Clamp max_tokens to the model's supported limit."""
@@ -472,67 +515,85 @@ class OpenAIProvider(LLMProvider):
         return min(max_tokens, model_limit)
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
-        """Generate completion using OpenAI API."""
+        """Generate completion using the Bedrock Mantle Responses API."""
         import time
 
         model_config = self.get_model_config(request.task_type)
 
-        messages = request.messages.copy()
-        if request.system_prompt:
-            messages.insert(0, {"role": "system", "content": request.system_prompt})
-
         max_tokens = self._clamp_max_tokens(
             model_config.model_id,
             request.max_tokens or model_config.max_tokens,
         )
 
+        # The Responses API takes the chat history as ``input`` and the system
+        # prompt as ``instructions``. Temperature is omitted: gpt-5.x reasoning
+        # models reject non-default temperature values.
+        kwargs: dict[str, Any] = {
+            "model": model_config.model_id,
+            "input": request.messages,
+            "max_output_tokens": max_tokens,
+        }
+        if request.system_prompt:
+            kwargs["instructions"] = request.system_prompt
+
         start_time = time.time()
-        response = await self.client.chat.completions.create(
-            model=model_config.model_id,
-            max_completion_tokens=max_tokens,
-            temperature=request.temperature or model_config.temperature,
-            messages=messages,
-        )
+        response = await self.client.responses.create(**kwargs)
         latency_ms = (time.time() - start_time) * 1000
 
         return LLMResponse(
-            content=response.choices[0].message.content or "",
+            content=response.output_text or "",
             provider=self.name,
             model=model_config.model_id,
-            input_tokens=response.usage.prompt_tokens if response.usage else 0,
-            output_tokens=response.usage.completion_tokens if response.usage else 0,
+            input_tokens=response.usage.input_tokens if response.usage else 0,
+            output_tokens=response.usage.output_tokens if response.usage else 0,
             latency_ms=latency_ms,
         )
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[str]:
-        """Stream completion using OpenAI API."""
-        model_config = self.get_model_config(request.task_type)
+        """Stream completion using the Bedrock Mantle Responses API.
 
-        messages = request.messages.copy()
-        if request.system_prompt:
-            messages.insert(0, {"role": "system", "content": request.system_prompt})
+        Server-side ``error`` and ``response.failed`` events are raised as
+        exceptions so ``LLMRouter.stream`` can fall back to the next provider
+        instead of ending the stream silently with truncated output. Refusal
+        deltas are forwarded as text, since a refusal is a valid model response
+        rather than a transport error.
+        """
+        model_config = self.get_model_config(request.task_type)
 
         max_tokens = self._clamp_max_tokens(
             model_config.model_id,
             request.max_tokens or model_config.max_tokens,
         )
 
-        stream = await self.client.chat.completions.create(
-            model=model_config.model_id,
-            max_completion_tokens=max_tokens,
-            temperature=request.temperature or model_config.temperature,
-            messages=messages,
-            stream=True,
-        )
+        kwargs: dict[str, Any] = {
+            "model": model_config.model_id,
+            "input": request.messages,
+            "max_output_tokens": max_tokens,
+            "stream": True,
+        }
+        if request.system_prompt:
+            kwargs["instructions"] = request.system_prompt
 
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        stream = await self.client.responses.create(**kwargs)
+        async for event in stream:
+            event_type = event.type
+            if event_type in ("response.output_text.delta", "response.refusal.delta"):
+                yield event.delta
+            elif event_type == "error":
+                logger.warning(
+                    "openai_stream_error", code=event.code, message=event.message
+                )
+                raise RuntimeError(f"OpenAI stream error: {event.message}")
+            elif event_type == "response.failed":
+                err = getattr(event.response, "error", None)
+                detail = err.message if err else "unknown error"
+                logger.warning("openai_stream_failed", detail=detail)
+                raise RuntimeError(f"OpenAI stream failed: {detail}")
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings using OpenAI."""
+        """Generate embeddings using the direct OpenAI API."""
         model_config = self.get_model_config(TaskType.EMBEDDING)
-        response = await self.client.embeddings.create(
+        response = await self.embed_client.embeddings.create(
             model=model_config.model_id,
             input=texts,
         )
@@ -760,8 +821,23 @@ def create_llm_router_from_settings() -> LLMRouter:
         except Exception as e:
             logger.warning("bedrock_provider_init_failed", error=str(e))
 
-    # Configure Anthropic provider if API key is available and package is installed
-    anthropic_key = settings.llm.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
+    # Bedrock Mantle gateway, shared by the Anthropic (Messages API at /anthropic)
+    # and OpenAI (Responses API at /openai/v1) fallback tiers. Both authenticate
+    # with the Mantle bearer token (Authorization: Bearer) rather than SigV4. The
+    # URL is the gateway host root; each provider appends its own path.
+    # Normalize to the gateway host root so each tier can append its own path
+    # (/anthropic for Anthropic, /openai/v1 for OpenAI). Tolerates BEDROCK_MANTLE_URL
+    # being the root or already carrying a /v1 or /openai/v1 suffix.
+    mantle_url = (os.environ.get("BEDROCK_MANTLE_URL") or "").rstrip("/")
+    for _suffix in ("/openai/v1", "/v1"):
+        if mantle_url.endswith(_suffix):
+            mantle_url = mantle_url[: -len(_suffix)]
+            break
+    mantle_url = mantle_url or None
+    mantle_token = os.environ.get("BEDROCK_MANTLE_TOKEN") or os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
+
+    # Configure Anthropic provider via the Mantle gateway (Messages API). Enabled
+    # whenever the SDK is installed and the Mantle URL + bearer token are set.
     anthropic_available = False
     try:
         import anthropic  # noqa: F401
@@ -769,7 +845,7 @@ def create_llm_router_from_settings() -> LLMRouter:
     except ImportError:
         pass
 
-    if anthropic_key and not anthropic_key.startswith("${") and anthropic_available:
+    if anthropic_available and mantle_url and mantle_token and "anthropic" in DEFAULT_PROVIDER_ORDER:
         # Get tiered model configuration from environment or defaults
         anthropic_models = {
             ModelTier.BASIC: os.environ.get("ANTHROPIC_MODEL_BASIC", DEFAULT_ANTHROPIC_MODELS[ModelTier.BASIC]),
@@ -806,12 +882,19 @@ def create_llm_router_from_settings() -> LLMRouter:
             models=anthropic_task_models,
         )
         try:
-            providers["anthropic"] = AnthropicProvider(anthropic_config, api_key=anthropic_key)
-            logger.info("anthropic_provider_configured")
+            anthropic_base_url = f"{mantle_url}/anthropic"
+            providers["anthropic"] = AnthropicProvider(
+                anthropic_config,
+                base_url=anthropic_base_url,
+                bearer_token=mantle_token,
+            )
+            logger.info("anthropic_provider_configured", backend="bedrock-mantle", base_url=anthropic_base_url)
         except Exception as e:
             logger.warning("anthropic_provider_init_failed", error=str(e))
 
-    # Configure OpenAI provider if API key is available and package is installed
+    # Configure OpenAI provider via AWS Bedrock Mantle (Responses API).
+    # Completions need the Mantle gateway URL + bearer token; the direct OpenAI
+    # key is only used for the embedding path.
     openai_key = settings.llm.openai_api_key or os.environ.get("OPENAI_API_KEY")
     openai_available = False
     try:
@@ -820,7 +903,7 @@ def create_llm_router_from_settings() -> LLMRouter:
     except ImportError:
         pass
 
-    if openai_key and not openai_key.startswith("${") and openai_available:
+    if openai_available and mantle_url and mantle_token:
         # Get tiered model configuration from environment or defaults
         openai_models = {
             ModelTier.BASIC: os.environ.get("OPENAI_MODEL_BASIC", DEFAULT_OPENAI_MODELS[ModelTier.BASIC]),
@@ -857,8 +940,14 @@ def create_llm_router_from_settings() -> LLMRouter:
             models=openai_task_models,
         )
         try:
-            providers["openai"] = OpenAIProvider(openai_config, api_key=openai_key)
-            logger.info("openai_provider_configured")
+            openai_base_url = f"{mantle_url}/openai/v1"
+            providers["openai"] = OpenAIProvider(
+                openai_config,
+                api_key=openai_key or "",
+                base_url=openai_base_url,
+                bearer_token=mantle_token,
+            )
+            logger.info("openai_provider_configured", backend="bedrock-mantle", base_url=openai_base_url)
         except Exception as e:
             logger.warning("openai_provider_init_failed", error=str(e))
 

@@ -860,7 +860,15 @@ def mcp_serve(
         if no_dns_rebinding_protection:
             security.enable_dns_rebinding_protection = False
         if allowed_host:
-            security.allowed_hosts = list(security.allowed_hosts) + list(allowed_host)
+            expanded_hosts: list[str] = []
+            for h in allowed_host:
+                expanded_hosts.append(h)
+                # A bare hostname (no port, no wildcard) won't match a Host header
+                # that carries a port (e.g. 'mcp1.cavatar.info:8083'), so also allow
+                # any port on that host.
+                if ":" not in h:
+                    expanded_hosts.append(f"{h}:*")
+            security.allowed_hosts = list(security.allowed_hosts) + expanded_hosts
         if allowed_origin:
             security.allowed_origins = list(security.allowed_origins) + list(allowed_origin)
         mcp_app.run(transport="streamable-http")

@@ -2144,8 +2144,8 @@
                 }
                 if (results.drug_story) {
                     const s = results.drug_story;
-                    const pmidLinks = (s.mechanism_pmid_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/\\d+/) || [''])[0])}</a>`).join(', ');
-                    const trialLinks = (s.trial_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/NCT\\d+/) || [''])[0])}</a>`).join(', ');
+                    const pmidLinks = (s.mechanism_pmid_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/\d+/) || [''])[0])}</a>`).join(', ');
+                    const trialLinks = (s.trial_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/NCT\d+/) || [''])[0])}</a>`).join(', ');
                     items.push(`<h5>💊 Drug Story</h5>`);
                     items.push(`<div class="research-item"><strong>${escapeHtml(s.compound || '?')}</strong>${s.pubchem_url ? ` — <a href="${escapeHtml(s.pubchem_url)}" target="_blank">PubChem CID ${escapeHtml(s.pubchem_cid || '')}</a>` : ''}<p style="font-size:0.9em">${pmidLinks ? `Literature: ${pmidLinks}. ` : ''}${trialLinks ? `Trials: ${trialLinks}.` : ''}</p></div>`);
                 }
@@ -2289,8 +2289,8 @@
 
                 if (results.drug_story) {
                     const s = results.drug_story;
-                    const pmidLinks = (s.mechanism_pmid_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/\\d+/) || [''])[0])}</a>`).join(', ');
-                    const trialLinks = (s.trial_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/NCT\\d+/) || [''])[0])}</a>`).join(', ');
+                    const pmidLinks = (s.mechanism_pmid_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/\d+/) || [''])[0])}</a>`).join(', ');
+                    const trialLinks = (s.trial_urls || []).map(u => `<a href="${escapeHtml(u)}" target="_blank">${escapeHtml((u.match(/NCT\d+/) || [''])[0])}</a>`).join(', ');
                     items.push(`<h5>💊 Drug Story</h5>`);
                     items.push(`
                         <div class="research-item">
